@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Surveillance Live - SIGR-CA{% endblock %}
+{% block nav_live %}active{% endblock %}
+{% block page_title %}Surveillance Live{% endblock %}
+{% block page_sub %}Temps réel — Mises à jour automatiques{% endblock %}
+
+{% block topbar_actions %}
+<div class="pill pill-live" id="live-pill" onclick="toggleLive()">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-status">LIVE (10s)</span>
+</div>
+<div class="icon-btn" onclick="manualRefresh()" title="Actualiser maintenant">↻</div>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Accès autorisés</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value" id="kpi-ok">{{ acces_ok|default:"0" }}</div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
+    <div class="kpi-value" id="kpi-no">{{ acces_no|default:"0" }}</div>
+  </div>
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Zones actives</div><div class="kpi-icon">🚪</div></div>
+    <div class="kpi-value">{{ total_bureaux|default:"0" }}</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Alertes actives</div><div class="kpi-icon">⚠️</div></div>
+    <div class="kpi-value" id="kpi-alertes">{{ alertes|default:"0" }}</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Total employés</div><div class="kpi-icon">👥</div></div>
+    <div class="kpi-value">{{ total_employes|default:"0" }}</div>
+  </div>
+</div>
+
+<div class="g2">
+  <!-- Flux temps réel -->
+  <div class="card">
+    <div class="card-head">
+      <span>📡</span>
+      <span class="card-title">Flux accès — temps réel</span>
+      <span class="card-sub"><span class="live-dot"></span> Mise à jour automatique</span>
+    </div>
+    <div style="padding:12px 14px; max-height:460px; overflow-y:auto" id="live-feed">
+      {% for log in derniers_logs %}
+      <div class="feed-item {% if forloop.first %}new{% endif %}" id="log-{{ forloop.counter }}">
+        <div class="feed-av" style="background:#1f6feb">
+          {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+        </div>
+        <div class="feed-info">
+          <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+          <div class="feed-door">
+            {{ log.bureau_nom|default:"Zone inconnue" }} · 
+            {% if log.type_acces == 'QR' %}📱 QR Code{% else %}🔖 RFID{% endif %}
+          </div>
+        </div>
+        <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
+        {% if log.resultat == 'AUTORISE' %}
+          <div class="feed-status fs-ok">AUTORISÉ</div>
+        {% else %}
+          <div class="feed-status fs-no">REFUSÉ</div>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div style="text-align:center;padding:60px;color:var(--text3);font-size:13px" id="no-logs">
+        Aucun accès enregistré pour le moment
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Alertes & État des zones -->
+  <div class="card">
+    <div class="card-head">
+      <span>⚠️</span>
+      <span class="card-title">Alertes & État des zones</span>
+      <span class="card-sub" id="alert-count">{{ alertes }} active{{ alertes|pluralize }}</span>
+    </div>
+    <div class="card-body">
+
+      {% if alertes > 0 %}
+      <div class="alert-box danger">
+        <div class="alert-ico">🔴</div>
+        <div>
+          <div class="alert-text">{{ alertes }} alerte{{ alertes|pluralize }} non traitée{{ alertes|pluralize }}</div>
+          <div class="alert-meta">Vérification immédiate requise</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="alert-box info">
+        <div class="alert-ico">✅</div>
+        <div><div class="alert-text">Aucune alerte active — Système nominal</div></div>
+      </div>
+      {% endif %}
+
+      <div style="margin-top:24px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:12px">
+          ÉTAT DES ZONES
+        </div>
+        {% for bureau in bureaux %}
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2);margin-bottom:8px">
+          <div>
+            <div style="font-size:13.5px;font-weight:500">{{ bureau.nom }}</div>
+            <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">{{ bureau.code_bureau|default:"—" }} · Étage {{ bureau.etage|default:"—" }}</div>
+          </div>
+          <span class="badge b-green">● ACTIF</span>
+        </div>
+        {% empty %}
+        <div style="color:var(--text3);text-align:center;padding:40px">Aucune zone configurée</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+let liveEnabled = true;
+let refreshInterval = null;
+
+function startLiveRefresh() {
+  if (refreshInterval) clearInterval(refreshInterval);
+  refreshInterval = setInterval(() => {
+    if (liveEnabled) manualRefresh();
+  }, 10000);   // toutes les 10 secondes
+}
+
+function toggleLive() {
+  liveEnabled = !liveEnabled;
+  const dot = document.getElementById('live-dot');
+  const status = document.getElementById('live-status');
+  
+  if (liveEnabled) {
+    dot.style.animation = 'blink 2s infinite';
+    status.textContent = 'LIVE (10s)';
+    startLiveRefresh();
+  } else {
+    dot.style.animation = 'none';
+    status.textContent = 'PAUSE';
+  }
+}
+
+function manualRefresh() {
+  location.reload();
+}
+
+// Animation pour les nouveaux logs
+function highlightNewLogs() {
+  const newLogs = document.querySelectorAll('.feed-item.new');
+  newLogs.forEach((log, index) => {
+    setTimeout(() => {
+      log.classList.remove('new');
+    }, 3000 + index * 200);
+  });
+}
+
+// Initialisation
+window.onload = function() {
+  startLiveRefresh();
+  highlightNewLogs();
+};
+
+// Nettoyage
+window.onbeforeunload = function() {
+  if (refreshInterval) clearInterval(refreshInterval);
+};
+{% endblock %}

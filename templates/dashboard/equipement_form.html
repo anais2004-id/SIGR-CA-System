@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} un équipement{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier l'équipement{% else %}Nouvel équipement{% endif %}{% endblock %}
+{% block page_sub %}{% if is_edit %}{{ equipement.nom }}{% else %}Ajouter un lecteur RFID ou QR Code{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'equipement_list' %}" class="btn btn-ghost btn-sm">← Retour à la liste</a>
+{% endblock %}
+
+{% block content %}
+
+<div style="max-width:720px; margin:0 auto">
+  <div class="card">
+    <div class="card-head">
+      <span style="font-size:24px">{% if is_edit %}✏️{% else %}➕{% endif %}</span>
+      <span class="card-title">
+        {% if is_edit %}Modifier l'équipement{% else %}Créer un nouvel équipement{% endif %}
+      </span>
+    </div>
+
+    <div class="card-body" style="padding:32px 36px">
+
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}" style="margin-bottom:20px">
+            <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+            <div class="alert-text">{{ message }}</div>
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Nom de l'équipement <span style="color:#f85149">*</span></label>
+            <input class="form-input" name="nom" value="{{ equipement.nom|default:'' }}" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Type <span style="color:#f85149">*</span></label>
+            <select class="form-select" name="type" id="typeSelect" {% if is_edit %}disabled{% endif %}>
+              <option value="RFID" {% if equipement.type == 'RFID' %}selected{% endif %}>🔖 RFID</option>
+              <option value="QR" {% if equipement.type == 'QR' %}selected{% endif %}>📱 QR Code</option>
+            </select>
+            {% if is_edit %}
+              <input type="hidden" name="type" value="{{ equipement.type }}">
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Emplacement</label>
+          <input class="form-input" name="emplacement" value="{{ equipement.emplacement|default:'' }}" 
+                 placeholder="Ex: Entrée principale, Hall d'accueil...">
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Bureau / Zone associé</label>
+          <select class="form-select" name="bureau_id">
+            <option value="">— Aucun —</option>
+            {% for bureau in bureaux %}
+              <option value="{{ bureau.id }}" 
+                {% if equipement.bureau_id|stringformat:"s" == bureau.id %}selected{% endif %}>
+                {{ bureau.nom }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="background:var(--bg3); border-radius:var(--radius); padding:16px; margin:16px 0">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:12px">
+            🌐 Configuration réseau
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-row">
+              <label class="form-label">Adresse IP</label>
+              <input class="form-input" name="ip_address" value="{{ equipement.ip_address|default:'' }}" 
+                     placeholder="192.168.1.100">
+            </div>
+            <div class="form-row">
+              <label class="form-label">Port</label>
+              <input class="form-input" name="port" type="number" value="{{ equipement.port|default:'5000' }}">
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Statut</label>
+            <select class="form-select" name="statut">
+              <option value="actif" {% if equipement.statut == 'actif' %}selected{% endif %}>Actif</option>
+              <option value="inactif" {% if equipement.statut == 'inactif' %}selected{% endif %}>Inactif</option>
+              <option value="maintenance" {% if equipement.statut == 'maintenance' %}selected{% endif %}>Maintenance</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Code (généré automatiquement)</label>
+            <input class="form-input" value="{% if is_edit %}{{ equipement.code }}{% else %}Auto-généré{% endif %}" disabled>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Description</label>
+          <textarea class="form-input" name="description" rows="3" 
+                    placeholder="Description de l'équipement, son utilisation...">{{ equipement.description|default:'' }}</textarea>
+        </div>
+
+        <div style="display:flex; gap:12px; justify-content:flex-end; padding-top:32px; border-top:1px solid var(--border); margin-top:24px">
+          <a href="{% url 'equipement_list' %}" class="btn btn-ghost">Annuler</a>
+          <button type="submit" class="btn btn-primary">
+            {% if is_edit %}💾 Enregistrer les modifications{% else %}➕ Ajouter l'équipement{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Aperçu du code généré (RFID-XXX ou QR-XXX)
+document.getElementById('typeSelect')?.addEventListener('change', function() {
+  const type = this.value;
+  const codePreview = type === 'RFID' ? 'RDR-XXX' : 'QR-XXX';
+  // Vous pouvez afficher ceci quelque part si besoin
+});
+</script>
+{% endblock %}

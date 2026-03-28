@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ employe.nom }} {{ employe.prenom }}{% endblock %}
+{% block nav_employes %}active{% endblock %}
+{% block page_title %}Fiche employé{% endblock %}
+{% block page_sub %}{{ employe.nom }} {{ employe.prenom }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'employe_modifier' employe.id %}" class="btn btn-edit btn-sm">✏️ Modifier</a>
+<a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <div class="card-body">
+    <div class="profile-hdr">
+      {% if employe.statut == 'actif' %}
+        <div class="profile-av" style="background:#1f6feb; width:110px; height:110px; font-size:36px;">
+      {% else %}
+        <div class="profile-av" style="background:#484f58; width:110px; height:110px; font-size:36px;">
+      {% endif %}
+        {{ employe.nom|slice:":1"|upper }}{{ employe.prenom|slice:":1"|upper }}
+      </div>
+
+      <div style="flex:1">
+        <div style="font-size:24px; font-weight:700">{{ employe.nom }} {{ employe.prenom }}</div>
+        <div style="font-size:15px; color:var(--text2); margin-top:6px">
+          {{ employe.poste|default:"—"}} • {{ employe.departement|default:"—"}}
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap">
+          <span class="badge b-blue">{{ employe.badge_id|default:"Pas de badge" }}</span>
+          {% if employe.statut == 'actif' %}
+            <span class="badge b-green">● Actif</span>
+          {% else %}
+            <span class="badge b-gray">● Archivé</span>
+          {% endif %}
+          <span class="badge b-purple">{{ employe.niveau|default:"Staff" }}</span>
+        </div>
+      </div>
+
+      <div>
+        <a href="{% url 'employe_modifier' employe.id %}" class="btn btn-primary btn-sm">Modifier le profil</a>
+      </div>
+    </div>
+
+    <!-- Informations générales -->
+    <div class="field-grid" style="margin:28px 0">
+      <div class="field-box"><div class="field-lbl">Email</div><div class="field-val">{{ employe.email|default:"—" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Téléphone</div><div class="field-val">{{ employe.telephone|default:"—" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Date d'embauche</div><div class="field-val">{{ employe.date_embauche|date:"d/m/Y"|default:"—" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Type de contrat</div><div class="field-val">{{ cycle_travail.type|default:"CDI" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Manager</div><div class="field-val">{{ cycle_travail.manager|default:"—" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Horaires hebdomadaires</div><div class="field-val">{{ cycle_travail.heures_hebdo|default:"35" }}h</div></div>
+    </div>
+
+    {% if employe.statut != 'actif' %}
+    <div class="alert-box danger">
+      <div class="alert-ico">⚠️</div>
+      <div class="alert-text">Cet employé est archivé. Son historique reste consultable.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- KPI Employé -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px; margin:24px 0">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">🔑</div></div>
+    <div class="kpi-value">{{ total_acces }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Taux succès</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ taux_succes }}%</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Dernier accès</div><div class="kpi-icon">🕐</div></div>
+    <div class="kpi-value" style="font-size:15px">
+      {% if dernier_acces %}{{ dernier_acces.timestamp|date:"d/m H:i" }}{% else %}Jamais{% endif %}
+    </div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Cycle travail</div><div class="kpi-icon">⏰</div></div>
+    <div class="kpi-value" style="font-size:15px">{{ cycle_travail.horaire|default:"08:00-17:00" }}</div>
+  </div>
+</div>
+<!-- Planning Absences -->
+<div class="card" style="margin-top:24px">
+  <div class="card-head">
+    <span>📅</span>
+    <span class="card-title">Planning absences & congés</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+      <div style="text-align:center">
+        <div style="font-size:28px;font-weight:300;color:var(--green)">{{ employe.solde_conges|default:25 }}</div>
+        <div style="color:var(--text2);margin-top:4px">Congés payés</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:28px;font-weight:300;color:var(--amber)">{{ employe.solde_rtt|default:10 }}</div>
+        <div style="color:var(--text2);margin-top:4px">RTT</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:28px;font-weight:300;color:var(--red)">{{ employe.solde_maladie|default:0 }}</div>
+        <div style="color:var(--text2);margin-top:4px">Maladie / CET</div>
+      </div>
+    </div>
+
+    <div style="margin-top:30px">
+      <strong>Prochaines absences prévues :</strong>
+      <div style="margin-top:12px; color:var(--text3); font-style:italic">
+        Aucune absence programmée pour le moment.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="g2">
+  <!-- Zones fréquentées -->
+  <div class="card">
+    <div class="card-head"><span>🚪</span><span class="card-title">Zones les plus fréquentées</span></div>
+    <div class="card-body">
+      {% for b in bureaux_frequentes %}
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span>{{ b.nom }}</span>
+          <span style="font-family:var(--mono)">{{ b.count }} accès ({{ b.pct }}%)</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:{{ b.pct }}%"></div>
+        </div>
+      </div>
+      {% empty %}
+      <p style="text-align:center;color:var(--text3);padding:30px">Aucune donnée disponible</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Cycle de travail -->
+  <div class="card">
+    <div class="card-head"><span>⏰</span><span class="card-title">Cycle de travail</span></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <strong style="color:var(--text2)">Horaires quotidiens</strong><br>
+          <div style="font-size:18px;margin:12px 0">{{ cycle_travail.horaire|default:"08:00 - 17:00" }}</div>
+          <strong style="color:var(--text2)">Jours travaillés</strong><br>
+          <div style="margin-top:8px">
+            {% for jour in cycle_travail.jours %}
+              <span class="badge b-blue" style="margin-right:4px">{{ jour }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <strong style="color:var(--text2)">Type de contrat</strong><br>
+          <div style="font-size:16px;margin:10px 0">{{ cycle_travail.type|default:"CDI" }}</div>
+          <strong style="color:var(--text2)">Heures hebdomadaires</strong><br>
+          <div style="font-size:22px;color:var(--green)">{{ cycle_travail.heures_hebdo|default:"35" }}h</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Historique complet -->
+<div class="card" style="margin-top:24px">
+  <div class="card-head">
+    <span>📋</span>
+    <span class="card-title">Historique des accès</span>
+    <span class="card-sub">{{ total_acces }} passages</span>
+  </div>
+  <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Date & Heure</th>
+          <th>Zone</th>
+          <th>Méthode</th>
+          <th>Résultat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in acces %}
+        <tr>
+          <td style="font-family:var(--mono)">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td>{{ a.bureau_nom|default:"Inconnu" }}</td>
+          <td><span style="font-family:var(--mono)">{{ a.type_acces|default:"RFID" }}</span></td>
+          <td>
+            {% if a.resultat == 'AUTORISE' %}
+              <div class="feed-status fs-ok">AUTORISÉ</div>
+            {% else %}
+              <div class="feed-status fs-no">REFUSÉ</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

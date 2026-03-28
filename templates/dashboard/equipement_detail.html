@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}{{ equipement.nom }}{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+{% block page_title %}{{ equipement.nom }}{% endblock %}
+{% block page_sub %}{{ equipement.type }} · {{ equipement.code }}{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-green btn-sm" onclick="testerConnexion()">📡 Tester connexion</button>
+<a href="{% url 'equipement_modifier' equipement.id %}" class="btn btn-edit btn-sm">✏️ Modifier</a>
+<a href="{% url 'equipement_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Type</div><div class="kpi-icon">📟</div></div>
+    <div class="kpi-value" style="font-size:20px">{{ equipement.type }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Statut</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value" style="font-size:20px">
+      {% if equipement.statut == 'actif' %}
+        <span class="badge b-green">● ACTIF</span>
+      {% elif equipement.statut == 'maintenance' %}
+        <span class="badge b-amber">🔧 MAINTENANCE</span>
+      {% else %}
+        <span class="badge b-gray">● INACTIF</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Activité 24h</div><div class="kpi-icon">📊</div></div>
+    <div class="kpi-value">{{ stats.logs_24h }}</div>
+    <div class="kpi-delta">accès enregistrés</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Dernière connexion</div><div class="kpi-icon">🕐</div></div>
+    <div class="kpi-value" style="font-size:15px">
+      {{ equipement.derniere_connexion|date:"d/m H:i"|default:"Jamais" }}
+    </div>
+  </div>
+</div>
+
+<div class="g2">
+  <!-- Informations -->
+  <div class="card">
+    <div class="card-head"><span>ℹ️</span><span class="card-title">Informations</span></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><span style="color:var(--text3)">Code:</span><br><strong style="font-family:var(--mono)">{{ equipement.code }}</strong></div>
+        <div><span style="color:var(--text3)">Emplacement:</span><br><strong>{{ equipement.emplacement|default:"Non défini" }}</strong></div>
+        <div><span style="color:var(--text3)">Bureau lié:</span><br><strong>{{ equipement.bureau.nom|default:"Non assigné" }}</strong></div>
+        <div><span style="color:var(--text3)">IP / Port:</span><br><strong>{{ equipement.ip_address|default:"—" }}:{{ equipement.port|default:"—" }}</strong></div>
+      </div>
+      {% if equipement.description %}
+        <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border2)">
+          <span style="color:var(--text3)">Description:</span><br>
+          <div style="margin-top:6px">{{ equipement.description }}</div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Statistiques -->
+  <div class="card">
+    <div class="card-head"><span>📊</span><span class="card-title">Statistiques</span></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;text-align:center">
+        <div>
+          <div style="font-size:28px;font-weight:300;color:var(--green)">{{ stats.autorises|default:"0" }}</div>
+          <div style="font-size:11px;color:var(--text3)">Accès autorisés</div>
+        </div>
+        <div>
+          <div style="font-size:28px;font-weight:300;color:var(--red)">{{ stats.refuses|default:"0" }}</div>
+          <div style="font-size:11px;color:var(--text3)">Accès refusés</div>
+        </div>
+        <div>
+          <div style="font-size:28px;font-weight:300;color:var(--amber)">{{ stats.logs_24h|default:"0" }}</div>
+          <div style="font-size:11px;color:var(--text3)">24 dernières heures</div>
+        </div>
+        <div>
+          <div style="font-size:28px;font-weight:300;color:var(--blue)">{{ stats.logs_7j|default:"0" }}</div>
+          <div style="font-size:11px;color:var(--text3)">7 derniers jours</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Commandes -->
+<div class="card">
+  <div class="card-head">
+    <span>⚡</span>
+    <span class="card-title">Commandes à distance</span>
+  </div>
+  <div class="card-body">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button onclick="envoyerCommande('test')" class="btn btn-ghost">🔍 Test de ping</button>
+      <button onclick="envoyerCommande('reset')" class="btn btn-ghost">🔄 Réinitialiser</button>
+      <button onclick="envoyerCommande('reboot')" class="btn btn-ghost">🔁 Redémarrer</button>
+      <button onclick="envoyerCommande('status')" class="btn btn-ghost">📊 État</button>
+    </div>
+    <div id="commande-result" style="margin-top:16px; display:none" class="alert-box info"></div>
+  </div>
+</div>
+
+<!-- Historique des accès -->
+<div class="card">
+  <div class="card-head">
+    <span>📋</span>
+    <span class="card-title">Historique des accès</span>
+    <span class="card-sub">{{ logs|length }} dernières entrées</span>
+  </div>
+  <div style="overflow-x:auto; max-height:400px; overflow-y:auto">
+    <table class="tbl">
+      <thead>
+        <tr><th>Date & Heure</th><th>Employé</th><th>Résultat</th> </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td style="font-family:var(--mono)">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td>{{ log.nom_utilisateur }}</td>
+          <td>{% if log.resultat == 'AUTORISE' %}<span class="badge b-green">✓ AUTORISÉ</span>{% else %}<span class="badge b-red">✗ REFUSÉ</span>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3" style="text-align:center;padding:40px">Aucun accès enregistré</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function testerConnexion() {
+  fetch(`/equipements/{{ equipement.id }}/tester/`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        alert(`✅ ${data.message}\nTemps de réponse: ${data.response_time}ms`);
+        location.reload();
+      } else {
+        alert(`❌ ${data.message}`);
+      }
+    });
+}
+
+function envoyerCommande(commande) {
+  const commandes = {
+    test: 'Test de connexion',
+    reset: 'Réinitialisation',
+    reboot: 'Redémarrage',
+    status: 'État'
+  };
+  
+  fetch(`/api/equipements/{{ equipement.id }}/commande/`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({commande: commande})
+  })
+  .then(r => r.json())
+  .then(data => {
+    const resultDiv = document.getElementById('commande-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = `
+      <div class="alert-ico">📡</div>
+      <div><div class="alert-text">${data.message}</div></div>
+    `;
+    setTimeout(() => resultDiv.style.display = 'none', 3000);
+  })
+  .catch(err => alert('Erreur: ' + err));
+}
+</script>
+{% endblock %}

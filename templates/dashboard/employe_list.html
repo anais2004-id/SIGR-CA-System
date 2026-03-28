@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}Gestion des employés{% endblock %}
+{% block nav_employes %}active{% endblock %}
+{% block page_title %}Gestion des employés{% endblock %}
+{% block page_sub %}Base de données des accès{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Nouvel employé</button>
+<button class="btn btn-ghost btn-sm" onclick="exportEmployeesCSV()">⬇️ Exporter CSV</button>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total employés</div><div class="kpi-icon">👥</div></div>
+    <div class="kpi-value">{{ total_employes }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Actifs</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ actifs }}</div>
+    <div class="kpi-delta">En service</div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Archivés</div><div class="kpi-icon">📁</div></div>
+    <div class="kpi-value">{{ inactifs }}</div>
+    <div class="kpi-delta neg">Historique conservé</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Départements</div><div class="kpi-icon">🏢</div></div>
+    <div class="kpi-value">{{ total_departements }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <span>👥</span>
+    <span class="card-title">Liste des employés</span>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input class="search-inp" style="width:260px" id="empSearch"
+             placeholder="🔍 Nom, badge, département..."/>
+
+      <select class="form-select" style="width:160px" id="empDept">
+        <option value="">Tous les départements</option>
+        {% for dept in departements %}
+        <option value="{{ dept|lower }}">{{ dept }}</option>
+        {% endfor %}
+      </select>
+
+      <button class="filter-tab active" id="ftab-all"    onclick="empSetStatus('all',this)">Tous</button>
+      <button class="filter-tab"        id="ftab-actif"  onclick="empSetStatus('actif',this)">Actifs</button>
+      <button class="filter-tab"        id="ftab-inactif" onclick="empSetStatus('inactif',this)">Archivés</button>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Employé</th>
+          <th>Badge RFID</th>
+          <th>Département</th>
+          <th>Poste</th>
+          <th>Niveau</th>
+          <th>Nb accès</th>
+          <th>Dernier accès</th>
+          <th>Statut</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="empTableBody">
+        {% for emp in employes %}
+        <tr class="emp-row"
+            data-name="{{ emp.nom|lower }} {{ emp.prenom|lower }}"
+            data-badge="{{ emp.badge_id|lower }}"
+            data-dept="{{ emp.departement|lower }}"
+            data-statut="{{ emp.statut|lower }}">
+
+          <td>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="emp-av" style="background:{% if emp.statut == 'actif' %}#1f6feb{% else %}#484f58{% endif %}">
+                {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
+              </div>
+              <div>
+                <div style="font-weight:500">{{ emp.nom }} {{ emp.prenom }}</div>
+                <div style="font-size:11px;color:var(--text3)">{{ emp.email|default:"—" }}</div>
+              </div>
+            </div>
+          </td>
+
+          <td><span style="font-family:var(--mono);font-size:11.5px">{{ emp.badge_id|default:"—" }}</span></td>
+          <td>{{ emp.departement|default:"—" }}</td>
+          <td>{{ emp.poste|default:"—" }}</td>
+          <td><span class="badge b-blue">{{ emp.niveau|default:"Staff" }}</span></td>
+          <td style="font-family:var(--mono);text-align:center">{{ emp.nb_acces|default:"0" }}</td>
+
+          <td style="font-size:11px;color:var(--text2);font-family:var(--mono)">
+            {% if emp.dernier_acces %}
+              {{ emp.dernier_acces|date:"d/m/Y H:i" }}
+            {% else %}
+              <span style="color:var(--text3)">Jamais</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if emp.statut == 'actif' %}
+              <span class="badge b-green">● Actif</span>
+            {% else %}
+              <span class="badge b-gray">● Archivé</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <div style="display:flex;gap:4px">
+              <a href="/employes/{{ emp.id }}/" class="btn btn-edit btn-sm">👁️</a>
+              <a href="/employes/{{ emp.id }}/modifier/" class="btn btn-ghost btn-sm">✏️</a>
+              {% if emp.statut == 'actif' %}
+              <form method="post" action="/employes/{{ emp.id }}/supprimer/" style="display:inline"
+                    onsubmit="return confirm('Archiver cet employé ?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-del btn-sm">📁</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" style="text-align:center;padding:50px;color:var(--text3)">
+            Aucun employé enregistré
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div id="empNoResults" style="display:none;text-align:center;padding:40px;color:var(--text3)">
+      Aucun employé ne correspond aux filtres sélectionnés
+    </div>
+  </div>
+</div>
+
+<!-- Script directement dans le contenu pour garantir l'exécution -->
+<script>
+(function() {
+  var empStatus = 'all';
+
+  function empFilter() {
+    var search = (document.getElementById('empSearch').value || '').toLowerCase().trim();
+    var dept   = (document.getElementById('empDept').value   || '').toLowerCase().trim();
+    var rows   = document.querySelectorAll('#empTableBody .emp-row');
+    var count  = 0;
+
+    for (var i = 0; i < rows.length; i++) {
+      var tr     = rows[i];
+      var name   = tr.getAttribute('data-name')   || '';
+      var badge  = tr.getAttribute('data-badge')  || '';
+      var rdept  = tr.getAttribute('data-dept')   || '';
+      var statut = tr.getAttribute('data-statut') || '';
+
+      var okS = !search || name.indexOf(search) >= 0 || badge.indexOf(search) >= 0 || rdept.indexOf(search) >= 0;
+      var okD = !dept   || rdept === dept;
+      var okT = empStatus === 'all'
+             || (empStatus === 'actif'   && statut === 'actif')
+             || (empStatus === 'inactif' && statut !== 'actif');
+
+      tr.style.display = (okS && okD && okT) ? '' : 'none';
+      if (okS && okD && okT) count++;
+    }
+
+    var msg = document.getElementById('empNoResults');
+    if (msg) msg.style.display = count === 0 ? 'block' : 'none';
+  }
+
+  window.empSetStatus = function(val, el) {
+    empStatus = val;
+    var tabs = document.querySelectorAll('.filter-tab');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    el.classList.add('active');
+    empFilter();
+  };
+
+  // Attacher les événements sur les champs de filtre
+  function init() {
+    var si = document.getElementById('empSearch');
+    var di = document.getElementById('empDept');
+    if (si) si.addEventListener('input', empFilter);
+    if (di) di.addEventListener('change', empFilter);
+    // Afficher toutes les lignes au démarrage (état propre)
+    empFilter();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+<!-- Modal ajout employé -->
+<script>
+function openAddModal() {
+  var m = document.getElementById('modal-content');
+  if (!m) return;
+  m.innerHTML = '<div class="modal-title">➕ Nouvel employé</div>'
+    + '<div class="modal-sub">Créer un profil d\'accès</div>'
+    + '<form method="post" action="/employes/ajouter/">'
+    + '<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    + '<div class="form-row"><label class="form-label">Nom *</label><input class="form-input" name="nom" placeholder="Nom de famille" required></div>'
+    + '<div class="form-row"><label class="form-label">Prénom</label><input class="form-input" name="prenom" placeholder="Prénom"></div>'
+    + '</div>'
+    + '<div class="form-row"><label class="form-label">Badge RFID *</label><input class="form-input" name="badge_id" placeholder="RF-2026-XXXX" required></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    + '<div class="form-row"><label class="form-label">Email</label><input class="form-input" name="email" type="email" placeholder="employe@ge.dz"></div>'
+    + '<div class="form-row"><label class="form-label">Téléphone</label><input class="form-input" name="telephone" placeholder="0555 XX XX XX"></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    + '<div class="form-row"><label class="form-label">Département</label>'
+    + '<select class="form-select" name="departement">'
+    + '<option>Informatique</option><option>Ressources Humaines</option><option>Finance</option>'
+    + '<option>Production</option><option>Commercial</option><option>Maintenance</option><option>Direction</option>'
+    + '</select></div>'
+    + '<div class="form-row"><label class="form-label">Poste</label><input class="form-input" name="poste" placeholder="Ex: Technicien"></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    + '<div class="form-row"><label class="form-label">Date d\'embauche</label><input class="form-input" name="date_embauche" type="date"></div>'
+    + '<div class="form-row"><label class="form-label">Niveau d\'accès</label>'
+    + '<select class="form-select" name="niveau"><option value="Staff">Staff</option><option value="Admin">Admin</option><option value="Maintenance">Maintenance</option><option value="Visiteur">Visiteur</option></select>'
+    + '</div></div>'
+    + '<div class="modal-actions">'
+    + '<button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>'
+    + '<button type="submit" class="btn btn-primary">➕ Créer l\'employé</button>'
+    + '</div></form>';
+
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function exportEmployeesCSV() {
+  var rows = [['Nom Complet','Badge','Département','Poste','Niveau','Statut','Nb Accès']];
+  var trs = document.querySelectorAll('#empTableBody .emp-row');
+  for (var i = 0; i < trs.length; i++) {
+    if (trs[i].style.display === 'none') continue;
+    var cells = trs[i].querySelectorAll('td');
+    var nameEl = cells[0].querySelector('div > div > div');
+    rows.push([
+      nameEl ? nameEl.textContent.trim() : '',
+      cells[1].textContent.trim(),
+      cells[2].textContent.trim(),
+      cells[3].textContent.trim(),
+      cells[4].textContent.trim(),
+      cells[7].textContent.trim(),
+      cells[5].textContent.trim()
+    ]);
+  }
+  var csv = rows.map(function(r) {
+    return r.map(function(c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = 'employes_ge.csv';
+  a.click();
+}
+</script>
+
+{% endblock %}

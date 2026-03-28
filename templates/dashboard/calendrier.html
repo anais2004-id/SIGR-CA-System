@@ -1,0 +1,632 @@
+{% extends "base.html" %}
+{% block title %}Planning d'accès par employé{% endblock %}
+{% block nav_calendrier %}active{% endblock %}
+{% block page_title %}Planning d'accès{% endblock %}
+{% block page_sub %}Autorisations horaires par employé et par zone{% endblock %}
+
+{% block topbar_actions %}
+<div style="display:flex; gap:12px; align-items:center">
+  <div class="search-inp" style="display:flex; align-items:center; gap:8px; padding:4px 12px">
+    <span>🔍</span>
+    <input type="text" id="employeeSearch" placeholder="Rechercher employé..." 
+           style="background:none; border:none; outline:none; color:var(--text); width:200px"
+           onkeyup="filterEmployees()">
+  </div>
+  <select id="employeeSelect" class="form-select" style="width:280px" onchange="loadEmployeeRules()">
+    <option value="">— Choisir un employé —</option>
+    {% for emp in employes %}
+    <option value="{{ emp.id }}" data-name="{{ emp.nom }} {{ emp.prenom }}" data-dept="{{ emp.departement }}">
+      👤 {{ emp.nom }} {{ emp.prenom }} — {{ emp.badge_id|default:"" }}
+    </option>
+    {% endfor %}
+  </select>
+  <div id="saveStatus" style="font-size:11px; color:var(--text2)"></div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<div class="g2" style="gap:24px">
+
+  <!-- Calendrier Principal -->
+  <div class="card" style="grid-column: span 2;">
+    <div class="card-head">
+      <span>📅</span>
+      <span class="card-title" id="employee-title">Sélectionnez un employé pour configurer ses accès</span>
+      <span class="card-sub" id="employee-badge"></span>
+    </div>
+    <div class="card-body">
+
+      <!-- Navigation Calendrier -->
+      <div class="cal-nav">
+        <button class="cal-btn" onclick="chMon(-1)">‹ Mois précédent</button>
+        <span class="cal-month" id="cal-lbl" style="font-size:18px; font-weight:600"></span>
+        <button class="cal-btn" onclick="chMon(1)">Mois suivant ›</button>
+        <button class="cal-btn btn-ghost" onclick="gotoToday()">📅 Aujourd'hui</button>
+      </div>
+      
+      <div class="cal-grid" id="cal-grid"></div>
+
+      <!-- Légende -->
+      <div style="display:flex; gap:20px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border2)">
+        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--green); border-radius:2px"></div>Accès autorisé</span>
+        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--red); border-radius:2px"></div>Accès refusé</span>
+        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--blue); border-radius:2px"></div>Jour sélectionné</span>
+        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--amber); border-radius:2px"></div>Règle configurée</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuration des horaires -->
+  <div class="card">
+    <div class="card-head">
+      <span>⏰</span>
+      <span class="card-title">Configuration horaire</span>
+      <span class="card-sub" id="selected-date-display">—</span>
+    </div>
+    <div class="card-body" style="padding:20px">
+
+      <div id="zone-rules-container" style="min-height:400px">
+        <div style="text-align:center; padding:60px; color:var(--text3)">
+          <div style="font-size:48px; margin-bottom:16px">📅</div>
+          <div>Sélectionnez un employé et un jour pour configurer ses horaires d'accès</div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px; display:flex; gap:12px; justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm" onclick="resetDayRules()">↺ Réinitialiser</button>
+        <button class="btn btn-primary btn-sm" onclick="saveCurrentDayRules()">💾 Enregistrer pour ce jour</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Récapitulatif des règles -->
+  <div class="card">
+    <div class="card-head">
+      <span>📋</span>
+      <span class="card-title">Règles d'accès de l'employé</span>
+      <button class="btn btn-edit btn-sm" onclick="exportRules()" style="margin-left:auto">⬇️ Exporter</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAllRules()">💾 Tout enregistrer</button>
+    </div>
+    <div class="card-body" id="rules-summary" style="max-height:400px; overflow-y:auto">
+      <div style="text-align:center; padding:60px; color:var(--text3)">
+        👥 Sélectionnez un employé pour voir ses règles d'accès
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth();
+let selectedDay = null;
+let selectedDayYear = null;
+let selectedDayMonth = null;
+let selectedEmployeeId = null;
+// employeeRules: clés = "ANNEE-MOIS-JOUR" (ex: "2026-3-15")
+let employeeRules = {};
+let zones = [];
+
+const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+// Récupère le token CSRF depuis les cookies
+function getCsrfToken() {
+  const name = 'csrftoken';
+  const cookies = document.cookie.split(';');
+  for (let c of cookies) {
+    c = c.trim();
+    if (c.startsWith(name + '=')) {
+      return decodeURIComponent(c.substring(name.length + 1));
+    }
+  }
+  return '';
+}
+
+// Crée une clé unique pour identifier un jour précis
+function dayKey(year, month, day) {
+  return `${year}-${month + 1}-${day}`;
+}
+
+// Charger les zones
+async function loadZones() {
+  try {
+    const response = await fetch('/api/bureaux/');
+    const data = await response.json();
+    zones = data.bureaux || [];
+  } catch (error) {
+    console.error('Erreur chargement zones:', error);
+    zones = [
+      {id: '1', nom: 'Direction Générale', niveau: 'critique'},
+      {id: '2', nom: 'Atelier Production', niveau: 'standard'},
+      {id: '3', nom: 'Salle Serveur', niveau: 'critique'},
+      {id: '4', nom: 'Archives', niveau: 'restreint'},
+      {id: '5', nom: 'Bureau RH', niveau: 'standard'},
+      {id: '6', nom: 'Laboratoire', niveau: 'restreint'},
+      {id: '7', nom: 'Entrée Principale', niveau: 'public'}
+    ];
+  }
+}
+
+function renderCalendar() {
+  const firstDay = new Date(currentYear, currentMonth, 1);
+  // getDay() retourne 0=dim, 1=lun… On veut 0=lun, 6=dim
+  const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth();
+  const todayDate = today.getDate();
+
+  document.getElementById("cal-lbl").textContent = `${MONTHS[currentMonth]} ${currentYear}`;
+  const grid = document.getElementById("cal-grid");
+  grid.innerHTML = "";
+
+  // En-têtes des jours
+  DAYS.forEach(d => {
+    const el = document.createElement("div");
+    el.className = "cal-dh";
+    el.textContent = d.substring(0, 2);
+    grid.appendChild(el);
+  });
+
+  // Jours du mois précédent (remplissage)
+  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+  for (let i = 0; i < startDay; i++) {
+    const d = document.createElement("div");
+    d.className = "cal-d other";
+    d.textContent = prevMonthDays - startDay + i + 1;
+    grid.appendChild(d);
+  }
+
+  // Jours du mois courant
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = document.createElement("div");
+    const date = new Date(currentYear, currentMonth, day);
+    const dayOfWeek = date.getDay();
+    const key = dayKey(currentYear, currentMonth, day);
+
+    let cls = "cal-d";
+    if (dayOfWeek === 0 || dayOfWeek === 6) cls += " weekend";
+    if (currentYear === todayYear && currentMonth === todayMonth && day === todayDate) cls += " today";
+    if (selectedDay === day && selectedDayMonth === currentMonth && selectedDayYear === currentYear) cls += " sel";
+
+    if (selectedEmployeeId && employeeRules[key] && Object.keys(employeeRules[key]).length > 0) {
+      cls += " has-r";
+      d.style.borderBottom = "2px solid var(--amber)";
+    }
+
+    d.className = cls;
+    d.textContent = day;
+    d.dataset.day = day;
+    d.onclick = () => selectDay(day);
+    grid.appendChild(d);
+  }
+
+  // Jours du mois suivant (remplissage pour compléter à 42 cellules)
+  const totalCells = 42;
+  const remaining = totalCells - (startDay + daysInMonth);
+  for (let i = 1; i <= remaining; i++) {
+    const d = document.createElement("div");
+    d.className = "cal-d other";
+    d.textContent = i;
+    grid.appendChild(d);
+  }
+}
+
+function selectDay(day) {
+  selectedDay = day;
+  selectedDayYear = currentYear;
+  selectedDayMonth = currentMonth;
+
+  // Mettre à jour l'affichage de la date sélectionnée
+  const dateStr = `${day} ${MONTHS[currentMonth]} ${currentYear}`;
+  document.getElementById("selected-date-display").textContent = dateStr;
+
+  // Re-rendre le calendrier pour mettre à jour la classe "sel"
+  renderCalendar();
+
+  renderZoneRulesForDay();
+}
+
+function gotoToday() {
+  const today = new Date();
+  currentYear = today.getFullYear();
+  currentMonth = today.getMonth();
+  renderCalendar();
+  selectDay(today.getDate());
+}
+
+function chMon(dir) {
+  currentMonth += dir;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  renderCalendar();
+  // On met à jour le panneau de configuration seulement si un jour est sélectionné
+  if (selectedEmployeeId && selectedDay !== null) {
+    const dateStr = `${selectedDay} ${MONTHS[selectedDayMonth]} ${selectedDayYear}`;
+    document.getElementById("selected-date-display").textContent = dateStr;
+    renderZoneRulesForDay();
+  }
+}
+
+function filterEmployees() {
+  const search = document.getElementById('employeeSearch').value.toLowerCase();
+  const select = document.getElementById('employeeSelect');
+  for (let i = 0; i < select.options.length; i++) {
+    const option = select.options[i];
+    const text = option.text.toLowerCase();
+    option.style.display = text.includes(search) ? '' : 'none';
+  }
+}
+
+async function loadEmployeeRules() {
+  const select = document.getElementById("employeeSelect");
+  selectedEmployeeId = select.value;
+
+  if (!selectedEmployeeId) {
+    document.getElementById("employee-title").textContent = "Sélectionnez un employé pour configurer ses accès";
+    document.getElementById("employee-badge").textContent = "";
+    document.getElementById("rules-summary").innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">👥 Aucune sélection</div>`;
+    employeeRules = {};
+    renderCalendar();
+    return;
+  }
+
+  const selectedOption = select.options[select.selectedIndex];
+  const parts = selectedOption.text.split('—');
+  document.getElementById("employee-title").textContent = parts[0].trim();
+  document.getElementById("employee-badge").textContent = parts[1] ? parts[1].trim() : "";
+
+  document.getElementById("rules-summary").innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">⏳ Chargement des règles...</div>`;
+
+  try {
+    const response = await fetch(`/api/employee/${selectedEmployeeId}/rules/`);
+    const data = await response.json();
+
+    if (data.status === 'success') {
+      // Les règles arrivent avec des clés "ANNEE-MOIS-JOUR" (converties côté serveur)
+      employeeRules = data.rules || {};
+    } else {
+      employeeRules = {};
+    }
+
+    renderRulesSummary(employeeRules);
+    renderCalendar();
+    if (selectedDay !== null) {
+      renderZoneRulesForDay();
+    }
+
+  } catch (error) {
+    console.error('Erreur chargement règles:', error);
+    employeeRules = {};
+    renderRulesSummary({});
+    renderCalendar();
+  }
+}
+
+function renderRulesSummary(rules) {
+  const summaryDiv = document.getElementById("rules-summary");
+
+  if (!rules || Object.keys(rules).length === 0) {
+    summaryDiv.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">
+      <div style="font-size:48px; margin-bottom:16px">📋</div>
+      <div>Aucune règle définie pour cet employé</div>
+      <div style="margin-top:12px; font-size:12px">Utilisez le calendrier pour ajouter des règles</div>
+    </div>`;
+    return;
+  }
+
+  let html = '<div style="display:flex; flex-direction:column; gap:12px">';
+
+  // Regrouper par zone
+  const rulesByZone = {};
+  for (const [key, zonesRules] of Object.entries(rules)) {
+    // key = "ANNEE-MOIS-JOUR"
+    const [yr, mo, dy] = key.split('-');
+    const label = `${dy} ${MONTHS[parseInt(mo) - 1]} ${yr}`;
+    for (const [zoneName, rule] of Object.entries(zonesRules)) {
+      if (!rulesByZone[zoneName]) rulesByZone[zoneName] = [];
+      rulesByZone[zoneName].push({key, label, ...rule});
+    }
+  }
+
+  for (const [zoneName, zoneRules] of Object.entries(rulesByZone)) {
+    html += `
+      <div style="background:var(--bg3); border-radius:10px; overflow:hidden">
+        <div style="padding:12px 16px; background:var(--blue3); border-bottom:1px solid var(--border2)">
+          <strong>🚪 ${zoneName}</strong>
+          <span style="float:right; font-size:11px; color:var(--text2)">${zoneRules.length} jour(s)</span>
+        </div>
+        <div style="padding:12px">`;
+
+    zoneRules.sort((a, b) => a.key.localeCompare(b.key)).forEach(rule => {
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border2)">
+          <div>
+            <div style="font-weight:500">📅 ${rule.label}</div>
+            <div style="font-size:11px; color:var(--text2)">⏰ ${rule.heure_debut || '08:00'} - ${rule.heure_fin || '18:00'}</div>
+          </div>
+          <div>
+            ${rule.acces_autorise !== false ? '<span class="badge b-green">✓ Autorisé</span>' : '<span class="badge b-red">✗ Refusé</span>'}
+          </div>
+        </div>`;
+    });
+
+    html += `</div></div>`;
+  }
+
+  html += '</div>';
+  summaryDiv.innerHTML = html;
+}
+
+function renderZoneRulesForDay() {
+  if (!selectedEmployeeId) {
+    document.getElementById("zone-rules-container").innerHTML = `
+      <div style="text-align:center; padding:60px; color:var(--text3)">
+        <div style="font-size:48px; margin-bottom:16px">👥</div>
+        <div>Sélectionnez un employé pour commencer</div>
+      </div>`;
+    return;
+  }
+
+  if (selectedDay === null) {
+    document.getElementById("zone-rules-container").innerHTML = `
+      <div style="text-align:center; padding:60px; color:var(--text3)">
+        <div style="font-size:48px; margin-bottom:16px">📅</div>
+        <div>Cliquez sur un jour du calendrier pour le configurer</div>
+      </div>`;
+    return;
+  }
+
+  const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  const dayRules = employeeRules[key] || {};
+
+  let html = `
+    <div style="margin-bottom:16px; padding:12px; background:var(--blue3); border-radius:8px">
+      <div style="font-weight:600; margin-bottom:8px">📅 ${selectedDay} ${MONTHS[selectedDayMonth]} ${selectedDayYear}</div>
+      <div style="font-size:12px; color:var(--text2)">Configurez les horaires d'accès pour chaque zone</div>
+    </div>
+    <div style="max-height:350px; overflow-y:auto">`;
+
+  zones.forEach(zone => {
+    const zoneRule = dayRules[zone.nom] || { acces_autorise: true, heure_debut: '08:00', heure_fin: '18:00' };
+    const niveauClass = zone.niveau === 'critique' ? 'risk-h' : (zone.niveau === 'restreint' ? 'risk-m' : 'risk-l');
+    const niveauText = zone.niveau === 'critique' ? 'CRITIQUE' : (zone.niveau === 'restreint' ? 'RESTREINT' : 'STANDARD');
+
+    html += `
+      <div style="background:var(--bg3); border-radius:10px; margin-bottom:12px; overflow:hidden">
+        <div style="padding:12px 16px; border-bottom:1px solid var(--border2)">
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div>
+              <span style="font-weight:600">🚪 ${zone.nom}</span>
+              <span class="badge ${niveauClass}" style="margin-left:8px">${niveauText}</span>
+            </div>
+            <label class="tswitch">
+              <input type="checkbox" class="zone-toggle" data-zone="${zone.nom}" 
+                     ${zoneRule.acces_autorise !== false ? 'checked' : ''} 
+                     onchange="toggleZoneAccess('${zone.nom}', this.checked)">
+              <span class="tslider"></span>
+            </label>
+          </div>
+        </div>
+        <div style="padding:12px 16px">
+          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+            <div style="display:flex; align-items:center; gap:8px">
+              <span style="font-size:12px; color:var(--text2)">🕐 De</span>
+              <input type="time" class="form-input" style="width:100px" 
+                     value="${zoneRule.heure_debut || '08:00'}" 
+                     data-zone="${zone.nom}" data-type="start"
+                     onchange="updateZoneTime('${zone.nom}', 'start', this.value)">
+            </div>
+            <div style="display:flex; align-items:center; gap:8px">
+              <span style="font-size:12px; color:var(--text2)">à</span>
+              <input type="time" class="form-input" style="width:100px" 
+                     value="${zoneRule.heure_fin || '18:00'}" 
+                     data-zone="${zone.nom}" data-type="end"
+                     onchange="updateZoneTime('${zone.nom}', 'end', this.value)">
+            </div>
+            <div style="margin-left:auto">
+              <span class="badge ${zoneRule.acces_autorise !== false ? 'b-green' : 'b-red'}">
+                ${zoneRule.acces_autorise !== false ? '✓ Accès autorisé' : '✗ Accès bloqué'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  html += `</div>`;
+  document.getElementById("zone-rules-container").innerHTML = html;
+}
+
+function toggleZoneAccess(zoneName, enabled) {
+  if (!selectedEmployeeId || selectedDay === null) return;
+  const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  if (!employeeRules[key]) employeeRules[key] = {};
+  if (!employeeRules[key][zoneName]) employeeRules[key][zoneName] = {};
+
+  employeeRules[key][zoneName].acces_autorise = enabled;
+  employeeRules[key][zoneName].heure_debut = employeeRules[key][zoneName].heure_debut || '08:00';
+  employeeRules[key][zoneName].heure_fin = employeeRules[key][zoneName].heure_fin || '18:00';
+
+  renderZoneRulesForDay();
+  renderCalendar();
+}
+
+function updateZoneTime(zoneName, type, value) {
+  if (!selectedEmployeeId || selectedDay === null) return;
+  const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  if (!employeeRules[key]) employeeRules[key] = {};
+  if (!employeeRules[key][zoneName]) employeeRules[key][zoneName] = { acces_autorise: true };
+
+  if (type === 'start') {
+    employeeRules[key][zoneName].heure_debut = value;
+  } else {
+    employeeRules[key][zoneName].heure_fin = value;
+  }
+}
+
+function resetDayRules() {
+  if (!selectedEmployeeId || selectedDay === null) return;
+  const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  if (employeeRules[key]) {
+    delete employeeRules[key];
+  }
+  renderZoneRulesForDay();
+  renderCalendar();
+}
+
+function showSaveStatus(message, isError = false) {
+  const statusDiv = document.getElementById('saveStatus');
+  statusDiv.textContent = message;
+  statusDiv.style.color = isError ? 'var(--red)' : 'var(--green)';
+  setTimeout(() => {
+    statusDiv.textContent = '';
+  }, 3000);
+}
+
+async function saveCurrentDayRules() {
+  if (!selectedEmployeeId) {
+    alert("Veuillez sélectionner un employé");
+    return;
+  }
+  if (selectedDay === null) {
+    alert("Veuillez sélectionner un jour dans le calendrier");
+    return;
+  }
+
+  const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  const dayRules = employeeRules[key] || {};
+  const rulesToSave = [];
+
+  for (const [zoneName, rule] of Object.entries(dayRules)) {
+    rulesToSave.push({
+      employe_id: selectedEmployeeId,
+      zone_nom: zoneName,
+      jour: selectedDay,
+      mois: selectedDayMonth + 1,
+      annee: selectedDayYear,
+      heure_debut: rule.heure_debut || '08:00',
+      heure_fin: rule.heure_fin || '18:00',
+      acces_autorise: rule.acces_autorise !== false
+    });
+  }
+
+  if (rulesToSave.length === 0) {
+    rulesToSave.push({
+      employe_id: selectedEmployeeId,
+      zone_nom: '__DELETE__',
+      jour: selectedDay,
+      mois: selectedDayMonth + 1,
+      annee: selectedDayYear
+    });
+  }
+
+  try {
+    const response = await fetch('/api/save-day-rules/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken()
+      },
+      body: JSON.stringify({rules: rulesToSave, employe_id: selectedEmployeeId})
+    });
+
+    const result = await response.json();
+
+    if (result.status === 'success') {
+      showSaveStatus(`✅ ${result.message}`);
+      renderRulesSummary(employeeRules);
+      renderCalendar();
+    } else {
+      showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
+    }
+  } catch (error) {
+    console.error('Erreur sauvegarde:', error);
+    showSaveStatus('❌ Erreur de connexion au serveur', true);
+  }
+}
+
+async function saveAllRules() {
+  if (!selectedEmployeeId) {
+    alert("Veuillez sélectionner un employé");
+    return;
+  }
+
+  const allRules = [];
+  for (const [key, dayRules] of Object.entries(employeeRules)) {
+    const [yr, mo, dy] = key.split('-');
+    for (const [zoneName, rule] of Object.entries(dayRules)) {
+      allRules.push({
+        employe_id: selectedEmployeeId,
+        zone_nom: zoneName,
+        jour: parseInt(dy),
+        mois: parseInt(mo),
+        annee: parseInt(yr),
+        heure_debut: rule.heure_debut || '08:00',
+        heure_fin: rule.heure_fin || '18:00',
+        acces_autorise: rule.acces_autorise !== false
+      });
+    }
+  }
+
+  try {
+    const response = await fetch('/api/save-all-rules/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken()
+      },
+      body: JSON.stringify({employe_id: selectedEmployeeId, rules: allRules})
+    });
+
+    const result = await response.json();
+
+    if (result.status === 'success') {
+      showSaveStatus(`✅ ${result.message}`);
+      renderRulesSummary(employeeRules);
+    } else {
+      showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
+    }
+  } catch (error) {
+    console.error('Erreur sauvegarde:', error);
+    showSaveStatus('❌ Erreur de connexion au serveur', true);
+  }
+}
+
+function exportRules() {
+  if (!selectedEmployeeId || Object.keys(employeeRules).length === 0) {
+    alert("Aucune règle à exporter");
+    return;
+  }
+
+  let csv = "Date,Zone,Accès,Heure Début,Heure Fin\n";
+  for (const [key, dayRules] of Object.entries(employeeRules)) {
+    const [yr, mo, dy] = key.split('-');
+    const dateLabel = `${dy}/${mo}/${yr}`;
+    for (const [zoneName, rule] of Object.entries(dayRules)) {
+      csv += `${dateLabel},${zoneName},${rule.acces_autorise !== false ? 'AUTORISÉ' : 'REFUSÉ'},${rule.heure_debut || '08:00'},${rule.heure_fin || '18:00'}\n`;
+    }
+  }
+
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `regles_acces_${selectedEmployeeId}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Initialisation
+window.onload = async function() {
+  await loadZones();
+  renderCalendar();
+};
+{% endblock %}

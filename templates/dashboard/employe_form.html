@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{% if employe.id %}Modifier{% else %}Ajouter{% endif %} un employé{% endblock %}
+{% block nav_employes %}active{% endblock %}
+{% block page_title %}{% if employe.id %}Modifier l'employé{% else %}Nouvel employé{% endif %}{% endblock %}
+{% block page_sub %}{% if employe.id %}{{ employe.nom }} {{ employe.prenom }}{% else %}Créer un nouveau profil{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+{% endblock %}
+
+{% block content %}
+
+<div style="max-width:860px; margin:0 auto">
+
+  <div class="card">
+    <div class="card-head">
+      <span>{% if employe.id %}✏️{% else %}➕{% endif %}</span>
+      <span class="card-title">{% if employe.id %}Modifier le profil complet{% else %}Créer un nouveau profil{% endif %}</span>
+    </div>
+
+    <div class="card-body" style="padding:32px 40px">
+
+      <form method="post" id="employeForm">
+        {% csrf_token %}
+
+        <!-- Informations personnelles -->
+        <div class="section-title">Informations personnelles</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Nom <span style="color:#f85149">*</span></label>
+            <input class="form-input" name="nom" value="{{ employe.nom|default:'' }}" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Prénom</label>
+            <input class="form-input" name="prenom" value="{{ employe.prenom|default:'' }}">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Email</label>
+            <input class="form-input" name="email" type="email" value="{{ employe.email|default:'' }}">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Téléphone</label>
+            <input class="form-input" name="telephone" value="{{ employe.telephone|default:'' }}">
+          </div>
+        </div>
+
+        <!-- Informations professionnelles -->
+        <div class="section-title">Informations professionnelles</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Département</label>
+            <select class="form-select" name="departement">
+              <option value="Informatique" {% if employe.departement == 'Informatique' %}selected{% endif %}>Informatique</option>
+              <option value="Ressources Humaines" {% if employe.departement == 'Ressources Humaines' %}selected{% endif %}>Ressources Humaines</option>
+              <option value="Finance" {% if employe.departement == 'Finance' %}selected{% endif %}>Finance</option>
+              <option value="Production" {% if employe.departement == 'Production' %}selected{% endif %}>Production</option>
+              <option value="Commercial" {% if employe.departement == 'Commercial' %}selected{% endif %}>Commercial</option>
+              <option value="Maintenance" {% if employe.departement == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+              <option value="Direction" {% if employe.departement == 'Direction' %}selected{% endif %}>Direction</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Poste</label>
+            <input class="form-input" name="poste" value="{{ employe.poste|default:'' }}">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Date d'embauche</label>
+            <input class="form-input" name="date_embauche" type="date" value="{{ employe.date_embauche|date:'Y-m-d' if employe.date_embauche else '' }}">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Type de contrat</label>
+            <select class="form-select" name="type_contrat">
+              <option value="CDI" {% if employe.type_contrat == 'CDI' %}selected{% endif %}>CDI</option>
+              <option value="CDD" {% if employe.type_contrat == 'CDD' %}selected{% endif %}>CDD</option>
+              <option value="Stage" {% if employe.type_contrat == 'Stage' %}selected{% endif %}>Stage</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Manager</label>
+            <input class="form-input" name="manager" value="{{ employe.manager|default:'' }}">
+          </div>
+        </div>
+
+        <!-- Cycle de travail -->
+        <div class="section-title">Cycle de travail hebdomadaire</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Horaires quotidiens</label>
+            <input class="form-input" name="horaire" value="{{ employe.horaire|default:'08:00 - 17:00' }}">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Heures par semaine</label>
+            <input class="form-input" name="heures_hebdo" type="number" value="{{ employe.heures_hebdo|default:35 }}" min="1">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Jours travaillés</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            {% for jour in "Lun Mar Mer Jeu Ven Sam Dim".split %}
+            <label style="display:flex;align-items:center;gap:6px">
+              <input type="checkbox" name="jours_travailles" value="{{ jour }}" 
+                     {% if jour in employe.jours_travailles %}checked{% endif %}>
+              {{ jour }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Planning Absences & Congés -->
+        <div class="section-title">Planning absences & congés</div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Solde Congés payés (jours)</label>
+            <input class="form-input" name="solde_conges" type="number" step="0.5" value="{{ employe.solde_conges|default:25 }}">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Solde RTT (jours)</label>
+            <input class="form-input" name="solde_rtt" type="number" step="0.5" value="{{ employe.solde_rtt|default:10 }}">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Solde Maladie / CET (jours)</label>
+            <input class="form-input" name="solde_maladie" type="number" step="0.5" value="{{ employe.solde_maladie|default:0 }}">
+          </div>
+        </div>
+
+        <!-- Badge & Accès -->
+        <div class="section-title">Badge & Niveau d'accès</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Badge RFID <span style="color:#f85149">*</span></label>
+            <input class="form-input" name="badge_id" value="{{ employe.badge_id|default:'' }}" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Niveau d'accès</label>
+            <select class="form-select" name="niveau">
+              <option value="Staff" {% if employe.niveau == 'Staff' %}selected{% endif %}>Staff</option>
+              <option value="Admin" {% if employe.niveau == 'Admin' %}selected{% endif %}>Admin</option>
+              <option value="Maintenance" {% if employe.niveau == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+              <option value="Visiteur" {% if employe.niveau == 'Visiteur' %}selected{% endif %}>Visiteur</option>
+            </select>
+          </div>
+        </div>
+
+        {% if employe.id %}
+        <div class="form-row">
+          <label class="form-label">Statut</label>
+          <select class="form-select" name="statut">
+            <option value="actif" {% if employe.statut == 'actif' %}selected{% endif %}>Actif</option>
+            <option value="inactif" {% if employe.statut == 'inactif' %}selected{% endif %}>Archivé</option>
+          </select>
+        </div>
+        {% endif %}
+
+        <div style="display:flex;gap:12px;justify-content:flex-end;padding-top:32px;border-top:1px solid var(--border);margin-top:32px">
+          <a href="{% url 'employe_list' %}" class="btn btn-ghost">Annuler</a>
+          <button type="submit" class="btn btn-primary">
+            {% if employe.id %}💾 Enregistrer les modifications{% else %}➕ Créer l'employé{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

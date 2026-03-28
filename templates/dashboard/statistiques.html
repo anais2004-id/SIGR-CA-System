@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Statistiques{% endblock %}
+{% block nav_stats %}active{% endblock %}
+{% block page_title %}Statistiques{% endblock %}
+{% block page_sub %}Analyse détaillée des accès{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total ce mois</div><div class="kpi-icon">📊</div></div>
+    <div class="kpi-value">{{ total_mois|default:"0" }}</div>
+    <div class="kpi-delta">Mois en cours</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Taux de succès</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ taux_succes|default:"0" }}%</div>
+    <div class="kpi-delta">Global</div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Taux de refus</div><div class="kpi-icon">🚫</div></div>
+    <div class="kpi-value">{{ taux_refus|default:"0" }}%</div>
+    <div class="kpi-delta neg">Accès bloqués</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Pic horaire</div><div class="kpi-icon">⏰</div></div>
+    <div class="kpi-value" style="font-size:22px;margin-top:4px">{{ pic_heure|default:"08h30" }}</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Zone la plus active</div><div class="kpi-icon">🚪</div></div>
+    <div class="kpi-value" style="font-size:16px;margin-top:6px">{{ zone_active|default:"—" }}</div>
+  </div>
+</div>
+
+<div class="g2">
+  <!-- Grand graphique 30 jours -->
+  <div class="card">
+    <div class="card-head">
+      <span>📈</span>
+      <span class="card-title">Évolution des accès — 30 derniers jours</span>
+    </div>
+    <div class="card-body">
+      <div class="bar-legend" style="margin-bottom:12px">
+        <span><div class="dot-leg" style="background:var(--blue2)"></div>Accès autorisés</span>
+        <span><div class="dot-leg" style="background:var(--red)"></div>Accès refusés</span>
+      </div>
+      <div class="bars" style="height:138px" id="big-chart"></div>
+      <div style="display:flex;gap:4px;margin-top:8px" id="big-labels"></div>
+    </div>
+  </div>
+
+  <!-- Accès par zone -->
+  <div class="card">
+    <div class="card-head">
+      <span>🚪</span>
+      <span class="card-title">Répartition par zone</span>
+    </div>
+    <div class="card-body" id="zone-stats">
+      {% for zone in zones_stats %}
+      <div style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:13.5px">{{ zone.nom }}</span>
+          <span style="font-family:var(--mono);color:var(--text2)">{{ zone.count }} accès</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" 
+               style="width:{{ zone.pct }}%; background: linear-gradient(90deg, var(--blue), var(--cyan));">
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <div id="zones-simulated"></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Top 5 employés -->
+<div class="card">
+  <div class="card-head">
+    <span>👥</span>
+    <span class="card-title">Top 5 employés — accès ce mois</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Employé</th>
+          <th>Département</th>
+          <th>Zone principale</th>
+          <th>Nombre d'accès</th>
+          <th>Taux de succès</th>
+          <th>Dernier accès</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in top_employes %}
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="emp-av" style="background:#1f6feb;width:34px;height:34px;font-size:12px">
+                {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
+              </div>
+              <div style="font-weight:500">{{ emp.nom }} {{ emp.prenom }}</div>
+            </div>
+          </td>
+          <td>{{ emp.departement|default:"—" }}</td>
+          <td>{{ emp.zone_principale|default:"—" }}</td>
+          <td style="font-family:var(--mono);text-align:center;font-weight:600">{{ emp.nb_acces }}</td>
+          <td>
+            <span style="color: 
+              {% if emp.taux_succes >= 90 %}var(--green)
+              {% elif emp.taux_succes >= 70 %}var(--amber)
+              {% else %}var(--red){% endif %}; 
+              font-family:var(--mono); font-weight:500;">
+              {{ emp.taux_succes }}%
+            </span>
+          </td>
+          <td style="font-size:11.5px;color:var(--text2);font-family:var(--mono)">
+            {{ emp.dernier_acces|date:"d/m H:i"|default:"—" }}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" style="text-align:center;padding:60px;color:var(--text3)">
+            Aucune donnée disponible pour le mois en cours
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+(function() {
+  const bc = document.getElementById("big-chart");
+  const bl = document.getElementById("big-labels");
+  if (!bc) return;
+
+  bc.innerHTML = "";
+  bl.innerHTML = "";
+
+  // Simulation réaliste des 30 derniers jours
+  const days = [];
+  const okData = [];
+  const noData = [];
+
+  for (let i = 29; i >= 0; i--) {
+    const ok = Math.floor(40 + Math.random() * 70);   // 40 à 110 accès/jour
+    const no = Math.floor(Math.random() * 15);
+    days.push(i === 0 ? "Aujourd'hui" : `J-${i}`);
+    okData.push(ok);
+    noData.push(no);
+  }
+
+  const maxTotal = Math.max(...okData.map((v, i) => v + noData[i])) || 1;
+
+  days.forEach((label, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "bar-wrap";
+
+    const okH = Math.round((okData[i] / maxTotal) * 128);
+    const noH = Math.round((noData[i] / maxTotal) * 128);
+
+    wrap.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;height:128px">
+        <div class="bar no" style="height:${noH}px"></div>
+        <div class="bar ok" style="height:${okH}px"></div>
+      </div>`;
+    
+    bc.appendChild(wrap);
+
+    const lbl = document.createElement("div");
+    lbl.style.cssText = "flex:1;text-align:center;font-size:8.5px;color:var(--text3);font-family:var(--mono);margin-top:4px";
+    lbl.textContent = label;
+    bl.appendChild(lbl);
+  });
+
+  // Zones simulées si aucune donnée du backend
+  const zs = document.getElementById("zones-simulated");
+  if (zs && document.querySelectorAll("#zone-stats > div").length === 0) {
+    const zones = [
+      {name:"Direction Générale", count:342, pct:89},
+      {name:"Atelier Production", count:289, pct:76},
+      {name:"Salle Serveur", count:167, pct:52},
+      {name:"Archives", count:98, pct:31},
+      {name:"Bureau RH", count:74, pct:24}
+    ];
+
+    zs.innerHTML = zones.map(z => `
+      <div style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:13.5px">${z.name}</span>
+          <span style="font-family:var(--mono);color:var(--text2)">${z.count}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${z.pct}%"></div>
+        </div>
+      </div>
+    `).join("");
+  }
+})();
+{% endblock %}

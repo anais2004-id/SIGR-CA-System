@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion - SIGR-CA{% endblock %}
+{% block nav_dashboard %}{% endblock %}
+
+{% block content %}
+<div style="max-width:420px; margin:80px auto 0;">
+  <div class="card">
+    <div class="card-head" style="text-align:center; padding:30px 20px 20px;">
+      <div style="font-size:48px; margin-bottom:12px;">🔐</div>
+      <div class="card-title" style="font-size:24px;">SIGR-CA</div>
+      <div style="color:var(--text2); margin-top:8px; font-weight:500;">
+        Système Intelligent de Gestion des Ressources et de Contrôle d'Accès
+      </div>
+    </div>
+
+    <div class="card-body" style="padding:30px 40px 40px;">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert-box danger" style="margin-bottom:20px;">
+            <div class="alert-ico">⚠️</div>
+            <div class="alert-text">{{ message }}</div>
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-row">
+          <label class="form-label">Nom d'utilisateur</label>
+          <input class="form-input" type="text" name="username" required autofocus>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Mot de passe</label>
+          <input class="form-input" type="password" name="password" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; padding:12px; margin-top:20px; font-size:15px;">
+          Se connecter
+        </button>
+      </form>
+
+      <div style="text-align:center; margin-top:28px; font-size:12px; color:var(--text3);">
+        Accès Administrateur
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

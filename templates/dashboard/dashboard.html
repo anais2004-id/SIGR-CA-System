@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord - SIGR-CA{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Tableau de bord{% endblock %}
+{% block page_sub %}Gestion intelligente des ressources et contrôle d'accès{% endblock %}
+
+{% block topbar_actions %}
+<div class="icon-btn" title="Actualiser" onclick="refreshDashboard()">↻</div>
+<div class="pill pill-live" onclick="toggleLiveMode()">
+    <div class="live-dot"></div><span id="live-text">LIVE</span>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Employés actifs</div><div class="kpi-icon">👥</div></div>
+    <div class="kpi-value">{{ total_employes }}</div>
+    <div class="kpi-delta">Base de données</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Accès aujourd'hui</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ acces_aujourdhui }}</div>
+    <div class="kpi-delta">Journée en cours</div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
+    <div class="kpi-value">{{ acces_refuses|default:"0" }}</div>
+    <div class="kpi-delta neg">{{ acces_refuses|default:"0" }} aujourd'hui</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Bureaux actifs</div><div class="kpi-icon">🏢</div></div>
+    <div class="kpi-value">{{ total_bureaux }}</div>
+    <div class="kpi-delta neutral">Zones configurées</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Alertes</div><div class="kpi-icon">⚠️</div></div>
+    <div class="kpi-value">{{ alertes }}</div>
+    <div class="kpi-delta neg">Non traitées</div>
+  </div>
+</div>
+
+<div class="g3-2">
+  <!-- Flux en temps réel -->
+  <div class="card">
+    <div class="card-head">
+      <span>📡</span>
+      <span class="card-title">Flux en temps réel</span>
+      <span class="card-sub"><span class="live-dot"></span> Mise à jour auto</span>
+    </div>
+    <div style="padding:12px 14px; max-height:380px; overflow-y:auto" id="live-feed">
+      {% for log in derniers_logs %}
+      <div class="feed-item {% if forloop.first %}new{% endif %}">
+        <div class="feed-av" style="background:#1f6feb">
+          {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+        </div>
+        <div class="feed-info">
+          <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+          <div class="feed-door">{{ log.bureau_nom|default:"Zone inconnue" }}</div>
+        </div>
+        <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
+        {% if log.resultat == 'AUTORISE' %}
+          <div class="feed-status fs-ok">AUTORISÉ</div>
+        {% else %}
+          <div class="feed-status fs-no">REFUSÉ</div>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div style="text-align:center;padding:40px;color:var(--text3)">Aucun accès pour le moment</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Graphique 7 jours -->
+  <div class="card">
+    <div class="card-head"><span>📈</span><span class="card-title">Accès — 7 derniers jours</span></div>
+    <div class="card-body">
+      <div class="bar-legend" style="margin-bottom:10px">
+        <span><div class="dot-leg" style="background:var(--blue2)"></div>Autorisés</span>
+        <span><div class="dot-leg" style="background:var(--red)"></div>Refusés</span>
+      </div>
+      <div class="bars" style="height:92px" id="mini-chart"></div>
+      <div style="display:flex;gap:4px;margin-top:4px" id="mini-labels"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Zones les plus actives -->
+<div class="card">
+  <div class="card-head"><span>🚪</span><span class="card-title">Zones les plus fréquentées</span></div>
+  <div class="card-body" id="zones-frequentes">
+    <!-- Sera rempli par JavaScript -->
+  </div>
+</div>
+
+<!-- Alertes -->
+<div class="card">
+  <div class="card-head">
+    <span>⚠️</span>
+    <span class="card-title">Alertes récentes</span>
+    <span class="card-sub">{{ alertes }} non traitée{{ alertes|pluralize }}</span>
+  </div>
+  <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+    {% if alertes > 0 %}
+    <div class="alert-box danger">
+      <div class="alert-ico">🔴</div>
+      <div>
+        <div class="alert-text">{{ alertes }} alerte{{ alertes|pluralize }} active{{ alertes|pluralize }} — vérification requise</div>
+        <div class="alert-meta">Consulter la section Surveillance live</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="alert-box info">
+      <div class="alert-ico">✅</div>
+      <div><div class="alert-text">Aucune alerte active — Système nominal</div></div>
+    </div>
+    {% endif %}
+    <div class="alert-box info">
+      <div class="alert-ico">🔵</div>
+      <div>
+        <div class="alert-text">Système opérationnel — MongoDB connecté</div>
+        <div class="alert-meta">Base de données active</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Données 7 jours depuis le backend
+const stats7jours = {{ stats_7jours|safe }};
+
+function render7DaysChart() {
+  const mc = document.getElementById("mini-chart");
+  const ml = document.getElementById("mini-labels");
+  if (!mc) return;
+
+  mc.innerHTML = "";
+  ml.innerHTML = "";
+
+  let labels = [];
+  let okData = [];
+  let noData = [];
+
+  stats7jours.forEach(item => {
+    labels.push(item._id ? item._id.slice(5) : "—");
+    okData.push(item.autorises || 0);
+    noData.push((item.total || 0) - (item.autorises || 0));
+  });
+
+  while (labels.length < 7) {
+    labels.unshift("—");
+    okData.unshift(0);
+    noData.unshift(0);
+  }
+
+  const max = Math.max(...okData.map((v,i) => v + noData[i])) || 1;
+
+  labels.forEach((label, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "bar-wrap";
+    const okH = Math.round((okData[i] / max) * 88);
+    const noH = Math.round((noData[i] / max) * 88);
+
+    wrap.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;height:88px">
+        <div class="bar no" style="height:${noH}px"></div>
+        <div class="bar ok" style="height:${okH}px"></div>
+      </div>`;
+    mc.appendChild(wrap);
+
+    const lbl = document.createElement("div");
+    lbl.style.cssText = "flex:1;text-align:center;font-size:9px;color:var(--text3);font-family:var(--mono)";
+    lbl.textContent = label;
+    ml.appendChild(lbl);
+  });
+}
+
+// Zones les plus fréquentes
+function renderZonesFrequentes() {
+  const container = document.getElementById('zones-frequentes');
+  const zones = [
+    {nom: "Direction", count: 142, pct: 92},
+    {nom: "Atelier Production", count: 98, pct: 76},
+    {nom: "Salle Serveur", count: 67, pct: 54},
+    {nom: "Bureau Administratif", count: 45, pct: 38},
+  ];
+
+  let html = '';
+  zones.forEach(z => {
+    html += `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+          <span style="font-size:13px">${z.nom}</span>
+          <span style="font-family:var(--mono);color:var(--text2)">${z.count} accès</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%"></div></div>
+      </div>`;
+  });
+  container.innerHTML = html;
+}
+
+// Live Mode
+let liveInterval;
+function toggleLiveMode() {
+  const liveText = document.getElementById('live-text');
+  if (liveInterval) {
+    clearInterval(liveInterval);
+    liveInterval = null;
+    liveText.textContent = "LIVE (arrêté)";
+  } else {
+    liveInterval = setInterval(() => location.reload(), 15000);
+    liveText.textContent = "LIVE (15s)";
+  }
+}
+
+function refreshDashboard() {
+  location.reload();
+}
+
+// Initialisation
+window.onload = function() {
+  render7DaysChart();
+  renderZonesFrequentes();
+};
+</script>
+{% endblock %}

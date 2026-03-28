@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Réservations{% endblock %}
+{% block nav_reservations %}active{% endblock %}
+{% block page_title %}Réservations{% endblock %}
+{% block page_sub %}Gestion des salles et ressources{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'reservation_ajouter' %}" class="btn btn-primary btn-sm">+ Nouvelle réservation</a>
+<button class="btn btn-ghost btn-sm" onclick="location.reload()">↻ Actualiser</button>
+{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+{% for message in messages %}
+<div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+  <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+  <div><div class="alert-text">{{ message }}</div></div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- KPIs -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total réservations</div><div class="kpi-icon">📆</div></div>
+    <div class="kpi-value">{{ total }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">En cours</div><div class="kpi-icon">🟢</div></div>
+    <div class="kpi-value">{{ actives }}</div>
+    <div class="kpi-delta">Salles occupées maintenant</div>
+  </div>
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏳</div></div>
+    <div class="kpi-value">{{ a_venir }}</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏸️</div></div>
+    <div class="kpi-value">{{ en_attente }}</div>
+  </div>
+</div>
+
+<!-- Calendrier visuel -->
+<div class="card">
+  <div class="card-head">
+    <span>📅</span>
+    <span class="card-title">Calendrier des réservations</span>
+    <span class="card-sub">Vue mensuelle</span>
+  </div>
+  <div class="card-body" style="padding:16px 20px">
+    <div id="calendar-container">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <button class="cal-btn" onclick="prevMonth()">‹ Préc.</button>
+        <span id="cal-month-title" style="font-size:15px;font-weight:600;color:var(--text)"></span>
+        <button class="cal-btn" onclick="nextMonth()">Suiv. ›</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px">LUN</div>
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px">MAR</div>
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px">MER</div>
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px">JEU</div>
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px">VEN</div>
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px;color:var(--amber)">SAM</div>
+        <div style="text-align:center;font-size:9.5px;color:var(--text3);font-weight:700;padding:4px;color:var(--amber)">DIM</div>
+      </div>
+      <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"></div>
+    </div>
+
+    <!-- Légende -->
+    <div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">
+        <div style="width:10px;height:10px;border-radius:2px;background:var(--green)"></div>Confirmée
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">
+        <div style="width:10px;height:10px;border-radius:2px;background:var(--amber)"></div>En attente
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">
+        <div style="width:10px;height:10px;border-radius:2px;background:var(--red)"></div>Annulée
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Filtres + Tableau -->
+<div class="card">
+  <div class="card-head">
+    <span>📋</span>
+    <span class="card-title">Liste des réservations</span>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input class="search-inp" style="width:200px" placeholder="🔍 Salle, employé..." oninput="filterTable(this.value)"/>
+      <button class="filter-tab active" onclick="filterStatut('all',this)">Toutes</button>
+      <button class="filter-tab" onclick="filterStatut('confirmee',this)">Confirmées</button>
+      <button class="filter-tab" onclick="filterStatut('en_attente',this)">En attente</button>
+      <button class="filter-tab" onclick="filterStatut('annulee',this)">Annulées</button>
+    </div>
+  </div>
+  <div style="overflow-x:auto;max-height:500px;overflow-y:auto">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Titre</th>
+          <th>Salle / Ressource</th>
+          <th>Réservé par</th>
+          <th>Début</th>
+          <th>Fin</th>
+          <th>Participants</th>
+          <th>Statut</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reservations %}
+        <tr class="resa-row" data-titre="{{ r.titre|lower }}" data-bureau="{{ r.bureau_nom|lower }}" data-emp="{{ r.employe_nom|lower }}" data-statut="{{ r.statut }}">
+          <td>
+            <div style="font-weight:500;color:var(--text)">{{ r.titre|default:"Sans titre" }}</div>
+            {% if r.description %}
+            <div style="font-size:10.5px;color:var(--text3);margin-top:2px">{{ r.description|truncatechars:40 }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge b-blue">🚪 {{ r.bureau_nom }}</span>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="emp-av" style="background:#1f6feb;width:26px;height:26px;font-size:10px">
+                {{ r.employe_nom|slice:":1"|upper }}
+              </div>
+              {{ r.employe_nom }}
+            </div>
+          </td>
+          <td style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
+            {{ r.date_debut|date:"d/m/Y H:i" }}
+          </td>
+          <td style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
+            {{ r.date_fin|date:"d/m/Y H:i" }}
+          </td>
+          <td style="text-align:center;font-family:var(--mono)">
+            👥 {{ r.nb_participants|default:"1" }}
+          </td>
+          <td>
+            {% if r.statut == 'confirmee' %}
+              <span class="badge b-green">✅ Confirmée</span>
+            {% elif r.statut == 'en_attente' %}
+              <span class="badge b-amber">⏳ En attente</span>
+            {% elif r.statut == 'annulee' %}
+              <span class="badge b-red">❌ Annulée</span>
+            {% else %}
+              <span class="badge b-gray">{{ r.statut }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:4px">
+              <a href="{% url 'reservation_modifier' r.id %}" class="btn btn-edit btn-sm" title="Modifier">✏️</a>
+              {% if r.statut != 'annulee' %}
+              <form method="post" action="{% url 'reservation_annuler' r.id %}" style="display:inline" onsubmit="return confirm('Annuler cette réservation ?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-del btn-sm" title="Annuler">🗑️</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" style="text-align:center;padding:48px;color:var(--text3)">
+            Aucune réservation enregistrée
+            <br><br>
+            <a href="{% url 'reservation_ajouter' %}" class="btn btn-primary btn-sm">+ Créer la première réservation</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+// ── Filtres tableau
+function filterTable(v) {
+  var val = v.toLowerCase();
+  document.querySelectorAll(".resa-row").forEach(function(tr) {
+    var titre = tr.dataset.titre || "";
+    var bureau = tr.dataset.bureau || "";
+    var emp = tr.dataset.emp || "";
+    tr.style.display = (titre.includes(val) || bureau.includes(val) || emp.includes(val)) ? "" : "none";
+  });
+}
+
+function filterStatut(val, el) {
+  document.querySelectorAll(".filter-tab").forEach(function(b) { b.classList.remove("active"); });
+  el.classList.add("active");
+  document.querySelectorAll(".resa-row").forEach(function(tr) {
+    tr.style.display = (val === "all" || tr.dataset.statut === val) ? "" : "none";
+  });
+}
+
+// ── Calendrier simple
+var calYear, calMonth;
+var MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+var reservationEvents = [];
+
+// Charger les events depuis l'API
+fetch("/api/reservations/calendrier/")
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    reservationEvents = data.events || [];
+    var now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth();
+    renderCal();
+  })
+  .catch(function() {
+    var now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth();
+    renderCal();
+  });
+
+function prevMonth() { calMonth--; if(calMonth < 0){calMonth=11; calYear--;} renderCal(); }
+function nextMonth() { calMonth++; if(calMonth > 11){calMonth=0; calYear++;} renderCal(); }
+
+function renderCal() {
+  document.getElementById("cal-month-title").textContent = MOIS_FR[calMonth] + " " + calYear;
+  var grid = document.getElementById("cal-grid");
+  grid.innerHTML = "";
+
+  var first = new Date(calYear, calMonth, 1).getDay();
+  var off = first === 0 ? 6 : first - 1;
+  var dim = new Date(calYear, calMonth + 1, 0).getDate();
+  var today = new Date();
+
+  // Jours vides
+  for(var i = 0; i < off; i++) {
+    var d = document.createElement("div");
+    d.style.cssText = "min-height:52px;border-radius:5px;background:var(--bg3);opacity:.2";
+    grid.appendChild(d);
+  }
+
+  for(var day = 1; day <= dim; day++) {
+    var d = document.createElement("div");
+    var isToday = (today.getDate() === day && today.getMonth() === calMonth && today.getFullYear() === calYear);
+    var isWE = new Date(calYear, calMonth, day).getDay();
+    d.style.cssText = "min-height:52px;border-radius:5px;padding:5px;border:1px solid " + (isToday ? "rgba(31,111,235,.4)" : "var(--border2)") + ";background:" + (isToday ? "var(--blue3)" : "var(--bg3)") + ";cursor:pointer;";
+    d.innerHTML = "<div style='font-size:11px;font-weight:" + (isToday ? "700" : "400") + ";color:" + (isToday ? "var(--blue2)" : (isWE === 0 || isWE === 6 ? "var(--amber)" : "var(--text2)")) + ";margin-bottom:3px'>" + day + "</div>";
+
+    // Chercher les réservations de ce jour
+    var dayEvents = reservationEvents.filter(function(ev) {
+      var start = new Date(ev.start);
+      return start.getFullYear() === calYear && start.getMonth() === calMonth && start.getDate() === day;
+    });
+    dayEvents.slice(0, 2).forEach(function(ev) {
+      var dot = document.createElement("div");
+      dot.style.cssText = "font-size:9px;padding:1px 4px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:" + ev.color + "30;color:" + ev.color + ";border-left:2px solid " + ev.color;
+      dot.textContent = ev.title;
+      d.appendChild(dot);
+    });
+    if(dayEvents.length > 2) {
+      var more = document.createElement("div");
+      more.style.cssText = "font-size:9px;color:var(--text3)";
+      more.textContent = "+" + (dayEvents.length - 2) + " autres";
+      d.appendChild(more);
+    }
+    grid.appendChild(d);
+  }
+}
+{% endblock %}

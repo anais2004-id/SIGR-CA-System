@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} réservation{% endblock %}
+{% block nav_reservations %}active{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier la réservation{% else %}Nouvelle réservation{% endif %}{% endblock %}
+{% block page_sub %}{% if is_edit %}{{ reservation.titre }}{% else %}Réserver une salle ou ressource{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'reservation_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+{% endblock %}
+
+{% block content %}
+
+<div style="max-width:700px;margin:0 auto">
+
+  {% if messages %}
+  {% for message in messages %}
+  <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}" style="margin-bottom:16px">
+    <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+    <div><div class="alert-text">{{ message }}</div></div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="card">
+    <div class="card-head">
+      <span>{% if is_edit %}✏️{% else %}➕{% endif %}</span>
+      <span class="card-title">{% if is_edit %}Modifier la réservation{% else %}Créer une réservation{% endif %}</span>
+    </div>
+    <div class="card-body" style="padding:28px 32px">
+      <form method="post">
+        {% csrf_token %}
+
+        <!-- Titre -->
+        <div class="form-row">
+          <label class="form-label">Titre de la réservation <span style="color:var(--red)">*</span></label>
+          <input class="form-input" name="titre" value="{{ reservation.titre|default:'' }}"
+                 placeholder="ex: Réunion direction, Formation équipe..." required>
+        </div>
+
+        <!-- Salle + Employé -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Salle / Ressource <span style="color:var(--red)">*</span></label>
+            <select class="form-select" name="bureau_id" id="bureauSelect" onchange="checkDispo()" required>
+              <option value="">— Choisir une salle —</option>
+              {% for b in bureaux %}
+              <option value="{{ b.id }}"
+                {% if reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}>
+                {{ b.nom }}
+                {% if b.capacite_max %}(Cap. {{ b.capacite_max }}){% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Réservé par <span style="color:var(--red)">*</span></label>
+            <select class="form-select" name="employe_id" required>
+              <option value="">— Choisir un employé —</option>
+              {% for e in employes %}
+              <option value="{{ e.id }}"
+                {% if reservation.employe_id|stringformat:"s" == e.id %}selected{% endif %}>
+                {{ e.nom }} {{ e.prenom }} — {{ e.departement }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- Dates -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Date et heure de début <span style="color:var(--red)">*</span></label>
+            <input class="form-input" name="date_debut" type="datetime-local" id="dateDebut"
+                   value="{{ reservation.date_debut_str|default:'' }}"
+                   onchange="checkDispo()" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Date et heure de fin <span style="color:var(--red)">*</span></label>
+            <input class="form-input" name="date_fin" type="datetime-local" id="dateFin"
+                   value="{{ reservation.date_fin_str|default:'' }}"
+                   onchange="checkDispo()" required>
+          </div>
+        </div>
+
+        <!-- Indicateur disponibilité -->
+        <div id="dispo-indicator" style="display:none;padding:10px 14px;border-radius:var(--radius);margin-bottom:16px;font-size:12.5px;font-weight:500"></div>
+
+        <!-- Participants + Statut -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Nombre de participants</label>
+            <input class="form-input" name="nb_participants" type="number" min="1" max="100"
+                   value="{{ reservation.nb_participants|default:'1' }}">
+          </div>
+          {% if is_edit %}
+          <div class="form-row">
+            <label class="form-label">Statut</label>
+            <select class="form-select" name="statut">
+              <option value="confirmee" {% if reservation.statut == 'confirmee' %}selected{% endif %}>✅ Confirmée</option>
+              <option value="en_attente" {% if reservation.statut == 'en_attente' %}selected{% endif %}>⏳ En attente</option>
+              <option value="annulee" {% if reservation.statut == 'annulee' %}selected{% endif %}>❌ Annulée</option>
+            </select>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Description -->
+        <div class="form-row">
+          <label class="form-label">Description / Objet</label>
+          <textarea class="form-input" name="description" rows="3"
+                    placeholder="Détails de la réunion, matériel requis...">{{ reservation.description|default:'' }}</textarea>
+        </div>
+
+        <!-- Boutons -->
+        <div style="display:flex;gap:12px;justify-content:flex-end;padding-top:24px;border-top:1px solid var(--border);margin-top:8px">
+          <a href="{% url 'reservation_list' %}" class="btn btn-ghost">Annuler</a>
+          <button type="submit" class="btn btn-primary" id="submitBtn">
+            {% if is_edit %}💾 Enregistrer{% else %}📆 Confirmer la réservation{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Créneaux du jour sélectionné -->
+  <div class="card" id="creneaux-card" style="display:none;margin-top:16px">
+    <div class="card-head"><span>🕐</span><span class="card-title">Créneaux déjà réservés — salle sélectionnée</span></div>
+    <div class="card-body" id="creneaux-body">
+      <div style="color:var(--text3);font-size:12px">Sélectionnez une salle et une date pour voir les créneaux.</div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+var dispoTimer = null;
+
+function checkDispo() {
+  var bureauId = document.getElementById("bureauSelect").value;
+  var debut = document.getElementById("dateDebut").value;
+  var fin = document.getElementById("dateFin").value;
+  var indicator = document.getElementById("dispo-indicator");
+
+  if (!bureauId || !debut || !fin) {
+    indicator.style.display = "none";
+    return;
+  }
+
+  if (new Date(fin) <= new Date(debut)) {
+    indicator.style.display = "block";
+    indicator.style.background = "var(--red2)";
+    indicator.style.border = "1px solid rgba(248,81,73,.3)";
+    indicator.style.color = "var(--red)";
+    indicator.textContent = "⚠️ La date de fin doit être après la date de début.";
+    return;
+  }
+
+  clearTimeout(dispoTimer);
+  dispoTimer = setTimeout(function() {
+    indicator.style.display = "block";
+    indicator.style.background = "var(--blue3)";
+    indicator.style.border = "1px solid rgba(31,111,235,.2)";
+    indicator.style.color = "var(--blue2)";
+    indicator.textContent = "⏳ Vérification de la disponibilité...";
+
+    var url = "/api/bureaux/" + bureauId + "/disponibilite/?debut=" + encodeURIComponent(debut) + "&fin=" + encodeURIComponent(fin);
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.disponible) {
+          indicator.style.background = "var(--green2)";
+          indicator.style.border = "1px solid rgba(45,186,111,.3)";
+          indicator.style.color = "var(--green)";
+          indicator.textContent = "✅ Salle disponible sur ce créneau !";
+          document.getElementById("submitBtn").disabled = false;
+        } else {
+          indicator.style.background = "var(--red2)";
+          indicator.style.border = "1px solid rgba(248,81,73,.3)";
+          indicator.style.color = "var(--red)";
+          indicator.textContent = "❌ Cette salle est déjà réservée sur ce créneau. Choisissez un autre horaire.";
+          document.getElementById("submitBtn").disabled = true;
+        }
+      })
+      .catch(function() {
+        indicator.style.background = "var(--amber2)";
+        indicator.style.border = "1px solid rgba(227,179,65,.3)";
+        indicator.style.color = "var(--amber)";
+        indicator.textContent = "⚠️ Impossible de vérifier la disponibilité (API indisponible).";
+        document.getElementById("submitBtn").disabled = false;
+      });
+  }, 600);
+}
+
+// Pré-remplir avec l'heure actuelle arrondie à la prochaine heure
+window.onload = function() {
+  var debField = document.getElementById("dateDebut");
+  var finField = document.getElementById("dateFin");
+  if (debField && !debField.value) {
+    var now = new Date();
+    now.setMinutes(0, 0, 0);
+    now.setHours(now.getHours() + 1);
+    var fin = new Date(now.getTime() + 60 * 60000);
+    var fmt = function(d) {
+      return d.getFullYear() + "-" +
+             String(d.getMonth()+1).padStart(2,"0") + "-" +
+             String(d.getDate()).padStart(2,"0") + "T" +
+             String(d.getHours()).padStart(2,"0") + ":00";
+    };
+    debField.value = fmt(now);
+    finField.value = fmt(fin);
+  }
+};
+{% endblock %}

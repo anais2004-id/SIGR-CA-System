@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Historique des accès{% endblock %}
+{% block nav_historique %}active{% endblock %}
+{% block page_title %}Historique des accès{% endblock %}
+{% block page_sub %}Journal complet des passages{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇️ Exporter CSV</button>
+<button class="btn btn-primary btn-sm" onclick="refreshHistory()">⟳ Actualiser</button>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">🔑</div></div>
+    <div class="kpi-value">{{ total_acces|default:"0" }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Autorisés</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ acces_autorises|default:"0" }}</div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Refusés</div><div class="kpi-icon">🚫</div></div>
+    <div class="kpi-value">{{ acces_refuses|default:"0" }}</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Aujourd'hui</div><div class="kpi-icon">📅</div></div>
+    <div class="kpi-value">{{ acces_aujourdhui|default:"0" }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <span>📋</span>
+    <span class="card-title">Journal des accès</span>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input class="search-inp" style="width:280px" id="searchInput"
+             placeholder="🔍 Nom, zone, badge..." oninput="filterHistory()"/>
+
+      <select class="form-select" style="width:140px" id="periodFilter" onchange="filterHistory()">
+        <option value="all">Toute la période</option>
+        <option value="today">Aujourd'hui</option>
+        <option value="week">Cette semaine</option>
+      </select>
+
+      <button class="filter-tab active" onclick="filterResult('all',this)">Tous</button>
+      <button class="filter-tab" onclick="filterResult('AUTORISE',this)">Autorisés</button>
+      <button class="filter-tab" onclick="filterResult('REFUSE',this)">Refusés</button>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;max-height:560px;overflow-y:auto" id="history-table-container">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Employé</th>
+          <th>Zone</th>
+          <th>Méthode</th>
+          <th>Date & Heure</th>
+          <th>Résultat</th>
+          <th>Statut employé</th>
+        </tr>
+      </thead>
+      <tbody id="history-body">
+        {% for log in logs %}
+        <tr class="hist-row"
+            data-name="{{ log.nom_utilisateur|default:''|lower }}"
+            data-zone="{{ log.bureau_nom|default:''|lower }}"
+            data-badge="{{ log.badge_id|default:''|lower }}"
+            data-result="{{ log.resultat|default:'' }}"
+            data-empstatus="{{ log.emp_statut|default:'actif' }}"
+            data-timestamp="{{ log.timestamp|date:'Y-m-d' }}">
+          
+          <td>
+            <div style="display:flex;align-items:center;gap:9px">
+              <div class="emp-av" style="background:#1f6feb;width:30px;height:30px;font-size:11px">
+                {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+              </div>
+              <span style="font-weight:500">{{ log.nom_utilisateur|default:"Inconnu" }}</span>
+            </div>
+          </td>
+          
+          <td>{{ log.bureau_nom|default:"Zone inconnue" }}</td>
+          
+          <td>
+            <span style="font-family:var(--mono);font-size:11px">
+              {% if log.type_acces == 'QR' %}📱 QR Code{% else %}🔖 RFID{% endif %}
+            </span>
+          </td>
+          
+          <td style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
+            {{ log.timestamp|date:"d/m/Y H:i:s" }}
+          </td>
+          
+          <td>
+            {% if log.resultat == 'AUTORISE' %}
+              <div class="feed-status fs-ok">AUTORISÉ</div>
+            {% else %}
+              <div class="feed-status fs-no">REFUSÉ</div>
+            {% endif %}
+          </td>
+          
+          <td>
+            {% if log.emp_statut == 'actif' %}
+              <span class="badge b-green">● Actif</span>
+            {% else %}
+              <span class="badge b-gray">● Archivé</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" style="text-align:center;padding:50px;color:var(--text3)">
+          Aucun accès enregistré pour le moment
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+function filterHistory() {
+  const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
+  const periodVal = document.getElementById('periodFilter').value;
+
+  document.querySelectorAll(".hist-row").forEach(tr => {
+    const name = tr.dataset.name || "";
+    const zone = tr.dataset.zone || "";
+    const badge = tr.dataset.badge || "";
+    const dateStr = tr.dataset.timestamp || "";
+
+    const matchesSearch = !searchVal || 
+      name.includes(searchVal) || 
+      zone.includes(searchVal) || 
+      badge.includes(searchVal);
+
+    let matchesPeriod = true;
+    if (periodVal === "today") {
+      const today = new Date().toISOString().slice(0,10);
+      matchesPeriod = dateStr === today;
+    } else if (periodVal === "week") {
+      // Simplifié : on laisse le filtre côté JS basique
+      matchesPeriod = true;
+    }
+
+    tr.style.display = (matchesSearch && matchesPeriod) ? "" : "none";
+  });
+}
+
+function filterResult(val, el) {
+  document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
+  el.classList.add("active");
+
+  document.querySelectorAll(".hist-row").forEach(tr => {
+    if (val === "all") {
+      tr.style.display = "";
+      return;
+    }
+    if (val === "archive") {
+      tr.style.display = (tr.dataset.empstatus === "inactif" || tr.dataset.empstatus === "archive") ? "" : "none";
+      return;
+    }
+    tr.style.display = (tr.dataset.result === val) ? "" : "none";
+  });
+}
+
+function exportCSV() {
+  const rows = [["Employé","Zone","Méthode","Date & Heure","Résultat","Statut Employé"]];
+  
+  document.querySelectorAll(".hist-row").forEach(tr => {
+    if (tr.style.display !== "none") {
+      const cells = tr.querySelectorAll("td");
+      rows.push([
+        cells[0].textContent.trim(),
+        cells[1].textContent.trim(),
+        cells[2].textContent.trim(),
+        cells[3].textContent.trim(),
+        cells[4].textContent.trim(),
+        cells[5].textContent.trim()
+      ]);
+    }
+  });
+
+  const csvContent = rows.map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `historique_acces_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+}
+
+function refreshHistory() {
+  location.reload();
+}
+
+// Bonus : touche Entrée dans la recherche
+document.addEventListener('keydown', function(e) {
+  if (e.key === "Enter" && document.getElementById('searchInput') === document.activeElement) {
+    filterHistory();
+  }
+});
+{% endblock %}

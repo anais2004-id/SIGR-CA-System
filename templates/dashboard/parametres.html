@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Paramètres{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block page_title %}Paramètres{% endblock %}
+{% block page_sub %}Configuration 2FA, Sécurité & Système{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="saveAllSettings(this)">💾 Enregistrer les modifications</button>
+{% endblock %}
+
+{% block content %}
+
+<div class="g2">
+
+  <!-- 2FA par zone -->
+  <div class="card">
+    <div class="card-head">
+      <span>🔐</span>
+      <span class="card-title">Double authentification (2FA) par zone</span>
+    </div>
+    <div class="card-body" style="padding:12px 16px">
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Direction Générale</div>
+          <div class="toggle-desc">RFID + QR Code dynamique requis</div>
+        </div>
+        <div class="toggle-right">
+          <span class="risk risk-h">CRITIQUE</span>
+          <label class="tswitch"><input type="checkbox" checked id="t-direction"><span class="tslider"></span></label>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Salle Serveur</div>
+          <div class="toggle-desc">RFID + QR Code dynamique requis</div>
+        </div>
+        <div class="toggle-right">
+          <span class="risk risk-h">CRITIQUE</span>
+          <label class="tswitch"><input type="checkbox" checked id="t-serveur"><span class="tslider"></span></label>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Archives</div>
+          <div class="toggle-desc">RFID + QR Code requis</div>
+        </div>
+        <div class="toggle-right">
+          <span class="risk risk-h">HAUTE</span>
+          <label class="tswitch"><input type="checkbox" checked id="t-archives"><span class="tslider"></span></label>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Bureau Finance</div>
+          <div class="toggle-desc">RFID + QR Code requis</div>
+        </div>
+        <div class="toggle-right">
+          <span class="risk risk-h">HAUTE</span>
+          <label class="tswitch"><input type="checkbox" checked id="t-finance"><span class="tslider"></span></label>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Salle de réunion</div>
+          <div class="toggle-desc">RFID seul suffisant</div>
+        </div>
+        <div class="toggle-right">
+          <span class="risk risk-m">MOYENNE</span>
+          <label class="tswitch"><input type="checkbox" id="t-reunion"><span class="tslider"></span></label>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Entrée principale</div>
+          <div class="toggle-desc">Badge RFID seul</div>
+        </div>
+        <div class="toggle-right">
+          <span class="risk risk-l">NORMALE</span>
+          <label class="tswitch"><input type="checkbox" checked id="t-entree"><span class="tslider"></span></label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Paramètres système -->
+  <div class="card">
+    <div class="card-head">
+      <span>⚙️</span>
+      <span class="card-title">Paramètres système</span>
+    </div>
+    <div class="card-body" style="padding:12px 16px">
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">QR Code dynamique (24h)</div>
+          <div class="toggle-desc">Renouvellement automatique quotidien</div>
+        </div>
+        <label class="tswitch"><input type="checkbox" checked id="s-qr-dyn"><span class="tslider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">QR visiteur usage unique</div>
+          <div class="toggle-desc">Invalidé après première utilisation</div>
+        </div>
+        <label class="tswitch"><input type="checkbox" checked id="s-qr-single"><span class="tslider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Alerte après 3 échecs consécutifs</div>
+          <div class="toggle-desc">Notification immédiate à l'administrateur</div>
+        </div>
+        <label class="tswitch"><input type="checkbox" checked id="s-alert3"><span class="tslider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Blocage automatique après 5 échecs</div>
+          <div class="toggle-desc">Badge suspendu temporairement</div>
+        </div>
+        <label class="tswitch"><input type="checkbox" id="s-block5"><span class="tslider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Conserver l'historique des employés archivés</div>
+          <div class="toggle-desc">Logs conservés même après archivage</div>
+        </div>
+        <label class="tswitch"><input type="checkbox" checked id="s-keep"><span class="tslider"></span></label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">Auto-refresh Surveillance Live</div>
+          <div class="toggle-desc">Actualisation toutes les 10 secondes</div>
+        </div>
+        <label class="tswitch"><input type="checkbox" checked id="s-refresh"><span class="tslider"></span></label>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Informations système -->
+<div class="card">
+  <div class="card-head">
+    <span>ℹ️</span>
+    <span class="card-title">Informations système</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:16px">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">Version</div>
+        <div style="font-size:14px;font-family:var(--mono);color:var(--text)">v2.1.0</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:16px">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">Base de données</div>
+        <div style="font-size:14px;font-family:var(--mono);color:var(--green)">● MongoDB</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:16px">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">Framework</div>
+        <div style="font-size:14px;font-family:var(--mono);color:var(--text)">Django 5.1</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:16px">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">Entreprise</div>
+        <div style="font-size:14px;font-family:var(--mono);color:var(--text)">Général Emballage</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+function saveAllSettings(btn) {
+  btn.innerHTML = '✅ Enregistré !';
+  btn.style.background = 'var(--green)';
+  btn.style.borderColor = 'var(--green)';
+  btn.style.color = 'white';
+
+  // Simulation de sauvegarde
+  setTimeout(() => {
+    btn.innerHTML = '💾 Enregistrer les modifications';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+
+    // Message de succès
+    const successMsg = document.createElement('div');
+    successMsg.className = 'alert-box info';
+    successMsg.style.marginTop = '20px';
+    successMsg.innerHTML = `
+      <div class="alert-ico">✅</div>
+      <div><div class="alert-text">Paramètres enregistrés avec succès</div></div>
+    `;
+    document.querySelector('.g2').appendChild(successMsg);
+
+    setTimeout(() => successMsg.remove(), 4000);
+  }, 1200);
+}
+
+// Optionnel : sauvegarde individuelle des toggles (pour futur backend)
+document.querySelectorAll('.tswitch input').forEach(toggle => {
+  toggle.addEventListener('change', () => {
+    console.log(`Toggle ${toggle.id} changé → ${toggle.checked}`);
+    // Ici tu pourras envoyer au backend plus tard
+  });
+});
+{% endblock %}

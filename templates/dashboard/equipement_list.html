@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Gestion des équipements{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+{% block page_title %}Gestion des équipements{% endblock %}
+{% block page_sub %}Lecteurs RFID & QR Code{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'equipement_ajouter' %}" class="btn btn-primary btn-sm">+ Nouvel équipement</a>
+<button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total équipements</div><div class="kpi-icon">📟</div></div>
+    <div class="kpi-value">{{ nb_total }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">RFID</div><div class="kpi-icon">🔖</div></div>
+    <div class="kpi-value">{{ nb_rfid }}</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">QR Code</div><div class="kpi-icon">📱</div></div>
+    <div class="kpi-value">{{ nb_qr }}</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">Actifs</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ nb_actifs }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <span>📟</span>
+    <span class="card-title">Liste des équipements</span>
+    <div style="margin-left:auto">
+      <input class="search-inp" style="width:260px" id="searchInput" 
+             placeholder="🔍 Nom, code, emplacement..." onkeyup="filterTable()">
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Équipement</th>
+          <th>Type</th>
+          <th>Code</th>
+          <th>Emplacement</th>
+          <th>Bureau lié</th>
+          <th>IP / Port</th>
+          <th>Activité 24h</th>
+          <th>Statut</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for eq in equipements %}
+        <tr class="equip-row" data-name="{{ eq.nom|lower }}" data-code="{{ eq.code|lower }}">
+          <td>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="emp-av" style="background:{% if eq.type == 'RFID' %}#1f6feb{% else %}#a371f7{% endif %}">
+                {% if eq.type == 'RFID' %}🔖{% else %}📱{% endif %}
+              </div>
+              <div>
+                <div style="font-weight:500">{{ eq.nom }}</div>
+                <div style="font-size:11px;color:var(--text3)">{{ eq.description|truncatechars:30|default:"" }}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge {% if eq.type == 'RFID' %}b-blue{% else %}b-purple{% endif %}">{{ eq.type }}</span></td>
+          <td><span style="font-family:var(--mono);font-size:11px">{{ eq.code }}</span></td>
+          <td>{{ eq.emplacement|default:"—" }}</td>
+          <td>{{ eq.bureau_nom|default:"Non assigné" }}</td>
+          <td><span style="font-family:var(--mono);font-size:10px">{{ eq.ip_address|default:"—" }}:{{ eq.port|default:"—" }}</span></td>
+          <td style="font-family:var(--mono);text-align:center">{{ eq.logs_24h|default:"0" }}</td>
+          <td>
+            {% if eq.statut == 'actif' %}
+              <span class="badge b-green">● ACTIF</span>
+            {% else %}
+              <span class="badge b-gray">● INACTIF</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:4px">
+              <a href="{% url 'equipement_detail' eq.id %}" class="btn btn-edit btn-sm" title="Détail">👁️</a>
+              <a href="{% url 'equipement_modifier' eq.id %}" class="btn btn-ghost btn-sm" title="Modifier">✏️</a>
+              <button onclick="testerEquipement('{{ eq.id }}')" class="btn btn-green btn-sm" title="Tester connexion">📡</button>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" style="text-align:center;padding:60px;color:var(--text3)">
+            Aucun équipement enregistré
+            <br><br>
+            <a href="{% url 'equipement_ajouter' %}" class="btn btn-primary btn-sm">+ Ajouter un équipement</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function filterTable() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('.equip-row').forEach(row => {
+    const name = row.dataset.name || '';
+    const code = row.dataset.code || '';
+    row.style.display = (name.includes(search) || code.includes(search)) ? '' : 'none';
+  });
+}
+
+function refreshPage() {
+  location.reload();
+}
+
+function testerEquipement(id) {
+  fetch(`/equipements/${id}/tester/`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        alert(`✅ ${data.message}\nTemps de réponse: ${data.response_time}ms`);
+        location.reload();
+      } else {
+        alert(`❌ ${data.message}`);
+      }
+    })
+    .catch(err => alert('Erreur de connexion'));
+}
+</script>
+{% endblock %}
