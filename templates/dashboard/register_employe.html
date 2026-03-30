@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GE — Créer mon compte</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --bg4:#21262d;
+      --border:rgba(48,54,61,0.8); --border2:rgba(255,255,255,0.06);
+      --blue:#1f6feb; --blue2:#388bfd; --blue3:rgba(31,111,235,0.12);
+      --cyan:#39d0f0; --green:#2dba6f; --green2:rgba(45,186,111,0.12);
+      --red:#f85149; --red2:rgba(248,81,73,0.12);
+      --amber:#e3b341; --amber2:rgba(227,179,65,0.12);
+      --text:#e6edf3; --text2:#8b949e; --text3:#484f58;
+      --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
+      --radius:8px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:var(--font); background:var(--bg); color:var(--text);
+      min-height:100vh; display:flex; align-items:flex-start; justify-content:center;
+      padding:32px 20px;
+    }
+    body::before {
+      content:''; position:fixed; inset:0; z-index:0;
+      background: radial-gradient(ellipse at 20% 50%, rgba(31,111,235,.08) 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 20%, rgba(57,208,240,.05) 0%, transparent 50%);
+      pointer-events:none;
+    }
+    .wrap { position:relative; z-index:1; width:100%; max-width:480px; }
+
+    .logo-zone { text-align:center; margin-bottom:28px; }
+    .logo-circle {
+      width:64px; height:64px; margin:0 auto 14px;
+      background:linear-gradient(135deg,var(--blue),var(--cyan));
+      border-radius:18px; display:flex; align-items:center; justify-content:center;
+      font-size:26px; box-shadow:0 0 36px rgba(31,111,235,.35);
+    }
+    .logo-title { font-size:20px; font-weight:700; }
+    .logo-sub   { font-size:11px; color:var(--text3); font-family:var(--mono); margin-top:3px; }
+
+    .card {
+      background:var(--bg2); border:1px solid var(--border);
+      border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.5);
+    }
+    .card-tabs { display:flex; border-bottom:1px solid var(--border); }
+    .card-tab {
+      flex:1; padding:14px; text-align:center; font-size:13px;
+      font-weight:500; cursor:pointer; color:var(--text2);
+      border:none; background:transparent; font-family:var(--font);
+      transition:all .15s; text-decoration:none; display:block;
+    }
+    .card-tab.active { color:var(--blue2); border-bottom:2px solid var(--blue2); background:var(--blue3); }
+    .card-tab:hover:not(.active) { color:var(--text); background:var(--bg3); }
+    .card-body { padding:28px 34px 36px; }
+
+    .section-title {
+      font-size:10px; font-weight:700; color:var(--text3);
+      text-transform:uppercase; letter-spacing:.8px;
+      margin:20px 0 12px; padding-bottom:8px;
+      border-bottom:1px solid var(--border2);
+    }
+    .section-title:first-child { margin-top:0; }
+
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .form-row { margin-bottom:16px; }
+    .form-label { font-size:10.5px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:7px; display:block; }
+    .form-input {
+      width:100%; background:var(--bg3); border:1px solid var(--border);
+      border-radius:var(--radius); padding:10px 13px; font-size:13px;
+      color:var(--text); font-family:var(--font); outline:none; transition:all .15s;
+    }
+    .form-input:focus { border-color:var(--blue2); box-shadow:0 0 0 3px rgba(31,111,235,.12); }
+    .form-input::placeholder { color:var(--text3); }
+
+    .info-box {
+      background:var(--amber2); border:1px solid rgba(227,179,65,.3);
+      border-radius:var(--radius); padding:11px 14px;
+      font-size:12px; color:var(--amber); margin-bottom:18px;
+      display:flex; gap:10px; align-items:flex-start;
+    }
+
+    .msg { display:flex; gap:10px; padding:11px 14px; border-radius:var(--radius); margin-bottom:16px; font-size:12.5px; }
+    .msg.err  { background:var(--red2);   border:1px solid rgba(248,81,73,.3);  color:var(--red); }
+    .msg.succ { background:var(--green2); border:1px solid rgba(45,186,111,.3); color:var(--green); }
+
+    .pwd-meter { height:4px; background:var(--bg4); border-radius:2px; margin-top:6px; overflow:hidden; }
+    .pwd-fill  { height:100%; border-radius:2px; transition:width .3s,background .3s; }
+
+    .btn-submit {
+      width:100%; padding:13px; background:var(--blue); color:white;
+      border:none; border-radius:var(--radius); font-size:14px;
+      font-weight:600; cursor:pointer; font-family:var(--font);
+      transition:all .2s; margin-top:10px;
+    }
+    .btn-submit:hover { background:var(--blue2); transform:translateY(-1px); box-shadow:0 6px 20px rgba(31,111,235,.4); }
+
+    .bottom-link { text-align:center; margin-top:20px; font-size:12px; color:var(--text3); }
+    .bottom-link a { color:var(--blue2); text-decoration:none; font-weight:500; }
+    .bottom-link a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-zone">
+    <div class="logo-circle">🏭</div>
+    <div class="logo-title">Général Emballage</div>
+    <div class="logo-sub">SIGR-CA · Créer mon compte employé</div>
+  </div>
+
+  <div class="card">
+    <div class="card-tabs">
+      <a href="{% url 'login_employe' %}" class="card-tab">🔑 Connexion</a>
+      <a href="{% url 'register_employe' %}" class="card-tab active">📝 Créer un compte</a>
+    </div>
+    <div class="card-body">
+
+      {% if messages %}
+      {% for message in messages %}
+      <div class="msg {% if message.tags == 'error' %}err{% else %}succ{% endif %}">
+        {% if message.tags == 'error' %}⚠️{% else %}✅{% endif %} {{ message }}
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      <div class="info-box">
+        <span>🪪</span>
+        <div>
+          <strong>Votre badge est requis.</strong><br>
+          Votre numéro de badge RFID doit déjà exister dans le système.
+          Si vous ne le connaissez pas, contactez votre administrateur.
+        </div>
+      </div>
+
+      <form method="post" id="reg-form">
+        {% csrf_token %}
+
+        <div class="section-title">👤 Identité</div>
+        <div class="grid-2">
+          <div class="form-row">
+            <label class="form-label">Nom *</label>
+            <input class="form-input" type="text" name="nom"
+                   value="{{ form_data.nom|default:'' }}" placeholder="Nom de famille" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Prénom *</label>
+            <input class="form-input" type="text" name="prenom"
+                   value="{{ form_data.prenom|default:'' }}" placeholder="Prénom" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Email professionnel</label>
+          <input class="form-input" type="email" name="email"
+                 value="{{ form_data.email|default:'' }}" placeholder="prenom.nom@ge.dz">
+        </div>
+
+        <div class="section-title">🪪 Badge d'accès</div>
+        <div class="form-row">
+          <label class="form-label">Numéro de badge RFID *</label>
+          <input class="form-input" type="text" name="badge_id"
+                 value="{{ form_data.badge_id|default:'' }}"
+                 placeholder="RF-2024-XXXX" required
+                 style="font-family:var(--mono)">
+        </div>
+
+        <div class="section-title">🔐 Identifiants de connexion</div>
+        <div class="form-row">
+          <label class="form-label">Nom d'utilisateur *</label>
+          <input class="form-input" type="text" name="username"
+                 value="{{ form_data.username|default:'' }}"
+                 placeholder="ex: benali.mohamed" required>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Mot de passe * <span style="color:var(--text3);font-size:9px">(min. 6 caractères)</span></label>
+          <input class="form-input" type="password" name="password1"
+                 id="pwd1" placeholder="••••••••" required
+                 oninput="checkPwd(this.value)">
+          <div class="pwd-meter"><div class="pwd-fill" id="pwd-fill" style="width:0%"></div></div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Confirmer le mot de passe *</label>
+          <input class="form-input" type="password" name="password2"
+                 id="pwd2" placeholder="••••••••" required
+                 oninput="checkMatch()">
+          <div id="pwd-match" style="font-size:10.5px;margin-top:5px"></div>
+        </div>
+
+        <button type="submit" class="btn-submit">📝 Créer mon compte</button>
+      </form>
+
+      <div class="bottom-link">
+        Déjà un compte ? <a href="{% url 'login_employe' %}">Se connecter</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function checkPwd(v) {
+  var fill = document.getElementById("pwd-fill");
+  var len = v.length;
+  var pct = Math.min(len * 10, 100);
+  var color = len < 4 ? "#f85149" : len < 8 ? "#e3b341" : "#2dba6f";
+  fill.style.width = pct + "%";
+  fill.style.background = color;
+}
+function checkMatch() {
+  var p1 = document.getElementById("pwd1").value;
+  var p2 = document.getElementById("pwd2").value;
+  var el = document.getElementById("pwd-match");
+  if (!p2) { el.textContent = ""; return; }
+  if (p1 === p2) {
+    el.style.color = "#2dba6f";
+    el.textContent = "✅ Les mots de passe correspondent";
+  } else {
+    el.style.color = "#f85149";
+    el.textContent = "❌ Les mots de passe ne correspondent pas";
+  }
+}
+</script>
+</body>
+</html>

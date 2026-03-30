@@ -12,23 +12,33 @@ import random
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from dashboard.models import Utilisateur as User
 
 db = settings.MONGO_DB
 
 
-# ====================== AUTHENTIFICATION ======================
+# ====================== AUTHENTIFICATION UNIQUE ======================
 def login_view(request):
+    """Interface de connexion unique - redirige vers dashboard ou espace employé selon le type d'utilisateur"""
     if request.user.is_authenticated:
-        return redirect('dashboard')
+        if request.user.is_staff or request.user.is_superuser:
+            return redirect('dashboard')
+        else:
+            return redirect('employe_espace')
 
     if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
             login(request, user)
-            return redirect('dashboard')
+            if user.is_staff or user.is_superuser:
+                messages.success(request, f"Bienvenue {user.username} (Administrateur)")
+                return redirect('dashboard')
+            else:
+                messages.success(request, f"Bienvenue {user.first_name or user.username} !")
+                return redirect('employe_espace')
         else:
             messages.error(request, "Nom d'utilisateur ou mot de passe incorrect.")
 
@@ -37,8 +47,331 @@ def login_view(request):
 
 @login_required
 def logout_view(request):
+    """Déconnexion - redirige vers la page de connexion unique"""
     logout(request)
+    messages.success(request, "Vous avez été déconnecté avec succès.")
     return redirect('login')
+
+
+def register_employe(request):
+    """Inscription d'un nouvel employé — crée un compte Django + profil MongoDB"""
+    if request.user.is_authenticated:
+        if request.user.is_staff:
+            return redirect('dashboard')
+        return redirect('employe_espace')
+
+    if request.method == 'POST':
+        username  = request.POST.get('username', '').strip()
+        password1 = request.POST.get('password1', '')
+        password2 = request.POST.get('password2', '')
+        badge_id  = request.POST.get('badge_id', '').strip()
+        nom       = request.POST.get('nom', '').strip()
+        prenom    = request.POST.get('prenom', '').strip()
+        email     = request.POST.get('email', '').strip()
+
+        # --- Validations ---
+        erreurs = []
+        if not username:
+            erreurs.append("Le nom d'utilisateur est requis.")
+        if len(password1) < 6:
+            erreurs.append("Le mot de passe doit contenir au moins 6 caractères.")
+        if password1 != password2:
+            erreurs.append("Les mots de passe ne correspondent pas.")
+        if not badge_id:
+            erreurs.append("Le numéro de badge est requis.")
+        if not nom or not prenom:
+            erreurs.append("Le nom et le prénom sont requis.")
+
+        # Vérifier si le badge existe dans MongoDB
+        employe_mongo = db.employees.find_one({'badge_id': badge_id})
+        if not employe_mongo:
+            erreurs.append(f"Badge '{badge_id}' non reconnu. Contactez votre administrateur.")
+
+        # Vérifier si le compte Django existe déjà
+        from django.contrib.auth.models import User
+        if User.objects.filter(username=username).exists():
+            erreurs.append(f"Le nom d'utilisateur '{username}' est déjà pris.")
+
+        if erreurs:
+            for e in erreurs:
+                messages.error(request, e)
+            return render(request, 'dashboard/register_employe.html', {
+                'form_data': request.POST
+            })
+
+        # --- Création du compte Django ---
+        user = User.objects.create_user(
+            username=username,
+            password=password1,
+            email=email,
+            first_name=prenom,
+            last_name=nom,
+            is_staff=False,
+            is_superuser=False
+        )
+
+        # --- Lier le compte Django à l'employé MongoDB ---
+        db.employees.update_one(
+            {'badge_id': badge_id},
+            {'$set': {
+                'django_user_id': user.id,
+                'django_username': username,
+                'email': email,
+                'compte_cree_le': datetime.now(),
+            }}
+        )
+
+        messages.success(request, f"✅ Compte créé avec succès ! Bienvenue {prenom}.")
+        login(request, user)
+        return redirect('employe_espace')
+
+    return render(request, 'dashboard/register_employe.html', {'form_data': {}})
+
+
+# ====================== REDIRECTIONS POUR COMPATIBILITÉ ======================
+def login_employe(request):
+    """Redirection vers la page de connexion unique"""
+    return redirect('login')
+
+
+def employe_logout(request):
+    """Redirection vers la page de connexion unique"""
+    logout(request)
+    messages.success(request, "Vous avez été déconnecté avec succès.")
+    return redirect('login')
+
+
+# ====================== ESPACE EMPLOYÉ ======================
+def employe_espace(request):
+    """Espace personnel de l'employé connecté"""
+    if not request.user.is_authenticated:
+        return redirect('login')
+
+    # Bloquer l'accès aux admins
+    if request.user.is_staff or request.user.is_superuser:
+        return redirect('dashboard')
+
+    # Retrouver le profil MongoDB de l'employé
+    employe = db.employees.find_one({'django_user_id': request.user.id})
+    if not employe:
+        # Chercher par username en fallback
+        employe = db.employees.find_one({'django_username': request.user.username})
+
+    if not employe:
+        messages.error(request, "Profil employé introuvable. Contactez l'administrateur.")
+        logout(request)
+        return redirect('login')
+
+    employe['id'] = str(employe['_id'])
+
+    # Accès de cet employé
+    acces = list(db.acces_logs.find(
+        {'utilisateur_id': employe['_id']}
+    ).sort('timestamp', -1).limit(20))
+
+    for a in acces:
+        bureau = db.bureaux.find_one({'_id': a.get('bureau_id')})
+        a['bureau_nom'] = bureau['nom'] if bureau else 'Zone inconnue'
+
+    total_acces    = db.acces_logs.count_documents({'utilisateur_id': employe['_id']})
+    acces_autorises= db.acces_logs.count_documents({'utilisateur_id': employe['_id'], 'resultat': 'AUTORISE'})
+    acces_refuses  = total_acces - acces_autorises
+
+    # Réservations de cet employé
+    reservations = list(db.reservations.find(
+        {'employe_id': employe['_id']}
+    ).sort('date_debut', -1).limit(10))
+
+    for r in reservations:
+        r['id'] = str(r['_id'])
+        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+        r['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+
+    # Bureaux accessibles (depuis les règles)
+    regles = list(db.access_rules.find({'employe_id': str(employe['_id'])}))
+    zones_autorisees = list(set(r.get('zone_nom', '') for r in regles if r.get('zone_nom')))
+
+    now = datetime.now()
+    prochaine_resa = None
+    for r in reservations:
+        if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] > now:
+            prochaine_resa = r
+            break
+
+    return render(request, 'dashboard/employe_espace.html', {
+        'employe':          employe,
+        'acces':            acces,
+        'total_acces':      total_acces,
+        'acces_autorises':  acces_autorises,
+        'acces_refuses':    acces_refuses,
+        'reservations':     reservations,
+        'zones_autorisees': zones_autorisees,
+        'prochaine_resa':   prochaine_resa,
+    })
+      # Calcul des réservations à venir
+    now = datetime.now()
+    a_venir = sum(1 for r in reservations if r.get('statut') == 'confirmee' 
+                  and r.get('date_debut') and r['date_debut'] > now)
+    
+    # Taux de succès
+    taux_succes = round((acces_autorises / total_acces * 100) if total_acces else 0, 1)
+    
+    # Bureaux pour la modal
+    bureaux = list(db.bureaux.find())
+    for b in bureaux:
+        b['id'] = str(b['_id'])
+    
+    return render(request, 'dashboard/employe_espace.html', {
+        'employe': employe,
+        'acces': acces,
+        'total_acces': total_acces,
+        'acces_autorises': acces_autorises,
+        'acces_refuses': acces_refuses,
+        'taux_succes': taux_succes,
+        'reservations': reservations,
+        'a_venir': a_venir,
+        'zones_autorisees': zones_autorisees,
+        'prochaine_resa': prochaine_resa,
+        'bureaux': bureaux,  # Ajouté pour la modal
+    })
+
+
+def employe_mes_reservations(request):
+    """Liste des réservations de l'employé connecté"""
+    if not request.user.is_authenticated or request.user.is_staff:
+        return redirect('login')
+
+    employe = db.employees.find_one({'django_user_id': request.user.id})
+    if not employe:
+        return redirect('login')
+
+    employe['id'] = str(employe['_id'])
+
+    reservations = list(db.reservations.find(
+        {'employe_id': employe['_id']}
+    ).sort('date_debut', -1))
+
+    for r in reservations:
+        r['id'] = str(r['_id'])
+        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+        r['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+
+    bureaux = list(db.bureaux.find())
+    for b in bureaux:
+        b['id'] = str(b['_id'])
+
+    now = datetime.now()
+    actives    = sum(1 for r in reservations if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] <= now <= r.get('date_fin', now))
+    a_venir    = sum(1 for r in reservations if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] > now)
+    en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+
+    if request.method == 'POST':
+        # Créer une nouvelle réservation depuis l'espace employé
+        try:
+            date_debut = datetime.strptime(request.POST.get('date_debut'), '%Y-%m-%dT%H:%M')
+            date_fin   = datetime.strptime(request.POST.get('date_fin'),   '%Y-%m-%dT%H:%M')
+            bureau_id  = request.POST.get('bureau_id')
+
+            if date_fin <= date_debut:
+                messages.error(request, "La date de fin doit être après la date de début.")
+            else:
+                chevauchement = db.reservations.find_one({
+                    'bureau_id': ObjectId(bureau_id),
+                    'statut':    {'$in': ['confirmee', 'en_attente']},
+                    'date_debut':{'$lt': date_fin},
+                    'date_fin':  {'$gt': date_debut},
+                })
+                if chevauchement:
+                    messages.error(request, "⚠️ Cette salle est déjà réservée sur ce créneau.")
+                else:
+                    db.reservations.insert_one({
+                        'titre':           request.POST.get('titre', '').strip(),
+                        'description':     request.POST.get('description', '').strip(),
+                        'bureau_id':       ObjectId(bureau_id),
+                        'employe_id':      employe['_id'],
+                        'date_debut':      date_debut,
+                        'date_fin':        date_fin,
+                        'nb_participants': int(request.POST.get('nb_participants', 1)),
+                        'statut':          'confirmee',
+                        'created_at':      datetime.now(),
+                        'created_by':      request.user.username,
+                    })
+                    messages.success(request, "✅ Réservation créée avec succès !")
+                    return redirect('employe_mes_reservations')
+        except Exception as e:
+            messages.error(request, f"Erreur : {str(e)}")
+            
+
+    return render(request, 'dashboard/employe_mes_reservations.html', {
+        'employe':      employe,
+        'reservations': reservations,
+        'bureaux':      bureaux,
+        'total':        len(reservations),
+        'actives':      actives,
+        'a_venir':      a_venir,
+        'en_attente':   en_attente,
+    })
+
+
+def employe_annuler_reservation(request, reservation_id):
+    """Annuler une réservation depuis l'espace employé"""
+    if not request.user.is_authenticated or request.user.is_staff:
+        return redirect('login')
+
+    employe = db.employees.find_one({'django_user_id': request.user.id})
+    if not employe:
+        return redirect('login')
+
+    if request.method == 'POST':
+        # Vérifier que la réservation appartient bien à cet employé
+        resa = db.reservations.find_one({
+            '_id': ObjectId(reservation_id),
+            'employe_id': employe['_id']
+        })
+        if resa:
+            db.reservations.update_one(
+                {'_id': ObjectId(reservation_id)},
+                {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now()}}
+            )
+            messages.success(request, "Réservation annulée.")
+        else:
+            messages.error(request, "Réservation introuvable ou non autorisée.")
+
+    return redirect('employe_mes_reservations')
+
+
+def employe_mon_historique(request):
+    """Historique d'accès personnel de l'employé"""
+    if not request.user.is_authenticated or request.user.is_staff:
+        return redirect('login')
+
+    employe = db.employees.find_one({'django_user_id': request.user.id})
+    if not employe:
+        return redirect('login')
+
+    employe['id'] = str(employe['_id'])
+
+    acces = list(db.acces_logs.find(
+        {'utilisateur_id': employe['_id']}
+    ).sort('timestamp', -1).limit(200))
+
+    for a in acces:
+        bureau = db.bureaux.find_one({'_id': a.get('bureau_id')})
+        a['bureau_nom'] = bureau['nom'] if bureau else 'Zone inconnue'
+
+    total_acces     = len(acces)
+    acces_autorises = sum(1 for a in acces if a.get('resultat') == 'AUTORISE')
+    acces_refuses   = total_acces - acces_autorises
+    taux_succes     = round(acces_autorises / total_acces * 100) if total_acces else 0
+
+    return render(request, 'dashboard/employe_mon_historique.html', {
+        'employe':        employe,
+        'acces':          acces,
+        'total_acces':    total_acces,
+        'acces_autorises':acces_autorises,
+        'acces_refuses':  acces_refuses,
+        'taux_succes':    taux_succes,
+    })
 
 
 # ====================== HELPERS ======================
@@ -52,8 +385,18 @@ class JSONEncoder(json.JSONEncoder):
 
 
 # ====================== PAGES ======================
+# ================================================================
+# MODIFIE la fonction dashboard() dans dashboard/views.py
+# REMPLACE la fonction existante par celle-ci ENTIÈREMENT
+# ================================================================
+
 @login_required
 def dashboard(request):
+    # ── Si c'est un employé (pas admin) → rediriger vers son espace ──
+    if not request.user.is_staff and not request.user.is_superuser:
+        return redirect('employe_espace')
+
+    # ── Ci-dessous : code uniquement pour les admins ──
     total_employes = db.employees.count_documents({})
     total_bureaux = db.bureaux.count_documents({})
 
@@ -66,7 +409,6 @@ def dashboard(request):
 
     alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'}) if 'alertes' in db.list_collection_names() else 0
 
-    # Derniers logs
     derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(8))
     for log in derniers_logs:
         bureau = db.bureaux.find_one({'_id': log.get('bureau_id')})
@@ -74,7 +416,6 @@ def dashboard(request):
         emp = db.employees.find_one({'_id': log.get('utilisateur_id')})
         log['nom_utilisateur'] = f"{emp.get('nom','')} {emp.get('prenom','')}" if emp else 'Inconnu'
 
-    # Données pour le graphique 7 jours
     seven_days_ago = datetime.now() - timedelta(days=7)
     pipeline = [
         {'$match': {'timestamp': {'$gte': seven_days_ago}}},
@@ -1248,3 +1589,243 @@ def api_disponibilite_bureau(request, bureau_id):
         return JsonResponse({'disponible': chevauchement is None})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+        # ====================== ESPACE EMPLOYÉ ======================
+
+def login_employe(request):
+    """Login dédié aux employés — redirige vers leur espace perso"""
+    if request.user.is_authenticated:
+        if request.user.is_staff:
+            return redirect('dashboard')
+        return redirect('employe_espace')
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None:
+            if user.is_staff or user.is_superuser:
+                messages.error(request, "Utilisez la page de connexion administrateur.")
+                return render(request, 'dashboard/login_employe.html', {})
+            login(request, user)
+            messages.success(request, f"Bienvenue {user.first_name or user.username} !")
+            return redirect('employe_espace')
+        else:
+            messages.error(request, "Identifiants incorrects. Vérifiez votre nom d'utilisateur et mot de passe.")
+
+    return render(request, 'dashboard/login_employe.html', {})
+
+
+def register_employe(request):
+    """Inscription d'un nouvel employé — crée un compte Django + profil MongoDB"""
+    if request.user.is_authenticated:
+        if request.user.is_staff:
+            return redirect('dashboard')
+        return redirect('employe_espace')
+
+    if request.method == 'POST':
+        username  = request.POST.get('username', '').strip()
+        password1 = request.POST.get('password1', '')
+        password2 = request.POST.get('password2', '')
+        badge_id  = request.POST.get('badge_id', '').strip()
+        nom       = request.POST.get('nom', '').strip()
+        prenom    = request.POST.get('prenom', '').strip()
+        email     = request.POST.get('email', '').strip()
+
+        # --- Validations ---
+        erreurs = []
+        if not username:
+            erreurs.append("Le nom d'utilisateur est requis.")
+        if len(password1) < 6:
+            erreurs.append("Le mot de passe doit contenir au moins 6 caractères.")
+        if password1 != password2:
+            erreurs.append("Les mots de passe ne correspondent pas.")
+        if not badge_id:
+            erreurs.append("Le numéro de badge est requis.")
+        if not nom or not prenom:
+            erreurs.append("Le nom et le prénom sont requis.")
+
+        # Vérifier si le badge existe dans MongoDB
+        employe_mongo = db.employees.find_one({'badge_id': badge_id})
+        if not employe_mongo:
+            erreurs.append(f"Badge '{badge_id}' non reconnu. Contactez votre administrateur.")
+
+        # Vérifier si le compte Django existe déjà
+        from django.contrib.auth.models import User
+        if User.objects.filter(username=username).exists():
+            erreurs.append(f"Le nom d'utilisateur '{username}' est déjà pris.")
+
+        if erreurs:
+            for e in erreurs:
+                messages.error(request, e)
+            return render(request, 'dashboard/register_employe.html', {
+                'form_data': request.POST
+            })
+
+        # --- Création du compte Django ---
+        user = User.objects.create_user(
+            username=username,
+            password=password1,
+            email=email,
+            first_name=prenom,
+            last_name=nom,
+            is_staff=False,
+            is_superuser=False
+        )
+
+        # --- Lier le compte Django à l'employé MongoDB ---
+        db.employees.update_one(
+            {'badge_id': badge_id},
+            {'$set': {
+                'django_user_id': user.id,
+                'django_username': username,
+                'email': email,
+                'compte_cree_le': datetime.now(),
+            }}
+        )
+
+        messages.success(request, f"✅ Compte créé avec succès ! Bienvenue {prenom}.")
+        login(request, user)
+        return redirect('employe_espace')
+
+    return render(request, 'dashboard/register_employe.html', {'form_data': {}})
+
+
+@login_required
+def employe_logout(request):
+    logout(request)
+    return redirect('login_employe')
+
+
+@login_required
+def employe_espace(request):
+    """Tableau de bord employé"""
+    # Récupérer l'employé lié à l'utilisateur connecté
+    employe = None
+    try:
+        # Option 1 : via email ou username
+        employe = db.employees.find_one({'email': request.user.email}) or \
+                  db.employees.find_one({'badge_id': request.user.username})  # selon ta logique
+    except:
+        pass
+
+    if not employe:
+        # Fallback : prendre le premier employé actif pour le test
+        employe = db.employees.find_one({'statut': 'actif'}) or {}
+
+    employe['id'] = str(employe.get('_id', ''))
+
+    # Stats accès
+    acces = list(db.acces_logs.find({'utilisateur_id': employe.get('_id')}).sort('timestamp', -1).limit(20))
+    total_acces = len(acces)
+    acces_autorises = sum(1 for a in acces if a.get('resultat') == 'AUTORISE')
+    acces_refuses = total_acces - acces_autorises
+    taux_succes = round((acces_autorises / total_acces * 100) if total_acces else 0, 1)
+
+    # Réservations de l'employé
+    reservations = list(db.reservations.find({'employe_id': employe.get('_id')}).sort('date_debut', -1))
+
+    for r in reservations:
+        r['id'] = str(r['_id'])
+        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+        r['bureau_nom'] = bureau['nom'] if bureau else 'Inconnu'
+
+    # Prochaine réservation
+    now = datetime.now()
+    prochaine_resa = next((r for r in reservations if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] > now), None)
+
+    # Zones autorisées (exemple simple)
+    zones_autorisees = ["Bureau Production", "Zone Logistique", "Salle Réunion A"]
+
+    context = {
+        'employe': employe,
+        'total_acces': total_acces,
+        'acces_autorises': acces_autorises,
+        'acces_refuses': acces_refuses,
+        'taux_succes': taux_succes,
+        'acces': acces,
+        'reservations': reservations,
+        'prochaine_resa': prochaine_resa,
+        'zones_autorisees': zones_autorisees,
+    }
+
+    return render(request, 'dashboard/employe_espace.html', context)
+
+
+@login_required
+def employe_mes_reservations(request):
+    """Liste des réservations de l'employé connecté"""
+    employe = db.employees.find_one({'email': request.user.email}) or {}
+    employe_id = employe.get('_id')
+
+    reservations = list(db.reservations.find({'employe_id': employe_id}).sort('date_debut', -1))
+
+    for r in reservations:
+        r['id'] = str(r.get('_id'))
+        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+        r['bureau_nom'] = bureau['nom'] if bureau else 'Inconnu'
+
+    now = datetime.now()
+    actives = sum(1 for r in reservations if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] <= now <= r.get('date_fin', now))
+    a_venir = sum(1 for r in reservations if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] > now)
+    en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+
+    bureaux = list(db.bureaux.find())
+    for b in bureaux:
+        b['id'] = str(b['_id'])
+
+    context = {
+        'reservations': reservations,
+        'total': len(reservations),
+        'actives': actives,
+        'a_venir': a_venir,
+        'en_attente': en_attente,
+        'bureaux': bureaux,
+        'employe': employe,
+    }
+
+    return render(request, 'dashboard/employe_mes_reservations.html', context)
+
+
+@login_required
+def employe_annuler_reservation(request, reservation_id):
+    """Annuler une réservation (employé)"""
+    if request.method == 'POST':
+        try:
+            db.reservations.update_one(
+                {'_id': ObjectId(reservation_id)},
+                {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now()}}
+            )
+            messages.success(request, "Réservation annulée avec succès.")
+        except Exception as e:
+            messages.error(request, f"Erreur : {str(e)}")
+    return redirect('employe_mes_reservations')
+
+
+@login_required
+def employe_mon_historique(request):
+    """Historique d'accès de l'employé"""
+    employe = db.employees.find_one({'email': request.user.email}) or {}
+    employe_id = employe.get('_id')
+
+    acces = list(db.acces_logs.find({'utilisateur_id': employe_id}).sort('timestamp', -1))
+
+    for a in acces:
+        b = db.bureaux.find_one({'_id': a.get('bureau_id')})
+        a['bureau_nom'] = b['nom'] if b else 'Inconnu'
+
+    total_acces = len(acces)
+    acces_autorises = sum(1 for a in acces if a.get('resultat') == 'AUTORISE')
+    acces_refuses = total_acces - acces_autorises
+    taux_succes = round((acces_autorises / total_acces * 100) if total_acces else 0, 1)
+
+    context = {
+        'employe': employe,
+        'acces': acces,
+        'total_acces': total_acces,
+        'acces_autorises': acces_autorises,
+        'acces_refuses': acces_refuses,
+        'taux_succes': taux_succes,
+    }
+
+    return render(request, 'dashboard/employe_mon_historique.html', context)

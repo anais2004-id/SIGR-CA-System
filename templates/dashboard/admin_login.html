@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SIGR-CA — Connexion</title>
+  <title>SIGR-CA — Connexion Administrateur</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <style>
     :root {
@@ -84,19 +84,9 @@
     .bottom-link a { color:var(--blue2); text-decoration:none; font-weight:500; }
     .bottom-link a:hover { text-decoration:underline; }
 
-    .demo-info {
-      margin-top: 20px;
-      padding: 12px;
-      background: var(--bg3);
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      font-size: 11px;
-      color: var(--text2);
-      text-align: center;
-    }
-    .demo-info strong {
-      color: var(--blue2);
-    }
+    .employe-sep { text-align:center; margin-top:24px; padding-top:20px; border-top:1px solid var(--border); font-size:11px; color:var(--text3); }
+    .employe-sep a { color:var(--text3); text-decoration:none; }
+    .employe-sep a:hover { color:var(--text2); text-decoration:underline; }
   </style>
 </head>
 <body>
@@ -109,8 +99,8 @@
 
   <div class="card">
     <div class="card-tabs">
-      <a href="{% url 'login' %}" class="card-tab active">🔑 Connexion</a>
-      <a href="{% url 'register_employe' %}" class="card-tab">📝 Créer un compte</a>
+      <a href="{% url 'login' %}" class="card-tab active">👨‍💼 Administrateur</a>
+      <a href="{% url 'login_employe' %}" class="card-tab">👤 Espace Employé</a>
     </div>
     <div class="card-body">
 
@@ -128,7 +118,7 @@
         <div class="form-row">
           <label class="form-label">Nom d'utilisateur</label>
           <input class="form-input" type="text" name="username"
-                 placeholder="Votre identifiant" autofocus required>
+                 placeholder="Identifiant administrateur" autofocus required>
         </div>
 
         <div class="form-row">
@@ -137,19 +127,11 @@
                  placeholder="••••••••" required>
         </div>
 
-        <button type="submit" class="btn-submit">Se connecter →</button>
+        <button type="submit" class="btn-submit">Accéder au tableau de bord →</button>
       </form>
 
-      <div class="bottom-link">
-        Pas encore de compte employé ?
-        <a href="{% url 'register_employe' %}">Créer mon espace employé</a>
-      </div>
-
-      <div class="demo-info">
-        💡 <strong>Informations de test</strong><br>
-        Admin : zahra / zahra03<br>
-        emp: simple : salas / zahra03=
-        Employé : Créez votre compte avec votre badge RFID
+      <div class="employe-sep">
+        Espace employé ? <a href="{% url 'login_employe' %}">Se connecter →</a>
       </div>
 
     </div>

@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Mon Historique d'Accès - SIGR-CA{% endblock %}
+{% block page_title %}Mon Historique d'Accès{% endblock %}
+{% block page_sub %}Traçabilité complète de vos accès{% endblock %}
+
+{% block nav_emp_hist %}active{% endblock %}
+
+{% block content %}
+
+<div class="content">
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+        <div class="alert-text">{{ message }}</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- KPIs -->
+  <div class="g2">
+    <div class="kpi k-blue">
+      <div class="kpi-header">
+        <div class="kpi-label">Total Accès</div>
+        <div class="kpi-icon">🔑</div>
+      </div>
+      <div class="kpi-value">{{ total_acces|default:0 }}</div>
+      <div class="kpi-delta">Tous temps</div>
+    </div>
+
+    <div class="kpi k-green">
+      <div class="kpi-header">
+        <div class="kpi-label">Accès Autorisés</div>
+        <div class="kpi-icon">✅</div>
+      </div>
+      <div class="kpi-value">{{ acces_autorises|default:0 }}</div>
+    </div>
+
+    <div class="kpi k-red">
+      <div class="kpi-header">
+        <div class="kpi-label">Accès Refusés</div>
+        <div class="kpi-icon">🚫</div>
+      </div>
+      <div class="kpi-value">{{ acces_refuses|default:0 }}</div>
+    </div>
+
+    <div class="kpi k-purple">
+      <div class="kpi-header">
+        <div class="kpi-label">Taux de Succès</div>
+        <div class="kpi-icon">📊</div>
+      </div>
+      <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
+      <div class="kpi-delta">Performance globale</div>
+    </div>
+  </div>
+
+  <!-- Statistiques par zone -->
+  <div class="card">
+    <div class="card-head">
+      <span>📊</span>
+      <span class="card-title">Fréquentation par zone</span>
+    </div>
+    <div class="card-body" id="zone-stats">
+      <!-- Rempli dynamiquement par JavaScript -->
+    </div>
+  </div>
+
+  <!-- Filtres -->
+  <div class="filter-tabs" style="margin-bottom:16px">
+    <button class="filter-tab active" onclick="filterLogs('all')">Tous</button>
+    <button class="filter-tab" onclick="filterLogs('autorise')">Autorisés</button>
+    <button class="filter-tab" onclick="filterLogs('refuse')">Refusés</button>
+    <button class="filter-tab" onclick="filterLogs('week')">7 derniers jours</button>
+    <button class="filter-tab" onclick="filterLogs('month')">30 derniers jours</button>
+  </div>
+
+  <!-- Tableau des logs -->
+  <div class="card">
+    <div class="card-head">
+      <span>📋</span>
+      <span class="card-title">Historique détaillé</span>
+      <span class="card-sub" id="log-count">{{ total_acces|default:0 }} entrées</span>
+      <button class="btn btn-ghost btn-sm" onclick="exportCSV()" style="margin-left:auto">
+        ⬇️ Exporter CSV
+      </button>
+    </div>
+    <div style="overflow-x:auto; max-height:520px; overflow-y:auto">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Date & Heure</th>
+            <th>Zone / Bureau</th>
+            <th>Méthode</th>
+            <th>Résultat</th>
+            <th>Détails</th>
+          </tr>
+        </thead>
+        <tbody id="logs-table-body">
+          {% for a in acces %}
+          <tr class="log-row" 
+              data-resultat="{{ a.resultat|lower }}" 
+              data-timestamp="{{ a.timestamp|date:'Y-m-d' }}">
+            <td style="font-family:var(--mono); font-size:12.5px">
+              {{ a.timestamp|date:"d/m/Y H:i:s" }}
+            </td>
+            <td>
+              <strong>{{ a.bureau_nom|default:"—" }}</strong><br>
+              <small style="color:var(--text3)">{{ a.type_acces|default:"RFID" }}</small>
+            </td>
+            <td><span class="badge b-blue">{{ a.type_acces|default:"RFID" }}</span></td>
+            <td>
+              {% if a.resultat == 'AUTORISE' %}
+                <span class="badge b-green">✅ AUTORISÉ</span>
+              {% else %}
+                <span class="badge b-red">❌ REFUSÉ</span>
+              {% endif %}
+            </td>
+            <td style="font-size:11.5px; color:var(--text3)">
+              {% if a.resultat == 'AUTORISE' %}
+                Accès validé avec succès
+              {% else %}
+                Tentative d'accès non autorisé
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" style="text-align:center; padding:80px; color:var(--text3)">
+              Aucun historique d'accès disponible pour le moment
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// === Statistiques par zone (calculées côté client) ===
+const zoneStats = {};
+{% for a in acces %}
+  {% if a.bureau_nom %}
+    if (!zoneStats['{{ a.bureau_nom|escapejs }}']) {
+      zoneStats['{{ a.bureau_nom|escapejs }}'] = { total: 0, autorises: 0 };
+    }
+    zoneStats['{{ a.bureau_nom|escapejs }}'].total++;
+    if ('{{ a.resultat|escapejs }}' === 'AUTORISE') {
+      zoneStats['{{ a.bureau_nom|escapejs }}'].autorises++;
+    }
+  {% endif %}
+{% endfor %}
+
+function renderZoneStats() {
+  const container = document.getElementById('zone-stats');
+  const zones = Object.keys(zoneStats).sort((a, b) => 
+    zoneStats[b].total - zoneStats[a].total
+  );
+
+  let html = '';
+  zones.forEach(zone => {
+    const data = zoneStats[zone];
+    const pct = data.total > 0 ? Math.round((data.autorises / data.total) * 100) : 0;
+    
+    html += `
+      <div class="stat-bar" style="margin-bottom:16px">
+        <div class="stat-bar-label">
+          <span>🚪 ${zone}</span>
+          <span>${data.autorises}/${data.total} (${pct}%)</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html || `
+    <div style="text-align:center; padding:40px; color:var(--text3)">
+      Aucune donnée de fréquentation disponible
+    </div>`;
+}
+
+// === Filtres des logs ===
+let currentFilter = 'all';
+
+function filterLogs(filter) {
+  currentFilter = filter;
+  const rows = document.querySelectorAll('.log-row');
+  const now = new Date();
+  let visibleCount = 0;
+
+  rows.forEach(row => {
+    let show = true;
+    const resultat = row.dataset.resultat;
+    const timestampStr = row.dataset.timestamp;
+
+    if (filter === 'autorise') show = resultat === 'autorise';
+    else if (filter === 'refuse') show = resultat === 'refuse';
+    else if (filter === 'week') {
+      const logDate = new Date(timestampStr);
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      show = logDate >= weekAgo;
+    }
+    else if (filter === 'month') {
+      const logDate = new Date(timestampStr);
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      show = logDate >= monthAgo;
+    }
+
+    row.style.display = show ? '' : 'none';
+    if (show) visibleCount++;
+  });
+
+  document.getElementById('log-count').textContent = `${visibleCount} entrées`;
+
+  // Mise à jour visuelle des onglets
+  document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.classList.remove('active');
+    if ((filter === 'all' && tab.textContent === 'Tous') ||
+        (filter === 'autorise' && tab.textContent === 'Autorisés') ||
+        (filter === 'refuse' && tab.textContent === 'Refusés') ||
+        (filter === 'week' && tab.textContent === '7 derniers jours') ||
+        (filter === 'month' && tab.textContent === '30 derniers jours')) {
+      tab.classList.add('active');
+    }
+  });
+}
+
+// === Export CSV ===
+function exportCSV() {
+  let csv = "Date & Heure;Zone;Méthode;Résultat;Détails\n";
+  const visibleRows = document.querySelectorAll('.log-row[style=""]');
+
+  visibleRows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 5) {
+      const date = cells[0].textContent.trim().replace(/;/g, ',');
+      const zone = cells[1].textContent.trim().replace(/;/g, ',').replace(/\n/g, ' ');
+      const methode = cells[2].textContent.trim();
+      const resultat = cells[3].textContent.trim();
+      const details = cells[4].textContent.trim().replace(/;/g, ',');
+
+      csv += `"${date}";"${zone}";"${methode}";"${resultat}";"${details}"\n`;
+    }
+  });
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `historique_acces_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// Initialisation
+window.onload = function() {
+  renderZoneStats();
+  filterLogs('all');   // Afficher tout au chargement
+};
+</script>
+{% endblock %}

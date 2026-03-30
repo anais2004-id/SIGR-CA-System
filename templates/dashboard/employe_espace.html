@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block title %}Mon Espace - SIGR-CA{% endblock %}
+{% block page_title %}Mon Tableau de Bord{% endblock %}
+{% block page_sub %}Bonjour {{ employe.prenom|default:user.first_name }} 👋{% endblock %}
+
+{% block nav_emp_home %}active{% endblock %}
+
+{% block content %}
+
+<div class="content">
+
+  <!-- Message système -->
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+        <div class="alert-text">{{ message }}</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Profil Hero -->
+  <div class="card">
+    <div class="card-body">
+      <div class="profile-hdr">
+        <div class="profile-av">
+          {{ employe.prenom|slice:":1"|upper }}{{ employe.nom|slice:":1"|upper }}
+        </div>
+        <div style="flex:1">
+          <div style="font-size:22px; font-weight:700;">
+            {{ employe.prenom|default:user.first_name }} {{ employe.nom|default:user.last_name }}
+          </div>
+          <div style="color:var(--text2); margin-top:4px;">
+            {{ employe.poste|default:"Employé" }} • {{ employe.departement|default:"—" }}
+          </div>
+          <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+            <span class="badge b-blue">🪪 {{ employe.badge_id|default:"—" }}</span>
+            <span class="badge b-green">● Actif</span>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="openResaModal()">
+          + Nouvelle réservation
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="g2">
+    <div class="kpi k-blue">
+      <div class="kpi-header">
+        <div class="kpi-label">Total Accès</div>
+        <div class="kpi-icon">🔑</div>
+      </div>
+      <div class="kpi-value">{{ total_acces|default:0 }}</div>
+      <div class="kpi-delta">Depuis le début</div>
+    </div>
+
+    <div class="kpi k-green">
+      <div class="kpi-header">
+        <div class="kpi-label">Taux de Succès</div>
+        <div class="kpi-icon">✅</div>
+      </div>
+      <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
+      <div class="kpi-delta">{{ acces_autorises|default:0 }} autorisés</div>
+    </div>
+
+    <div class="kpi k-purple">
+      <div class="kpi-header">
+        <div class="kpi-label">Mes Réservations</div>
+        <div class="kpi-icon">📆</div>
+      </div>
+      <div class="kpi-value">{{ reservations|length }}</div>
+      <div class="kpi-delta">{{ a_venir|default:0 }} à venir</div>
+    </div>
+
+    <div class="kpi k-amber">
+      <div class="kpi-header">
+        <div class="kpi-label">Prochaine Réservation</div>
+        <div class="kpi-icon">⏰</div>
+      </div>
+      <div class="kpi-value">
+        {% if prochaine_resa %}
+          {{ prochaine_resa.date_debut|date:"d/m" }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="kpi-delta neutral">Prochain créneau</div>
+    </div>
+  </div>
+
+  <!-- Prochaine réservation (si existante) -->
+  {% if prochaine_resa %}
+  <div class="card">
+    <div class="card-head">
+      <span>📅</span>
+      <span class="card-title">Prochaine réservation confirmée</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:16px; font-weight:600; margin-bottom:8px;">
+        {{ prochaine_resa.titre|default:"Réservation" }}
+      </div>
+      <div style="display:flex; gap:20px; color:var(--text2); font-size:13px;">
+        <span>🚪 {{ prochaine_resa.bureau_nom }}</span>
+        <span>🕒 {{ prochaine_resa.date_debut|date:"d/m/Y à H:i" }} → {{ prochaine_resa.date_fin|date:"H:i" }}</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="g2">
+    <!-- Derniers accès -->
+    <div class="card">
+      <div class="card-head">
+        <span>📋</span>
+        <span class="card-title">Mes derniers accès</span>
+        <a href="{% url 'employe_mon_historique' %}" class="btn btn-ghost btn-sm" style="margin-left:auto">Tout voir →</a>
+      </div>
+      <div class="card-body" style="padding:0;">
+        {% for a in acces %}
+        <div class="feed-item">
+          {% if a.resultat == 'AUTORISE' %}
+            <div class="feed-av" style="background:#2dba6f">✓</div>
+          {% else %}
+            <div class="feed-av" style="background:#f85149">✗</div>
+          {% endif %}
+          <div class="feed-info">
+            <div class="feed-name">{{ a.bureau_nom }}</div>
+            <div class="feed-door">{{ a.type_acces|default:"RFID" }}</div>
+          </div>
+          <div class="feed-time">{{ a.timestamp|date:"d/m H:i" }}</div>
+          {% if a.resultat == 'AUTORISE' %}
+            <div class="feed-status fs-ok">AUTORISÉ</div>
+          {% else %}
+            <div class="feed-status fs-no">REFUSÉ</div>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div style="text-align:center; padding:40px; color:var(--text3)">
+          Aucun accès enregistré pour le moment
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Réservations récentes -->
+    <div class="card">
+      <div class="card-head">
+        <span>📆</span>
+        <span class="card-title">Mes réservations récentes</span>
+        <a href="{% url 'employe_mes_reservations' %}" class="btn btn-ghost btn-sm" style="margin-left:auto">Tout voir →</a>
+      </div>
+      <div class="card-body" style="padding:0;">
+        {% for r in reservations|slice:":5" %}
+        <div class="feed-item">
+          <div class="feed-av" style="background:#a371f7">📆</div>
+          <div class="feed-info">
+            <div class="feed-name">{{ r.titre|default:"Réservation" }}</div>
+            <div class="feed-door">🚪 {{ r.bureau_nom }}</div>
+          </div>
+          <div class="feed-time">{{ r.date_debut|date:"d/m H:i" }}</div>
+          {% if r.statut == 'confirmee' %}
+            <span class="badge b-green">Confirmée</span>
+          {% elif r.statut == 'en_attente' %}
+            <span class="badge b-amber">En attente</span>
+          {% else %}
+            <span class="badge b-red">Annulée</span>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div style="text-align:center; padding:40px; color:var(--text3)">
+          Aucune réservation<br><br>
+          <button class="btn btn-primary btn-sm" onclick="openResaModal()">+ Réserver maintenant</button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Suggestions Intelligentes (IA) -->
+  <div class="card">
+    <div class="card-head">
+      <span>🤖</span>
+      <span class="card-title">Suggestions intelligentes</span>
+      <span class="card-sub">Basées sur vos habitudes</span>
+    </div>
+    <div class="card-body">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+        <div class="alert-box info">
+          <div class="alert-ico">💡</div>
+          <div>
+            <div class="alert-text">Les mardis après-midi sont les moins chargés</div>
+            <div class="alert-meta">Taux d'occupation moyen : 32%</div>
+          </div>
+        </div>
+        <div class="alert-box info">
+          <div class="alert-ico">🚪</div>
+          <div>
+            <div class="alert-text">Salle "Atelier Production" souvent disponible en fin de journée</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ====================== MODAL NOUVELLE RÉSERVATION ====================== -->
+<div class="modal-overlay" id="modal-overlay" style="display:none" onclick="if(event.target===this) closeModal()">
+  <div class="modal">
+    <div class="modal-title">📆 Nouvelle Réservation</div>
+    <div class="modal-sub">Choisissez une salle et un créneau</div>
+
+    <form method="post" action="{% url 'employe_mes_reservations' %}">
+      {% csrf_token %}
+
+      <div class="form-row">
+        <label class="form-label">Titre / Objet *</label>
+        <input type="text" class="form-input" name="titre" placeholder="Réunion équipe, Formation..." required>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Salle / Ressource *</label>
+        <select class="form-select" name="bureau_id" id="sel-bureau" onchange="checkDispo()" required>
+          <option value="">— Sélectionnez une salle —</option>
+          {% for b in bureaux %}
+            <option value="{{ b.id }}">{{ b.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Début *</label>
+        <input type="datetime-local" class="form-input" name="date_debut" id="d-debut" onchange="checkDispo()" required>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Fin *</label>
+        <input type="datetime-local" class="form-input" name="date_fin" id="d-fin" onchange="checkDispo()" required>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Nombre de participants</label>
+        <input type="number" class="form-input" name="nb_participants" value="1" min="1">
+      </div>
+
+      <div id="dispo-ind" style="display:none; padding:12px; border-radius:8px; margin:12px 0; font-size:13px;"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="btn-submit">Confirmer la réservation</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openResaModal() {
+  document.getElementById('modal-overlay').style.display = 'flex';
+  
+  // Pré-remplir avec un créneau dans 1 heure
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  now.setHours(now.getHours() + 1);
+  
+  const fin = new Date(now.getTime() + 3600000);
+  
+  const fmt = d => d.getFullYear() + '-' + 
+                  String(d.getMonth()+1).padStart(2,'0') + '-' + 
+                  String(d.getDate()).padStart(2,'0') + 'T' + 
+                  String(d.getHours()).padStart(2,'0') + ':00';
+  
+  document.getElementById('d-debut').value = fmt(now);
+  document.getElementById('d-fin').value = fmt(fin);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+}
+
+let timer = null;
+function checkDispo() {
+  const bureauId = document.getElementById('sel-bureau').value;
+  const debut = document.getElementById('d-debut').value;
+  const fin = document.getElementById('d-fin').value;
+  const indicator = document.getElementById('dispo-ind');
+  const btn = document.getElementById('btn-submit');
+
+  if (!bureauId || !debut || !fin) {
+    indicator.style.display = 'none';
+    return;
+  }
+
+  if (new Date(fin) <= new Date(debut)) {
+    indicator.style.display = 'block';
+    indicator.style.background = 'var(--red2)';
+    indicator.style.color = 'var(--red)';
+    indicator.innerHTML = '⚠️ La date de fin doit être après le début';
+    btn.disabled = true;
+    return;
+  }
+
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    indicator.style.display = 'block';
+    indicator.style.background = 'var(--blue3)';
+    indicator.style.color = 'var(--blue2)';
+    indicator.innerHTML = '⏳ Vérification de disponibilité...';
+
+    fetch(`/api/bureaux/${bureauId}/disponibilite/?debut=${encodeURIComponent(debut)}&fin=${encodeURIComponent(fin)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.disponible) {
+          indicator.style.background = 'var(--green2)';
+          indicator.style.color = 'var(--green)';
+          indicator.innerHTML = '✅ Salle disponible sur ce créneau !';
+          btn.disabled = false;
+        } else {
+          indicator.style.background = 'var(--red2)';
+          indicator.style.color = 'var(--red)';
+          indicator.innerHTML = '❌ Conflit détecté : Salle déjà réservée';
+          btn.disabled = true;
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+      });
+  }, 500);
+}
+
+// Initialisation
+window.onload = function() {
+  // Tu peux ajouter ici d'autres initialisations si besoin
+};
+</script>
+{% endblock %}

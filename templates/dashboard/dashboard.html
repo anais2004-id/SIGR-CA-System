@@ -14,6 +14,29 @@
 
 {% block content %}
 
+{# ══════════════════════════════════════════════
+   GARDE : si l'utilisateur est un employé (pas admin)
+   → on l'affiche une bannière de redirection
+   ══════════════════════════════════════════════ #}
+{% if user.is_authenticated and not user.is_staff %}
+
+  <div class="alert-box info" style="margin-bottom:8px">
+    <div class="alert-ico">🔄</div>
+    <div>
+      <div class="alert-text">Vous êtes connecté en tant qu'employé.</div>
+      <div class="alert-meta">Redirection vers votre espace personnel...</div>
+    </div>
+  </div>
+
+  <script>
+    // Redirection automatique vers l'espace employé
+    window.location.href = "{% url 'employe_espace' %}";
+  </script>
+
+{% else %}
+
+{# ══ CONTENU ADMIN UNIQUEMENT ══ #}
+
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Employés actifs</div><div class="kpi-icon">👥</div></div>
@@ -90,9 +113,7 @@
 <!-- Zones les plus actives -->
 <div class="card">
   <div class="card-head"><span>🚪</span><span class="card-title">Zones les plus fréquentées</span></div>
-  <div class="card-body" id="zones-frequentes">
-    <!-- Sera rempli par JavaScript -->
-  </div>
+  <div class="card-body" id="zones-frequentes"></div>
 </div>
 
 <!-- Alertes -->
@@ -127,52 +148,37 @@
   </div>
 </div>
 
+{% endif %}{# fin bloc admin #}
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// Données 7 jours depuis le backend
+// Ne lancer les graphiques que si on est admin
+{% if user.is_staff %}
 const stats7jours = {{ stats_7jours|safe }};
 
 function render7DaysChart() {
   const mc = document.getElementById("mini-chart");
   const ml = document.getElementById("mini-labels");
   if (!mc) return;
-
-  mc.innerHTML = "";
-  ml.innerHTML = "";
-
-  let labels = [];
-  let okData = [];
-  let noData = [];
-
+  mc.innerHTML = ""; ml.innerHTML = "";
+  let labels = [], okData = [], noData = [];
   stats7jours.forEach(item => {
     labels.push(item._id ? item._id.slice(5) : "—");
     okData.push(item.autorises || 0);
     noData.push((item.total || 0) - (item.autorises || 0));
   });
-
-  while (labels.length < 7) {
-    labels.unshift("—");
-    okData.unshift(0);
-    noData.unshift(0);
-  }
-
+  while (labels.length < 7) { labels.unshift("—"); okData.unshift(0); noData.unshift(0); }
   const max = Math.max(...okData.map((v,i) => v + noData[i])) || 1;
-
   labels.forEach((label, i) => {
-    const wrap = document.createElement("div");
-    wrap.className = "bar-wrap";
+    const wrap = document.createElement("div"); wrap.className = "bar-wrap";
     const okH = Math.round((okData[i] / max) * 88);
     const noH = Math.round((noData[i] / max) * 88);
-
-    wrap.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;height:88px">
-        <div class="bar no" style="height:${noH}px"></div>
-        <div class="bar ok" style="height:${okH}px"></div>
-      </div>`;
+    wrap.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;height:88px">
+      <div class="bar no" style="height:${noH}px"></div>
+      <div class="bar ok" style="height:${okH}px"></div></div>`;
     mc.appendChild(wrap);
-
     const lbl = document.createElement("div");
     lbl.style.cssText = "flex:1;text-align:center;font-size:9px;color:var(--text3);font-family:var(--mono)";
     lbl.textContent = label;
@@ -180,37 +186,33 @@ function render7DaysChart() {
   });
 }
 
-// Zones les plus fréquentes
 function renderZonesFrequentes() {
   const container = document.getElementById('zones-frequentes');
+  if (!container) return;
   const zones = [
     {nom: "Direction", count: 142, pct: 92},
     {nom: "Atelier Production", count: 98, pct: 76},
     {nom: "Salle Serveur", count: 67, pct: 54},
     {nom: "Bureau Administratif", count: 45, pct: 38},
   ];
-
   let html = '';
   zones.forEach(z => {
-    html += `
-      <div style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-          <span style="font-size:13px">${z.nom}</span>
-          <span style="font-family:var(--mono);color:var(--text2)">${z.count} accès</span>
-        </div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%"></div></div>
-      </div>`;
+    html += `<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:13px">${z.nom}</span>
+        <span style="font-family:var(--mono);color:var(--text2)">${z.count} accès</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%"></div></div>
+    </div>`;
   });
   container.innerHTML = html;
 }
 
-// Live Mode
 let liveInterval;
 function toggleLiveMode() {
   const liveText = document.getElementById('live-text');
   if (liveInterval) {
-    clearInterval(liveInterval);
-    liveInterval = null;
+    clearInterval(liveInterval); liveInterval = null;
     liveText.textContent = "LIVE (arrêté)";
   } else {
     liveInterval = setInterval(() => location.reload(), 15000);
@@ -218,14 +220,12 @@ function toggleLiveMode() {
   }
 }
 
-function refreshDashboard() {
-  location.reload();
-}
+function refreshDashboard() { location.reload(); }
 
-// Initialisation
 window.onload = function() {
   render7DaysChart();
   renderZonesFrequentes();
 };
+{% endif %}
 </script>
 {% endblock %}

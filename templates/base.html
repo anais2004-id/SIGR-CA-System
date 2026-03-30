@@ -51,6 +51,14 @@
     .user-name { font-size:12px; font-weight:600; color:var(--text); }
     .user-role { font-size:10px; color:var(--text3); }
 
+    /* Badge employé connecté */
+    .emp-sidebar-badge { margin:8px 8px 4px; padding:9px 12px; background:var(--green2); border:1px solid rgba(45,186,111,.25); border-radius:var(--radius); }
+    .emp-sidebar-badge-title { font-size:9px; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:.8px; margin-bottom:2px; }
+    .emp-sidebar-badge-name { font-size:12px; font-weight:600; color:var(--text); }
+    .emp-sidebar-badge-role { font-size:10px; color:var(--text2); }
+    .logout-btn { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:var(--radius); cursor:pointer; color:var(--red); font-size:13px; font-weight:500; transition:all .15s; text-decoration:none; border:1px solid transparent; margin-top:4px; }
+    .logout-btn:hover { background:var(--red2); border-color:rgba(248,81,73,.25); }
+
     /* ── TOPBAR ── */
     .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
     .topbar { height:54px; min-height:54px; background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:14px; padding:0 24px; }
@@ -146,7 +154,7 @@
     .emp-av { width:30px; height:30px; border-radius:var(--radius); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:white; flex-shrink:0; }
 
     /* ── SEARCH ── */
-    .search-inp { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; font-size:12.5px; color:var(--text); font-family:var(--font); outline:none; transition:border-color .15s; }
+    .search-inp { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; font-size:12.5px; color:var(--text); font-family:var(--font); outline:none; transition:all .15s; }
     .search-inp:focus { border-color:rgba(31,111,235,.5); }
     .filter-tab { padding:6px 13px; border-radius:var(--radius); background:var(--bg3); border:1px solid var(--border); color:var(--text2); font-size:12px; cursor:pointer; transition:all .15s; font-family:var(--font); font-weight:500; }
     .filter-tab.active { background:var(--blue3); color:var(--blue2); border-color:rgba(31,111,235,.3); }
@@ -156,10 +164,10 @@
     .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:1000; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); }
     .modal { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:28px; width:500px; max-width:92vw; max-height:88vh; overflow-y:auto; box-shadow:0 24px 64px rgba(0,0,0,.6); }
     .modal-title { font-size:16px; font-weight:700; color:var(--text); margin-bottom:4px; }
-    .modal-sub   { font-size:12px;  color:var(--text2); margin-bottom:22px; }
+    .modal-sub   { font-size:12px; color:var(--text2); margin-bottom:22px; }
     .form-row    { margin-bottom:16px; }
     .form-label  { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:7px; display:block; }
-    .form-input  { width:100%; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:9px 12px; font-size:13px; color:var(--text); font-family:var(--font); outline:none; transition:border-color .15s; }
+    .form-input  { width:100%; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:9px 12px; font-size:13px; color:var(--text); font-family:var(--font); outline:none; transition:all .15s; }
     .form-input:focus { border-color:rgba(31,111,235,.5); box-shadow:0 0 0 3px rgba(31,111,235,.1); }
     .form-select { width:100%; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:9px 12px; font-size:13px; color:var(--text); font-family:var(--font); outline:none; }
     .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:22px; padding-top:16px; border-top:1px solid var(--border); }
@@ -201,7 +209,7 @@
     .occ-card:hover { border-color:rgba(31,111,235,.3); transform:translateY(-2px); }
     .occ-card.selected { border-color:var(--blue); background:var(--blue3); }
     .occ-name { font-size:13px; font-weight:600; color:var(--text); margin-bottom:2px; }
-    .occ-code { font-size:10px; color:var(--text3); font-family:var(--mono); margin-bottom:10px; }
+    .occ-code { font-size:10px; color:var(--text3); font-family:var(--mono); }
     .occ-bar  { background:var(--bg4); border-radius:3px; height:5px; }
     .occ-fill { height:100%; border-radius:3px; transition:width .5s; }
     .occ-fill.full { background:var(--red); }
@@ -264,47 +272,84 @@
 </head>
 <body>
 
-<!-- SIDEBAR -->
+<!-- ══════════════════════════════════════════
+     SIDEBAR — DYNAMIQUE selon le rôle
+     ══════════════════════════════════════════ -->
 <aside class="sidebar">
   <div class="logo">
     <div class="logo-mark">🔐</div>
     <div>
       <div class="logo-title">SIGR-CA</div>
-      <div class="logo-sub">Système Intelligent de Gestion des Ressources</div>
+      <div class="logo-sub">
+        {% if user.is_authenticated and not user.is_staff %}
+          Espace Employé
+        {% else %}
+          Gestion Intelligente des Ressources
+        {% endif %}
+      </div>
     </div>
   </div>
+
+  <!-- ══ SIDEBAR ADMIN ══ -->
+  {% if user.is_authenticated and user.is_staff %}
   <nav>
     <div class="nav-group">Principal</div>
-    <a href="{% url 'dashboard' %}"      class="nav-item {% block nav_dashboard %}{% endblock %}"><span class="nav-ico">⊞</span>Tableau de bord</a>
-    <a href="{% url 'employe_list' %}"   class="nav-item {% block nav_employes %}{% endblock %}"><span class="nav-ico">👥</span>Employés</a>
-    <a href="{% url 'historique' %}"     class="nav-item {% block nav_historique %}{% endblock %}"><span class="nav-ico">📋</span>Historique des accès</a>
+    <a href="{% url 'dashboard' %}"        class="nav-item {% block nav_dashboard %}{% endblock %}"><span class="nav-ico">⊞</span>Tableau de bord</a>
+    <a href="{% url 'employe_list' %}"     class="nav-item {% block nav_employes %}{% endblock %}"><span class="nav-ico">👥</span>Employés</a>
+    <a href="{% url 'historique' %}"       class="nav-item {% block nav_historique %}{% endblock %}"><span class="nav-ico">📋</span>Historique des accès</a>
 
     <div class="nav-group">Gestion des Ressources</div>
-    <a href="{% url 'calendrier' %}"     class="nav-item {% block nav_calendrier %}{% endblock %}"><span class="nav-ico">📅</span>Calendrier d'accès</a>
+    <a href="{% url 'calendrier' %}"       class="nav-item {% block nav_calendrier %}{% endblock %}"><span class="nav-ico">📅</span>Calendrier d'accès</a>
     <a href="{% url 'reservation_list' %}" class="nav-item {% block nav_reservations %}{% endblock %}"><span class="nav-ico">📆</span>Réservations</a>
-    <a href="{% url 'ressources' %}"     class="nav-item {% block nav_ressources %}{% endblock %}"><span class="nav-ico">🚪</span>Ressources & Bureaux</a>
-    <a href="{% url 'equipement_list' %}" class="nav-item {% block nav_equipements %}{% endblock %}"><span class="nav-ico">📟</span>Équipements</a>
+    <a href="{% url 'ressources' %}"       class="nav-item {% block nav_ressources %}{% endblock %}"><span class="nav-ico">🚪</span>Ressources & Bureaux</a>
+    <a href="{% url 'equipement_list' %}"  class="nav-item {% block nav_equipements %}{% endblock %}"><span class="nav-ico">📟</span>Équipements</a>
 
     <div class="nav-group">Analyse & Surveillance</div>
-    <a href="{% url 'live' %}"           class="nav-item {% block nav_live %}{% endblock %}"><span class="nav-ico">📡</span>Surveillance live <span class="nav-badge">{{ alertes|default:"0" }}</span></a>
-    <a href="{% url 'statistiques' %}"   class="nav-item {% block nav_stats %}{% endblock %}"><span class="nav-ico">📊</span>Statistiques</a>
+    <a href="{% url 'live' %}"             class="nav-item {% block nav_live %}{% endblock %}"><span class="nav-ico">📡</span>Surveillance live <span class="nav-badge">{{ alertes|default:"0" }}</span></a>
+    <a href="{% url 'statistiques' %}"     class="nav-item {% block nav_stats %}{% endblock %}"><span class="nav-ico">📊</span>Statistiques</a>
 
     <div class="nav-group">Système</div>
-    <a href="{% url 'parametres' %}"     class="nav-item {% block nav_settings %}{% endblock %}"><span class="nav-ico">⚙️</span>Paramètres</a>
+    <a href="{% url 'parametres' %}"       class="nav-item {% block nav_settings %}{% endblock %}"><span class="nav-ico">⚙️</span>Paramètres</a>
   </nav>
   <div class="sidebar-footer">
-    {% if user.is_authenticated %}
-    <div class="user-card" onclick="location.href='{% url 'logout' %}'" style="cursor:pointer;">
+    <div class="user-card" onclick="location.href='{% url 'logout' %}'" title="Cliquer pour se déconnecter">
       <div class="user-av">{{ user.username|slice:":2"|upper }}</div>
       <div>
         <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
-        <div class="user-role">Administrateur</div>
+        <div class="user-role">⚙️ Administrateur</div>
       </div>
     </div>
-    {% else %}
-    <a href="{% url 'login' %}" class="nav-item"><span class="nav-ico">🔑</span>Connexion</a>
-    {% endif %}
   </div>
+
+  <!-- ══ SIDEBAR EMPLOYÉ ══ -->
+  {% elif user.is_authenticated and not user.is_staff %}
+  <div class="emp-sidebar-badge">
+    <div class="emp-sidebar-badge-title">👤 Connecté</div>
+    <div class="emp-sidebar-badge-name">{{ user.get_full_name|default:user.username }}</div>
+    <div class="emp-sidebar-badge-role">{{ user.email|default:"Employé" }}</div>
+  </div>
+  <nav>
+    <div class="nav-group">Mon espace</div>
+    <a href="{% url 'employe_espace' %}"             class="nav-item {% block nav_emp_home %}{% endblock %}"><span class="nav-ico">⊞</span>Mon tableau de bord</a>
+    <a href="{% url 'employe_mes_reservations' %}"   class="nav-item {% block nav_emp_resa %}{% endblock %}"><span class="nav-ico">📆</span>Mes réservations</a>
+    <a href="{% url 'employe_mon_historique' %}"     class="nav-item {% block nav_emp_hist %}{% endblock %}"><span class="nav-ico">📋</span>Mon historique d'accès</a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="{% url 'employe_logout' %}" class="logout-btn">
+      <span class="nav-ico">🚪</span>Se déconnecter
+    </a>
+  </div>
+
+  <!-- ══ NON CONNECTÉ ══ -->
+  {% else %}
+  <nav>
+    <div class="nav-group">Accès</div>
+    <a href="{% url 'login' %}"            class="nav-item"><span class="nav-ico">🔑</span>Connexion Admin</a>
+    <a href="{% url 'login_employe' %}"    class="nav-item"><span class="nav-ico">👤</span>Connexion Employé</a>
+    <a href="{% url 'register_employe' %}" class="nav-item"><span class="nav-ico">📝</span>Créer un compte</a>
+  </nav>
+  {% endif %}
+
 </aside>
 
 <!-- MAIN -->
