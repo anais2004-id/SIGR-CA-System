@@ -308,7 +308,10 @@
     <div class="nav-group">Analyse & Surveillance</div>
     <a href="{% url 'live' %}"             class="nav-item {% block nav_live %}{% endblock %}"><span class="nav-ico">📡</span>Surveillance live <span class="nav-badge">{{ alertes|default:"0" }}</span></a>
     <a href="{% url 'statistiques' %}"     class="nav-item {% block nav_stats %}{% endblock %}"><span class="nav-ico">📊</span>Statistiques</a>
-
+<a href="{% url 'active_sessions' %}" class="nav-item {% block nav_sessions %}{% endblock %}">
+    <span class="nav-ico">🟢</span>Sessions actives
+    <span class="nav-badge" id="session-badge">0</span>
+</a>
     <div class="nav-group">Système</div>
     <a href="{% url 'parametres' %}"       class="nav-item {% block nav_settings %}{% endblock %}"><span class="nav-ico">⚙️</span>Paramètres</a>
     
