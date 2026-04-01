@@ -1,32 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Gestion des équipements{% endblock %}
+{% block title %}Gestion des équipements - SIGR-CA{% endblock %}
 {% block nav_ressources %}active{% endblock %}
-{% block page_title %}Gestion des équipements{% endblock %}
-{% block page_sub %}Lecteurs RFID & QR Code{% endblock %}
+{% block page_title %}Gestion des équipements IoT{% endblock %}
+{% block page_sub %}Lecteurs RFID, QR Code et contrôle d'accès{% endblock %}
 
 {% block topbar_actions %}
 <a href="{% url 'equipement_ajouter' %}" class="btn btn-primary btn-sm">+ Nouvel équipement</a>
+<button class="btn btn-ghost btn-sm" onclick="exportEquipements()">⬇️ Exporter CSV</button>
 <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
 {% endblock %}
 
 {% block content %}
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+<!-- KPIs améliorés -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Total équipements</div><div class="kpi-icon">📟</div></div>
     <div class="kpi-value">{{ nb_total }}</div>
+    <div class="kpi-delta">tous types confondus</div>
   </div>
   <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">RFID</div><div class="kpi-icon">🔖</div></div>
     <div class="kpi-value">{{ nb_rfid }}</div>
+    <div class="kpi-delta">lecteurs RFID</div>
   </div>
   <div class="kpi k-purple">
     <div class="kpi-header"><div class="kpi-label">QR Code</div><div class="kpi-icon">📱</div></div>
     <div class="kpi-value">{{ nb_qr }}</div>
+    <div class="kpi-delta">scanners QR</div>
   </div>
-  <div class="kpi k-amber">
+  <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">Actifs</div><div class="kpi-icon">✅</div></div>
     <div class="kpi-value">{{ nb_actifs }}</div>
+    <div class="kpi-delta">en service</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">En maintenance</div><div class="kpi-icon">🔧</div></div>
+    <div class="kpi-value">{{ nb_maintenance|default:0 }}</div>
+    <div class="kpi-delta">hors service</div>
   </div>
 </div>
 
@@ -34,12 +45,24 @@
   <div class="card-head">
     <span>📟</span>
     <span class="card-title">Liste des équipements</span>
-    <div style="margin-left:auto">
-      <input class="search-inp" style="width:260px" id="searchInput" 
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <input class="search-inp" style="width:240px" id="searchInput" 
              placeholder="🔍 Nom, code, emplacement..." onkeyup="filterTable()">
+      <select class="form-select" style="width:130px" id="typeFilter" onchange="filterTable()">
+        <option value="all">Tous les types</option>
+        <option value="RFID">🔖 RFID</option>
+        <option value="QR">📱 QR Code</option>
+      </select>
+      <select class="form-select" style="width:130px" id="statusFilter" onchange="filterTable()">
+        <option value="all">Tous statuts</option>
+        <option value="actif">✅ Actif</option>
+        <option value="maintenance">🔧 Maintenance</option>
+        <option value="inactif">❌ Inactif</option>
+      </select>
+      <button class="filter-tab active" onclick="refreshPage()" style="background:var(--blue); color:white">Reset</button>
     </div>
   </div>
-  <div style="overflow-x:auto">
+  <div style="overflow-x:auto; max-height:500px; overflow-y:auto">
     <table class="tbl">
       <thead>
         <tr>
@@ -52,65 +75,187 @@
           <th>Activité 24h</th>
           <th>Statut</th>
           <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
+        </thead>
+      <tbody id="equipments-table-body">
         {% for eq in equipements %}
-        <tr class="equip-row" data-name="{{ eq.nom|lower }}" data-code="{{ eq.code|lower }}">
-          <td>
+        <tr class="equip-row" 
+            data-name="{{ eq.nom|lower }}" 
+            data-code="{{ eq.code|lower }}"
+            data-type="{{ eq.type }}"
+            data-status="{{ eq.statut }}"
+            data-emplacement="{{ eq.emplacement|lower }}">
+           <td>
             <div style="display:flex;align-items:center;gap:10px">
               <div class="emp-av" style="background:{% if eq.type == 'RFID' %}#1f6feb{% else %}#a371f7{% endif %}">
                 {% if eq.type == 'RFID' %}🔖{% else %}📱{% endif %}
               </div>
               <div>
                 <div style="font-weight:500">{{ eq.nom }}</div>
-                <div style="font-size:11px;color:var(--text3)">{{ eq.description|truncatechars:30|default:"" }}</div>
+                <div style="font-size:10px;color:var(--text3)">{{ eq.description|truncatechars:35|default:"" }}</div>
               </div>
             </div>
-          </td>
-          <td><span class="badge {% if eq.type == 'RFID' %}b-blue{% else %}b-purple{% endif %}">{{ eq.type }}</span></td>
-          <td><span style="font-family:var(--mono);font-size:11px">{{ eq.code }}</span></td>
-          <td>{{ eq.emplacement|default:"—" }}</td>
-          <td>{{ eq.bureau_nom|default:"Non assigné" }}</td>
-          <td><span style="font-family:var(--mono);font-size:10px">{{ eq.ip_address|default:"—" }}:{{ eq.port|default:"—" }}</span></td>
-          <td style="font-family:var(--mono);text-align:center">{{ eq.logs_24h|default:"0" }}</td>
+           </td>
+           <td><span class="badge {% if eq.type == 'RFID' %}b-blue{% else %}b-purple{% endif %}">{{ eq.type }}</span></td>
+           <td><span style="font-family:var(--mono);font-size:11px">{{ eq.code }}</span></td>
+           <td>{{ eq.emplacement|default:"—" }}</td>
+           <td>{{ eq.bureau_nom|default:"Non assigné" }}</td>
+           <td><span style="font-family:var(--mono);font-size:10px">{{ eq.ip_address|default:"—" }}:{{ eq.port|default:"—" }}</span></td>
+          <td style="font-family:var(--mono);text-align:center;font-weight:600">{{ eq.logs_24h|default:"0" }}</td>
           <td>
             {% if eq.statut == 'actif' %}
               <span class="badge b-green">● ACTIF</span>
+            {% elif eq.statut == 'maintenance' %}
+              <span class="badge b-amber">🔧 MAINTENANCE</span>
             {% else %}
               <span class="badge b-gray">● INACTIF</span>
             {% endif %}
           </td>
           <td>
-            <div style="display:flex;gap:4px">
+            <div style="display:flex;gap:4px; flex-wrap:wrap">
               <a href="{% url 'equipement_detail' eq.id %}" class="btn btn-edit btn-sm" title="Détail">👁️</a>
               <a href="{% url 'equipement_modifier' eq.id %}" class="btn btn-ghost btn-sm" title="Modifier">✏️</a>
               <button onclick="testerEquipement('{{ eq.id }}')" class="btn btn-green btn-sm" title="Tester connexion">📡</button>
+              <button onclick="showLogsModal('{{ eq.id }}', '{{ eq.nom }}')" class="btn btn-info btn-sm" title="Voir logs" style="background:var(--blue3);color:var(--blue2)">📋</button>
             </div>
           </td>
-        </tr>
+         </tr>
         {% empty %}
-        <tr>
-          <td colspan="9" style="text-align:center;padding:60px;color:var(--text3)">
-            Aucun équipement enregistré
-            <br><br>
-            <a href="{% url 'equipement_ajouter' %}" class="btn btn-primary btn-sm">+ Ajouter un équipement</a>
-          </td>
-        </tr>
+         <tr><td colspan="9" style="text-align:center;padding:60px;color:var(--text3)">
+          Aucun équipement enregistré<br><br>
+          <a href="{% url 'equipement_ajouter' %}" class="btn btn-primary btn-sm">+ Ajouter un équipement</a>
+         </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  
+  <!-- Pagination -->
+  <div class="card-body" style="border-top:1px solid var(--border); padding:12px 16px">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
+      <div>
+        <span style="font-size:12px; color:var(--text2)">Afficher</span>
+        <select id="rowsPerPage" class="form-select" style="width:70px; display:inline-block; margin:0 8px" onchange="changeRowsPerPage()">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
+        <span style="font-size:12px; color:var(--text2)">lignes</span>
+      </div>
+      <div id="paginationControls" style="display:flex; gap:8px; align-items:center"></div>
+    </div>
+  </div>
 </div>
 
+<!-- Modal Logs -->
+<div class="modal-overlay" id="logsModal" style="display:none" onclick="if(event.target===this)closeLogsModal()">
+  <div class="modal" style="width:600px">
+    <div class="modal-title">📋 Historique des accès</div>
+    <div class="modal-sub" id="logs-modal-title">Équipement: —</div>
+    <div id="logs-modal-content" style="max-height:400px; overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="exportLogs()">⬇️ Exporter</button>
+      <button class="btn btn-ghost" onclick="closeLogsModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.filter-tab {
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all .15s;
+}
+.filter-tab.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+.btn-info:hover {
+  opacity: 0.8;
+}
+</style>
+
 <script>
+let currentPage = 1;
+let rowsPerPage = 20;
+let allRows = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+  allRows = Array.from(document.querySelectorAll('.equip-row'));
+  updateEquipmentCount();
+  setupPagination();
+});
+
 function filterTable() {
   const search = document.getElementById('searchInput').value.toLowerCase();
-  document.querySelectorAll('.equip-row').forEach(row => {
+  const typeFilter = document.getElementById('typeFilter').value;
+  const statusFilter = document.getElementById('statusFilter').value;
+  
+  let visibleCount = 0;
+  
+  allRows.forEach(row => {
     const name = row.dataset.name || '';
     const code = row.dataset.code || '';
-    row.style.display = (name.includes(search) || code.includes(search)) ? '' : 'none';
+    const emplacement = row.dataset.emplacement || '';
+    const type = row.dataset.type || '';
+    const status = row.dataset.status || '';
+    
+    const matchesSearch = !search || name.includes(search) || code.includes(search) || emplacement.includes(search);
+    const matchesType = typeFilter === 'all' || type === typeFilter;
+    const matchesStatus = statusFilter === 'all' || status === statusFilter;
+    
+    const visible = matchesSearch && matchesType && matchesStatus;
+    row.style.display = visible ? '' : 'none';
+    if (visible) visibleCount++;
   });
+  
+  updateEquipmentCount(visibleCount);
+  currentPage = 1;
+  setupPagination();
+}
+
+function updateEquipmentCount(count = null) {
+  const visibleRows = count !== null ? count : document.querySelectorAll('.equip-row:not([style*="display: none"])').length;
+  // Optionnel: afficher le nombre dans un élément
+}
+
+function setupPagination() {
+  const visibleRows = Array.from(document.querySelectorAll('.equip-row')).filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
+  const start = (currentPage - 1) * rowsPerPage;
+  const end = start + rowsPerPage;
+  
+  allRows.forEach(row => row.style.display = 'none');
+  visibleRows.slice(start, end).forEach(row => row.style.display = '');
+  
+  const controls = document.getElementById('paginationControls');
+  if(controls) {
+    controls.innerHTML = `
+      <button class="btn btn-sm btn-ghost" onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
+      <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+      <span style="font-size:12px; color:var(--text2)">Page ${currentPage} / ${totalPages || 1}</span>
+      <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>›</button>
+      <button class="btn btn-sm btn-ghost" onclick="goToPage(${totalPages})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>»</button>
+    `;
+  }
+}
+
+function goToPage(page) {
+  const visibleRows = Array.from(document.querySelectorAll('.equip-row')).filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  setupPagination();
+}
+
+function changeRowsPerPage() {
+  rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
+  currentPage = 1;
+  setupPagination();
 }
 
 function refreshPage() {
@@ -118,17 +263,85 @@ function refreshPage() {
 }
 
 function testerEquipement(id) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ Test...';
+  
   fetch(`/equipements/${id}/tester/`)
     .then(r => r.json())
     .then(data => {
       if (data.status === 'success') {
         alert(`✅ ${data.message}\nTemps de réponse: ${data.response_time}ms`);
-        location.reload();
       } else {
         alert(`❌ ${data.message}`);
       }
     })
-    .catch(err => alert('Erreur de connexion'));
+    .catch(err => alert('❌ Erreur de connexion'))
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = '📡';
+    });
+}
+
+function showLogsModal(id, name) {
+  document.getElementById('logs-modal-title').textContent = `Équipement: ${name}`;
+  document.getElementById('logsModal').style.display = 'flex';
+  
+  fetch(`/api/equipements/${id}/logs/`)
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('logs-modal-content');
+      if(data.logs && data.logs.length > 0) {
+        container.innerHTML = `
+          <table class="tbl" style="width:100%">
+            <thead><tr><th>Date</th><th>Employé</th><th>Résultat</th></tr></thead>
+            <tbody>
+              ${data.logs.map(log => `
+                <tr>
+                  <td style="font-family:monospace; font-size:11px">${new Date(log.timestamp).toLocaleString()}</td>
+                  <td>${log.nom_utilisateur}</td>
+                  <td><span class="badge ${log.resultat === 'AUTORISE' ? 'b-green' : 'b-red'}">${log.resultat}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">Aucun log pour cet équipement</div>';
+      }
+    });
+}
+
+function closeLogsModal() {
+  document.getElementById('logsModal').style.display = 'none';
+}
+
+function exportEquipements() {
+  let csv = "Nom,Type,Code,Emplacement,Bureau,IP,Port,Statut,Activité 24h\n";
+  const rows = document.querySelectorAll('.equip-row');
+  rows.forEach(row => {
+    if (row.style.display !== 'none') {
+      const cells = row.querySelectorAll('td');
+      csv += `"${cells[0].querySelector('div > div:first-child')?.textContent.trim() || ''}",`;
+      csv += `"${cells[1].textContent.trim()}",`;
+      csv += `"${cells[2].textContent.trim()}",`;
+      csv += `"${cells[3].textContent.trim()}",`;
+      csv += `"${cells[4].textContent.trim()}",`;
+      csv += `"${cells[5].textContent.split(':')[0].trim() || ''}",`;
+      csv += `"${cells[5].textContent.split(':')[1]?.trim() || ''}",`;
+      csv += `"${cells[7].textContent.trim()}",`;
+      csv += `"${cells[6].textContent.trim()}"\n`;
+    }
+  });
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `equipements_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+}
+
+function exportLogs() {
+  alert('Export des logs disponible dans la vue détail');
 }
 </script>
 {% endblock %}

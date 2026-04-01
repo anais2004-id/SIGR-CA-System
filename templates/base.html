@@ -268,6 +268,7 @@
     .day-cb { display:flex; flex-direction:column; align-items:center; gap:4px; }
     .day-cb label { font-size:10px; color:var(--text2); font-weight:500; }
     .day-cb input { accent-color:var(--blue2); }
+    
   </style>
 </head>
 <body>
@@ -310,6 +311,7 @@
 
     <div class="nav-group">Système</div>
     <a href="{% url 'parametres' %}"       class="nav-item {% block nav_settings %}{% endblock %}"><span class="nav-ico">⚙️</span>Paramètres</a>
+    
   </nav>
   <div class="sidebar-footer">
     <div class="user-card" onclick="location.href='{% url 'logout' %}'" title="Cliquer pour se déconnecter">
@@ -333,6 +335,9 @@
     <a href="{% url 'employe_espace' %}"             class="nav-item {% block nav_emp_home %}{% endblock %}"><span class="nav-ico">⊞</span>Mon tableau de bord</a>
     <a href="{% url 'employe_mes_reservations' %}"   class="nav-item {% block nav_emp_resa %}{% endblock %}"><span class="nav-ico">📆</span>Mes réservations</a>
     <a href="{% url 'employe_mon_historique' %}"     class="nav-item {% block nav_emp_hist %}{% endblock %}"><span class="nav-ico">📋</span>Mon historique d'accès</a>
+   <a href="{% url 'employe_profil' %}" class="nav-item {% block nav_emp_profil %}{% endblock %}">
+    <span class="nav-ico">👤</span>Mon profil
+  </a>
   </nav>
   <div class="sidebar-footer">
     <a href="{% url 'employe_logout' %}" class="logout-btn">

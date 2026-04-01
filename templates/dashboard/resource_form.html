@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} une ressource - SIGR-CA{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier la ressource{% else %}Ajouter une ressource{% endif %}{% endblock %}
+{% block page_sub %}{% if is_edit %}{{ resource.nom }}{% else %}Créer une nouvelle ressource{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'ressources' %}" class="btn btn-ghost btn-sm">← Retour</a>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:800px;margin:0 auto">
+  <div class="card">
+    <div class="card-head">
+      <span>{% if is_edit %}✏️{% else %}➕{% endif %}</span>
+      <span class="card-title">{% if is_edit %}Modifier la ressource{% else %}Nouvelle ressource{% endif %}</span>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Nom <span style="color:var(--red)">*</span></label>
+            <input class="form-input" name="nom" value="{{ resource.nom|default:'' }}" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Catégorie</label>
+            <select class="form-select" name="categorie">
+              <option value="salle" {% if resource.categorie == 'salle' %}selected{% endif %}>Salle</option>
+              <option value="materiel" {% if resource.categorie == 'materiel' %}selected{% endif %}>Matériel</option>
+              <option value="equipement" {% if resource.categorie == 'equipement' %}selected{% endif %}>Équipement</option>
+              <option value="vehicule" {% if resource.categorie == 'vehicule' %}selected{% endif %}>Véhicule</option>
+              <option value="laboratoire" {% if resource.categorie == 'laboratoire' %}selected{% endif %}>Laboratoire</option>
+              <option value="autre" {% if resource.categorie == 'autre' %}selected{% endif %}>Autre</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <label class="form-label">Description</label>
+          <textarea class="form-input" name="description" rows="3">{{ resource.description|default:'' }}</textarea>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Localisation</label>
+            <input class="form-input" name="localisation" value="{{ resource.localisation|default:'' }}">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Bureau associé</label>
+            <select class="form-select" name="bureau_associe">
+              <option value="">— Aucun —</option>
+              {% for b in bureaux %}
+              <option value="{{ b.id }}" {% if resource.bureau_associe == b.id %}selected{% endif %}>{{ b.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-row">
+            <label class="form-label">Capacité</label>
+            <input class="form-input" name="capacite" type="number" value="{{ resource.capacite|default:1 }}" min="1">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Statut</label>
+            <select class="form-select" name="statut">
+              <option value="disponible" {% if resource.statut == 'disponible' %}selected{% endif %}>Disponible</option>
+              <option value="maintenance" {% if resource.statut == 'maintenance' %}selected{% endif %}>En maintenance</option>
+              <option value="reserve" {% if resource.statut == 'reserve' %}selected{% endif %}>Réservé</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="modal-actions" style="margin-top:24px">
+          <a href="{% url 'ressources' %}" class="btn btn-ghost">Annuler</a>
+          <button type="submit" class="btn btn-primary">
+            {% if is_edit %}💾 Enregistrer{% else %}➕ Créer la ressource{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

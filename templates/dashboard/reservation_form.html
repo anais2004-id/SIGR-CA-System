@@ -1,16 +1,17 @@
 {% extends "base.html" %}
-{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} réservation{% endblock %}
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} réservation - SIGR-CA{% endblock %}
 {% block nav_reservations %}active{% endblock %}
 {% block page_title %}{% if is_edit %}Modifier la réservation{% else %}Nouvelle réservation{% endif %}{% endblock %}
 {% block page_sub %}{% if is_edit %}{{ reservation.titre }}{% else %}Réserver une salle ou ressource{% endif %}{% endblock %}
 
 {% block topbar_actions %}
 <a href="{% url 'reservation_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+<button class="btn btn-ghost btn-sm" onclick="showSuggestions()">🤖 Suggestions IA</button>
 {% endblock %}
 
 {% block content %}
 
-<div style="max-width:700px;margin:0 auto">
+<div style="max-width:800px;margin:0 auto">
 
   {% if messages %}
   {% for message in messages %}
@@ -25,9 +26,10 @@
     <div class="card-head">
       <span>{% if is_edit %}✏️{% else %}➕{% endif %}</span>
       <span class="card-title">{% if is_edit %}Modifier la réservation{% else %}Créer une réservation{% endif %}</span>
+      <span class="card-sub">Contrôle d'accès intégré</span>
     </div>
     <div class="card-body" style="padding:28px 32px">
-      <form method="post">
+      <form method="post" id="reservationForm">
         {% csrf_token %}
 
         <!-- Titre -->
@@ -41,13 +43,12 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="form-row">
             <label class="form-label">Salle / Ressource <span style="color:var(--red)">*</span></label>
-            <select class="form-select" name="bureau_id" id="bureauSelect" onchange="checkDispo()" required>
+            <select class="form-select" name="bureau_id" id="bureauSelect" onchange="checkDispo(); loadBureauSchedule()" required>
               <option value="">— Choisir une salle —</option>
               {% for b in bureaux %}
               <option value="{{ b.id }}"
                 {% if reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}>
-                {{ b.nom }}
-                {% if b.capacite_max %}(Cap. {{ b.capacite_max }}){% endif %}
+                {{ b.nom }} {% if b.capacite_max %}(Cap. {{ b.capacite_max }}){% endif %}
               </option>
               {% endfor %}
             </select>
@@ -82,6 +83,30 @@
           </div>
         </div>
 
+        <!-- Récurrence -->
+        <div class="form-row">
+          <label class="form-label">Récurrence</label>
+          <select class="form-select" id="recurrenceSelect" onchange="toggleRecurrence()">
+            <option value="none">Aucune</option>
+            <option value="daily">Quotidienne</option>
+            <option value="weekly">Hebdomadaire</option>
+            <option value="monthly">Mensuelle</option>
+          </select>
+        </div>
+
+        <div id="recurrenceOptions" style="display:none; margin-top:12px; padding:12px; background:var(--bg3); border-radius:8px">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+            <div class="form-row">
+              <label class="form-label">Jusqu'au</label>
+              <input type="date" id="recurrenceEnd" class="form-input">
+            </div>
+            <div class="form-row">
+              <label class="form-label">Occurrences max</label>
+              <input type="number" id="recurrenceCount" class="form-input" value="10" min="1" max="100">
+            </div>
+          </div>
+        </div>
+
         <!-- Indicateur disponibilité -->
         <div id="dispo-indicator" style="display:none;padding:10px 14px;border-radius:var(--radius);margin-bottom:16px;font-size:12.5px;font-weight:500"></div>
 
@@ -102,6 +127,17 @@
             </select>
           </div>
           {% endif %}
+        </div>
+
+        <!-- Équipements requis -->
+        <div class="form-row">
+          <label class="form-label">Équipements requis</label>
+          <div style="display:flex; gap:12px; flex-wrap:wrap">
+            <label><input type="checkbox" name="equipements" value="videoprojecteur"> 📽️ Vidéoprojecteur</label>
+            <label><input type="checkbox" name="equipements" value="ecran"> 🖥️ Écran</label>
+            <label><input type="checkbox" name="equipements" value="tableau"> ✍️ Tableau blanc</label>
+            <label><input type="checkbox" name="equipements" value="visio"> 🎥 Visioconférence</label>
+          </div>
         </div>
 
         <!-- Description -->
@@ -129,7 +165,43 @@
       <div style="color:var(--text3);font-size:12px">Sélectionnez une salle et une date pour voir les créneaux.</div>
     </div>
   </div>
+
+  <!-- Suggestions IA -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-head"><span>🤖</span><span class="card-title">Suggestions intelligentes</span></div>
+    <div class="card-body" id="suggestions-container">
+      <div style="color:var(--text3);font-size:12px">Sélectionnez une salle pour voir les créneaux recommandés.</div>
+    </div>
+  </div>
 </div>
+
+<style>
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: block;
+}
+.form-input, .form-select, textarea.form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: var(--font);
+  outline: none;
+  transition: all 0.15s;
+}
+.form-input:focus, .form-select:focus, textarea.form-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(31,111,235,0.1);
+}
+</style>
 
 {% endblock %}
 
@@ -153,6 +225,7 @@ function checkDispo() {
     indicator.style.border = "1px solid rgba(248,81,73,.3)";
     indicator.style.color = "var(--red)";
     indicator.textContent = "⚠️ La date de fin doit être après la date de début.";
+    document.getElementById("submitBtn").disabled = true;
     return;
   }
 
@@ -187,13 +260,81 @@ function checkDispo() {
         indicator.style.background = "var(--amber2)";
         indicator.style.border = "1px solid rgba(227,179,65,.3)";
         indicator.style.color = "var(--amber)";
-        indicator.textContent = "⚠️ Impossible de vérifier la disponibilité (API indisponible).";
+        indicator.textContent = "⚠️ Impossible de vérifier la disponibilité.";
         document.getElementById("submitBtn").disabled = false;
       });
   }, 600);
 }
 
-// Pré-remplir avec l'heure actuelle arrondie à la prochaine heure
+function loadBureauSchedule() {
+  var bureauId = document.getElementById("bureauSelect").value;
+  var dateField = document.getElementById("dateDebut");
+  if (!bureauId || !dateField.value) return;
+  
+  var date = dateField.value.split('T')[0];
+  var card = document.getElementById("creneaux-card");
+  
+  fetch(`/api/bureaux/${bureauId}/schedule/?date=${date}`)
+    .then(r => r.json())
+    .then(data => {
+      card.style.display = "block";
+      var body = document.getElementById("creneaux-body");
+      if (data.creneaux && data.creneaux.length > 0) {
+        body.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px">`;
+        data.creneaux.forEach(c => {
+          body.innerHTML += `<div style="display:flex; justify-content:space-between; padding:8px; background:var(--bg3); border-radius:6px">
+            <span>🕐 ${c.debut} → ${c.fin}</span>
+            <span>📋 ${c.titre}</span>
+            <span>👤 ${c.employe}</span>
+          </div>`;
+        });
+        body.innerHTML += `</div>`;
+      } else {
+        body.innerHTML = `<div style="color:var(--green); padding:12px; text-align:center">✅ Aucune réservation pour cette date</div>`;
+      }
+    });
+}
+
+function toggleRecurrence() {
+  var recurrence = document.getElementById("recurrenceSelect").value;
+  var options = document.getElementById("recurrenceOptions");
+  options.style.display = recurrence !== "none" ? "block" : "none";
+}
+
+function showSuggestions() {
+  var bureauId = document.getElementById("bureauSelect").value;
+  var container = document.getElementById("suggestions-container");
+  
+  if (!bureauId) {
+    container.innerHTML = `<div style="color:var(--text3);font-size:12px">Veuillez d'abord sélectionner une salle.</div>`;
+    return;
+  }
+  
+  fetch(`/api/bureaux/${bureauId}/suggestions/`)
+    .then(r => r.json())
+    .then(data => {
+      container.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px">`;
+      data.suggestions.forEach(s => {
+        container.innerHTML += `
+          <div style="padding:10px; background:var(--bg3); border-radius:8px; cursor:pointer" onclick="applySuggestion('${s.debut}', '${s.fin}')">
+            <div style="font-weight:600">📅 ${s.date} - ${s.debut} → ${s.fin}</div>
+            <div style="font-size:12px; color:var(--text2)">📊 Taux d'occupation: ${s.taux}% · ✅ ${s.disponibilite}</div>
+          </div>`;
+      });
+      container.innerHTML += `</div>`;
+    });
+}
+
+function applySuggestion(debut, fin) {
+  var dateField = document.getElementById("dateDebut");
+  var finField = document.getElementById("dateFin");
+  var date = dateField.value.split('T')[0];
+  dateField.value = `${date}T${debut}`;
+  finField.value = `${date}T${fin}`;
+  checkDispo();
+}
+
+// Pré-remplir avec l'heure actuelle arrondie
 window.onload = function() {
   var debField = document.getElementById("dateDebut");
   var finField = document.getElementById("dateFin");

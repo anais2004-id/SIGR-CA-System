@@ -1,107 +1,190 @@
 {% extends "base.html" %}
-{% block title %}Historique des accès{% endblock %}
+{% block title %}Historique des accès - SIGR-CA{% endblock %}
 {% block nav_historique %}active{% endblock %}
-{% block page_title %}Historique des accès{% endblock %}
-{% block page_sub %}Journal complet des passages{% endblock %}
+{% block page_title %}Journal complet des accès{% endblock %}
+{% block page_sub %}Traçabilité et logs en temps réel{% endblock %}
 
 {% block topbar_actions %}
 <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇️ Exporter CSV</button>
+<button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 Exporter PDF</button>
 <button class="btn btn-primary btn-sm" onclick="refreshHistory()">⟳ Actualiser</button>
 {% endblock %}
 
 {% block content %}
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+<!-- KPIs enrichis -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">🔑</div></div>
     <div class="kpi-value">{{ total_acces|default:"0" }}</div>
+    <div class="kpi-delta">Depuis le début</div>
   </div>
   <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">Autorisés</div><div class="kpi-icon">✅</div></div>
     <div class="kpi-value">{{ acces_autorises|default:"0" }}</div>
+    <div class="kpi-delta">{{ taux_succes|default:0 }}% du total</div>
   </div>
   <div class="kpi k-red">
     <div class="kpi-header"><div class="kpi-label">Refusés</div><div class="kpi-icon">🚫</div></div>
     <div class="kpi-value">{{ acces_refuses|default:"0" }}</div>
+    <div class="kpi-delta neg">{{ taux_refus|default:0 }}% du total</div>
   </div>
   <div class="kpi k-amber">
     <div class="kpi-header"><div class="kpi-label">Aujourd'hui</div><div class="kpi-icon">📅</div></div>
     <div class="kpi-value">{{ acces_aujourdhui|default:"0" }}</div>
+    <div class="kpi-delta">Journée en cours</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">Accès récents</div><div class="kpi-icon">⏱️</div></div>
+    <div class="kpi-value">{{ acces_7jours|default:0 }}</div>
+    <div class="kpi-delta">7 derniers jours</div>
   </div>
 </div>
 
+<!-- Filtres avancés -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-head">
+    <span>🔍</span>
+    <span class="card-title">Filtres avancés</span>
+    <span class="card-sub">Affiner la recherche</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:16px">
+      <div>
+        <label class="form-label" style="font-size:10px">Recherche</label>
+        <input class="form-input" id="searchInput" placeholder="Nom, zone, badge..." oninput="filterHistory()">
+      </div>
+      <div>
+        <label class="form-label" style="font-size:10px">Période</label>
+        <select class="form-select" id="periodFilter" onchange="filterHistory()">
+          <option value="all">Toute la période</option>
+          <option value="today">Aujourd'hui</option>
+          <option value="week">Cette semaine</option>
+          <option value="month">Ce mois</option>
+          <option value="custom">Personnalisée</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" style="font-size:10px">Résultat</label>
+        <div style="display:flex; gap:8px">
+          <button class="filter-tab active" onclick="filterResult('all',this)">Tous</button>
+          <button class="filter-tab" onclick="filterResult('AUTORISE',this)">Autorisés</button>
+          <button class="filter-tab" onclick="filterResult('REFUSE',this)">Refusés</button>
+        </div>
+      </div>
+      <div>
+        <label class="form-label" style="font-size:10px">Statut employé</label>
+        <div style="display:flex; gap:8px">
+          <button class="filter-tab" onclick="filterEmpStatus('all',this)">Tous</button>
+          <button class="filter-tab" onclick="filterEmpStatus('actif',this)">Actifs</button>
+          <button class="filter-tab" onclick="filterEmpStatus('inactif',this)">Archivés</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Date picker pour période personnalisée -->
+    <div id="customDateRange" style="display:none; margin-top:16px; padding:12px; background:var(--bg3); border-radius:8px">
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+        <div><label class="form-label" style="font-size:10px">Du</label><input type="date" id="dateStart" class="form-input" style="width:150px" onchange="filterHistory()"></div>
+        <div><label class="form-label" style="font-size:10px">Au</label><input type="date" id="dateEnd" class="form-input" style="width:150px" onchange="filterHistory()"></div>
+        <button class="btn btn-sm btn-primary" onclick="filterHistory()">Appliquer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Statistiques graphiques -->
+<div class="g2" style="margin-bottom:20px">
+  <div class="card">
+    <div class="card-head">
+      <span>📊</span>
+      <span class="card-title">Évolution des accès (30 jours)</span>
+    </div>
+    <div class="card-body">
+      <canvas id="accessChart" style="height:200px; width:100%"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <span>🥧</span>
+      <span class="card-title">Répartition par zone</span>
+    </div>
+    <div class="card-body">
+      <canvas id="zoneChart" style="height:200px; width:100%"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Tableau des logs -->
 <div class="card">
   <div class="card-head">
     <span>📋</span>
     <span class="card-title">Journal des accès</span>
-    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input class="search-inp" style="width:280px" id="searchInput"
-             placeholder="🔍 Nom, zone, badge..." oninput="filterHistory()"/>
-
-      <select class="form-select" style="width:140px" id="periodFilter" onchange="filterHistory()">
-        <option value="all">Toute la période</option>
-        <option value="today">Aujourd'hui</option>
-        <option value="week">Cette semaine</option>
-      </select>
-
-      <button class="filter-tab active" onclick="filterResult('all',this)">Tous</button>
-      <button class="filter-tab" onclick="filterResult('AUTORISE',this)">Autorisés</button>
-      <button class="filter-tab" onclick="filterResult('REFUSE',this)">Refusés</button>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+      <span class="card-sub" id="logCount">{{ logs|length }} entrées</span>
+      <div class="icon-btn" title="Colonnes" onclick="toggleColumns()">📊</div>
     </div>
   </div>
 
-  <div style="overflow-x:auto;max-height:560px;overflow-y:auto" id="history-table-container">
-    <table class="tbl">
+  <div style="overflow-x:auto; max-height:500px; overflow-y:auto" id="history-table-container">
+    <table class="tbl" id="historyTable">
       <thead>
         <tr>
-          <th>Employé</th>
-          <th>Zone</th>
-          <th>Méthode</th>
-          <th>Date & Heure</th>
-          <th>Résultat</th>
-          <th>Statut employé</th>
-        </tr>
-      </thead>
+          <th class="col-employe">Employé</th>
+          <th class="col-badge">Badge</th>
+          <th class="col-zone">Zone</th>
+          <th class="col-methode">Méthode</th>
+          <th class="col-date">Date & Heure</th>
+          <th class="col-resultat">Résultat</th>
+          <th class="col-statut">Statut</th>
+        </thead>
       <tbody id="history-body">
         {% for log in logs %}
         <tr class="hist-row"
             data-name="{{ log.nom_utilisateur|default:''|lower }}"
-            data-zone="{{ log.bureau_nom|default:''|lower }}"
             data-badge="{{ log.badge_id|default:''|lower }}"
+            data-zone="{{ log.bureau_nom|default:''|lower }}"
+            data-methode="{{ log.type_acces|default:'RFID'|lower }}"
             data-result="{{ log.resultat|default:'' }}"
             data-empstatus="{{ log.emp_statut|default:'actif' }}"
-            data-timestamp="{{ log.timestamp|date:'Y-m-d' }}">
+            data-timestamp="{{ log.timestamp|date:'Y-m-d' }}"
+            data-datetime="{{ log.timestamp|date:'Y-m-d H:i:s' }}">
           
-          <td>
+          <td class="col-employe">
             <div style="display:flex;align-items:center;gap:9px">
-              <div class="emp-av" style="background:#1f6feb;width:30px;height:30px;font-size:11px">
+              <div class="emp-av" style="background:{% if log.resultat == 'AUTORISE' %}#1f6feb{% else %}#f85149{% endif %};width:32px;height:32px;font-size:12px">
                 {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
               </div>
-              <span style="font-weight:500">{{ log.nom_utilisateur|default:"Inconnu" }}</span>
+              <div>
+                <div style="font-weight:500">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+                <div style="font-size:10px; color:var(--text3)">{{ log.email|default:"" }}</div>
+              </div>
             </div>
           </td>
           
-          <td>{{ log.bureau_nom|default:"Zone inconnue" }}</td>
+          <td class="col-badge"><span style="font-family:var(--mono);font-size:11px">{{ log.badge_id|default:"—" }}</span></td>
+          <td class="col-zone">{{ log.bureau_nom|default:"Zone inconnue" }}</td>
           
-          <td>
-            <span style="font-family:var(--mono);font-size:11px">
+          <td class="col-methode">
+            <span class="badge {% if log.type_acces == 'QR' %}b-purple{% else %}b-blue{% endif %}">
               {% if log.type_acces == 'QR' %}📱 QR Code{% else %}🔖 RFID{% endif %}
             </span>
           </td>
           
-          <td style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
+          <td class="col-date" style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
             {{ log.timestamp|date:"d/m/Y H:i:s" }}
           </td>
           
-          <td>
+          <td class="col-resultat">
             {% if log.resultat == 'AUTORISE' %}
-              <div class="feed-status fs-ok">AUTORISÉ</div>
+              <div class="feed-status fs-ok">✓ AUTORISÉ</div>
             {% else %}
-              <div class="feed-status fs-no">REFUSÉ</div>
+              <div class="feed-status fs-no">✗ REFUSÉ</div>
+              <div style="font-size:10px; color:var(--text3); margin-top:2px">{{ log.motif_refus|default:"Accès non autorisé" }}</div>
             {% endif %}
           </td>
           
-          <td>
+          <td class="col-statut">
             {% if log.emp_statut == 'actif' %}
               <span class="badge b-green">● Actif</span>
             {% else %}
@@ -110,96 +193,313 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" style="text-align:center;padding:50px;color:var(--text3)">
+        <tr><td colspan="7" style="text-align:center;padding:60px;color:var(--text3)">
           Aucun accès enregistré pour le moment
         </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  
+  <!-- Pagination -->
+  <div class="card-body" style="border-top:1px solid var(--border); padding:12px 16px">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
+      <div>
+        <span style="font-size:12px; color:var(--text2)">Afficher</span>
+        <select id="rowsPerPage" class="form-select" style="width:70px; display:inline-block; margin:0 8px" onchange="changeRowsPerPage()">
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+        </select>
+        <span style="font-size:12px; color:var(--text2)">lignes</span>
+      </div>
+      <div id="paginationControls" style="display:flex; gap:8px; align-items:center"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-overlay" id="exportModal" style="display:none" onclick="if(event.target===this)closeExportModal()">
+  <div class="modal" style="width:400px">
+    <div class="modal-title">📁 Exporter les logs</div>
+    <div class="modal-sub">Choisissez le format d'export</div>
+    <div style="display:flex; gap:12px; justify-content:center; margin:20px 0">
+      <button class="btn btn-primary" onclick="exportCSV()">📊 CSV</button>
+      <button class="btn btn-primary" onclick="exportExcel()">📈 Excel</button>
+      <button class="btn btn-primary" onclick="exportPDF()">📄 PDF</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeExportModal()">Fermer</button>
+    </div>
+  </div>
 </div>
 
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Variables globales
+let currentResultFilter = 'all';
+let currentEmpFilter = 'all';
+let currentPage = 1;
+let rowsPerPage = 20;
+let allRows = [];
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', function() {
+  allRows = Array.from(document.querySelectorAll('.hist-row'));
+  updateLogCount();
+  setupPagination();
+  initCharts();
+  
+  // Écouter changement de période personnalisée
+  document.getElementById('periodFilter').addEventListener('change', function() {
+    const customDiv = document.getElementById('customDateRange');
+    customDiv.style.display = this.value === 'custom' ? 'block' : 'none';
+    filterHistory();
+  });
+});
+
 function filterHistory() {
   const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
   const periodVal = document.getElementById('periodFilter').value;
-
-  document.querySelectorAll(".hist-row").forEach(tr => {
-    const name = tr.dataset.name || "";
-    const zone = tr.dataset.zone || "";
-    const badge = tr.dataset.badge || "";
-    const dateStr = tr.dataset.timestamp || "";
-
+  const dateStart = document.getElementById('dateStart')?.value;
+  const dateEnd = document.getElementById('dateEnd')?.value;
+  
+  let visibleCount = 0;
+  
+  allRows.forEach(row => {
+    const name = row.dataset.name || "";
+    const badge = row.dataset.badge || "";
+    const zone = row.dataset.zone || "";
+    const result = row.dataset.result || "";
+    const empStatus = row.dataset.empstatus || "";
+    const dateStr = row.dataset.timestamp || "";
+    
+    // Filtre recherche
     const matchesSearch = !searchVal || 
       name.includes(searchVal) || 
-      zone.includes(searchVal) || 
-      badge.includes(searchVal);
-
+      badge.includes(searchVal) || 
+      zone.includes(searchVal);
+    
+    // Filtre période
     let matchesPeriod = true;
     if (periodVal === "today") {
       const today = new Date().toISOString().slice(0,10);
       matchesPeriod = dateStr === today;
     } else if (periodVal === "week") {
-      // Simplifié : on laisse le filtre côté JS basique
-      matchesPeriod = true;
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const rowDate = new Date(dateStr);
+      matchesPeriod = rowDate >= weekAgo;
+    } else if (periodVal === "month") {
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      const rowDate = new Date(dateStr);
+      matchesPeriod = rowDate >= monthAgo;
+    } else if (periodVal === "custom" && dateStart && dateEnd) {
+      const rowDate = new Date(dateStr);
+      const start = new Date(dateStart);
+      const end = new Date(dateEnd);
+      end.setHours(23,59,59);
+      matchesPeriod = rowDate >= start && rowDate <= end;
     }
-
-    tr.style.display = (matchesSearch && matchesPeriod) ? "" : "none";
+    
+    // Filtre résultat
+    const matchesResult = currentResultFilter === 'all' || result === currentResultFilter;
+    
+    // Filtre statut employé
+    const matchesEmp = currentEmpFilter === 'all' || empStatus === currentEmpFilter;
+    
+    const visible = matchesSearch && matchesPeriod && matchesResult && matchesEmp;
+    row.style.display = visible ? '' : 'none';
+    if (visible) visibleCount++;
   });
+  
+  updateLogCount(visibleCount);
+  currentPage = 1;
+  setupPagination();
 }
 
 function filterResult(val, el) {
+  currentResultFilter = val;
   document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
-  el.classList.add("active");
+  if (el) el.classList.add("active");
+  filterHistory();
+}
 
-  document.querySelectorAll(".hist-row").forEach(tr => {
-    if (val === "all") {
-      tr.style.display = "";
-      return;
-    }
-    if (val === "archive") {
-      tr.style.display = (tr.dataset.empstatus === "inactif" || tr.dataset.empstatus === "archive") ? "" : "none";
-      return;
-    }
-    tr.style.display = (tr.dataset.result === val) ? "" : "none";
+function filterEmpStatus(val, el) {
+  currentEmpFilter = val;
+  document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
+  if (el) el.classList.add("active");
+  filterHistory();
+}
+
+function updateLogCount(count = null) {
+  const visibleRows = count !== null ? count : document.querySelectorAll('.hist-row:not([style*="display: none"])').length;
+  document.getElementById('logCount').textContent = visibleRows + ' entrées';
+}
+
+function setupPagination() {
+  const visibleRows = Array.from(document.querySelectorAll('.hist-row')).filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
+  const start = (currentPage - 1) * rowsPerPage;
+  const end = start + rowsPerPage;
+  
+  // Cacher toutes les lignes d'abord
+  document.querySelectorAll('.hist-row').forEach(row => row.style.display = 'none');
+  
+  // Afficher les lignes de la page courante
+  visibleRows.slice(start, end).forEach(row => row.style.display = '');
+  
+  // Générer les contrôles de pagination
+  const controls = document.getElementById('paginationControls');
+  controls.innerHTML = `
+    <button class="btn btn-sm btn-ghost" onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
+    <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+    <span style="font-size:12px; color:var(--text2)">Page ${currentPage} / ${totalPages || 1}</span>
+    <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>›</button>
+    <button class="btn btn-sm btn-ghost" onclick="goToPage(${totalPages})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>»</button>
+  `;
+}
+
+function goToPage(page) {
+  const visibleRows = Array.from(document.querySelectorAll('.hist-row')).filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  setupPagination();
+}
+
+function changeRowsPerPage() {
+  rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
+  currentPage = 1;
+  setupPagination();
+}
+
+function initCharts() {
+  // Graphique d'évolution
+  const ctx = document.getElementById('accessChart')?.getContext('2d');
+  if (ctx) {
+    const chartData = {{ chart_data|safe|default:'{"labels":[],"autorises":[],"refuses":[]}' }};
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartData.labels,
+        datasets: [
+          { label: 'Autorisés', data: chartData.autorises, borderColor: '#2dba6f', backgroundColor: 'rgba(45,186,111,0.1)', tension: 0.4, fill: true },
+          { label: 'Refusés', data: chartData.refuses, borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', tension: 0.4, fill: true }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+    });
+  }
+  
+  // Graphique par zone
+  const zoneCtx = document.getElementById('zoneChart')?.getContext('2d');
+  if (zoneCtx) {
+    const zoneData = {{ zone_data|safe|default:'{"labels":[],"values":[]}' }};
+    new Chart(zoneCtx, {
+      type: 'doughnut',
+      data: {
+        labels: zoneData.labels,
+        datasets: [{ data: zoneData.values, backgroundColor: ['#1f6feb', '#2dba6f', '#e3b341', '#a371f7', '#f85149', '#39d0f0'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } }
+    });
+  }
+}
+
+function toggleColumns() {
+  const cols = ['col-employe', 'col-badge', 'col-zone', 'col-methode', 'col-date', 'col-resultat', 'col-statut'];
+  cols.forEach(col => {
+    const elements = document.querySelectorAll(`.${col}`);
+    const isHidden = elements[0]?.style.display === 'none';
+    elements.forEach(el => el.style.display = isHidden ? '' : 'none');
   });
 }
 
 function exportCSV() {
-  const rows = [["Employé","Zone","Méthode","Date & Heure","Résultat","Statut Employé"]];
-  
+  const rows = [["Employé","Badge","Zone","Méthode","Date & Heure","Résultat","Statut Employé"]];
   document.querySelectorAll(".hist-row").forEach(tr => {
     if (tr.style.display !== "none") {
       const cells = tr.querySelectorAll("td");
       rows.push([
-        cells[0].textContent.trim(),
-        cells[1].textContent.trim(),
-        cells[2].textContent.trim(),
-        cells[3].textContent.trim(),
-        cells[4].textContent.trim(),
-        cells[5].textContent.trim()
+        cells[0]?.textContent.trim() || '',
+        cells[1]?.textContent.trim() || '',
+        cells[2]?.textContent.trim() || '',
+        cells[3]?.textContent.trim() || '',
+        cells[4]?.textContent.trim() || '',
+        cells[5]?.textContent.trim() || '',
+        cells[6]?.textContent.trim() || ''
       ]);
     }
   });
-
-  const csvContent = rows.map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
+  const csvContent = rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = `historique_acces_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
+  closeExportModal();
+}
+
+function exportExcel() {
+  // Export au format XLSX simplifié (CSV avec extension .xls)
+  exportCSV();
+  // Note: Pour un vrai export Excel, utiliser SheetJS
+}
+
+function exportPDF() {
+  window.print();
 }
 
 function refreshHistory() {
   location.reload();
 }
 
-// Bonus : touche Entrée dans la recherche
+function openExportModal() {
+  document.getElementById('exportModal').style.display = 'flex';
+}
+
+function closeExportModal() {
+  document.getElementById('exportModal').style.display = 'none';
+}
+
+// Touche Entrée dans la recherche
 document.addEventListener('keydown', function(e) {
   if (e.key === "Enter" && document.getElementById('searchInput') === document.activeElement) {
     filterHistory();
   }
 });
+</script>
+
+<style>
+.btn-print {
+  background: var(--bg3);
+  color: var(--text2);
+  border-color: var(--border);
+}
+.btn-print:hover {
+  background: var(--bg4);
+  color: var(--text);
+}
+@media print {
+  .sidebar, .topbar, .btn, .filter-tab, .kpi, .modal-overlay, .card-head button, #paginationControls {
+    display: none !important;
+  }
+  .card {
+    break-inside: avoid;
+  }
+  body {
+    background: white;
+    color: black;
+  }
+  .tbl {
+    width: 100%;
+  }
+}
+</style>
 {% endblock %}

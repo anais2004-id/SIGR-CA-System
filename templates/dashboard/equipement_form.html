@@ -1,16 +1,17 @@
 {% extends "base.html" %}
-{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} un équipement{% endblock %}
+{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} un équipement - SIGR-CA{% endblock %}
 {% block nav_ressources %}active{% endblock %}
 {% block page_title %}{% if is_edit %}Modifier l'équipement{% else %}Nouvel équipement{% endif %}{% endblock %}
 {% block page_sub %}{% if is_edit %}{{ equipement.nom }}{% else %}Ajouter un lecteur RFID ou QR Code{% endif %}{% endblock %}
 
 {% block topbar_actions %}
 <a href="{% url 'equipement_list' %}" class="btn btn-ghost btn-sm">← Retour à la liste</a>
+<button class="btn btn-ghost btn-sm" onclick="previewCode()">🔍 Prévisualiser code</button>
 {% endblock %}
 
 {% block content %}
 
-<div style="max-width:720px; margin:0 auto">
+<div style="max-width:800px; margin:0 auto">
   <div class="card">
     <div class="card-head">
       <span style="font-size:24px">{% if is_edit %}✏️{% else %}➕{% endif %}</span>
@@ -30,19 +31,19 @@
         {% endfor %}
       {% endif %}
 
-      <form method="post">
+      <form method="post" id="equipementForm">
         {% csrf_token %}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="form-row">
             <label class="form-label">Nom de l'équipement <span style="color:#f85149">*</span></label>
-            <input class="form-input" name="nom" value="{{ equipement.nom|default:'' }}" required>
+            <input class="form-input" name="nom" value="{{ equipement.nom|default:'' }}" placeholder="Ex: Lecteur Entrée Principale" required>
           </div>
           <div class="form-row">
             <label class="form-label">Type <span style="color:#f85149">*</span></label>
-            <select class="form-select" name="type" id="typeSelect" {% if is_edit %}disabled{% endif %}>
-              <option value="RFID" {% if equipement.type == 'RFID' %}selected{% endif %}>🔖 RFID</option>
-              <option value="QR" {% if equipement.type == 'QR' %}selected{% endif %}>📱 QR Code</option>
+            <select class="form-select" name="type" id="typeSelect" {% if is_edit %}disabled{% endif %} onchange="updateCodePreview()">
+              <option value="RFID" {% if equipement.type == 'RFID' %}selected{% endif %}>🔖 RFID - Lecteur badge</option>
+              <option value="QR" {% if equipement.type == 'QR' %}selected{% endif %}>📱 QR Code - Scanner mobile</option>
             </select>
             {% if is_edit %}
               <input type="hidden" name="type" value="{{ equipement.type }}">
@@ -53,24 +54,26 @@
         <div class="form-row">
           <label class="form-label">Emplacement</label>
           <input class="form-input" name="emplacement" value="{{ equipement.emplacement|default:'' }}" 
-                 placeholder="Ex: Entrée principale, Hall d'accueil...">
+                 placeholder="Ex: Entrée principale, Hall d'accueil, Parking...">
+          <div style="font-size:10px; color:var(--text3); margin-top:4px">📍 Emplacement physique de l'équipement</div>
         </div>
 
         <div class="form-row">
           <label class="form-label">Bureau / Zone associé</label>
-          <select class="form-select" name="bureau_id">
+          <select class="form-select" name="bureau_id" id="bureauSelect">
             <option value="">— Aucun —</option>
             {% for bureau in bureaux %}
               <option value="{{ bureau.id }}" 
                 {% if equipement.bureau_id|stringformat:"s" == bureau.id %}selected{% endif %}>
-                {{ bureau.nom }}
+                {{ bureau.nom }} {% if bureau.niveau_securite %}({{ bureau.niveau_securite }}){% endif %}
               </option>
             {% endfor %}
           </select>
+          <div style="font-size:10px; color:var(--text3); margin-top:4px">🔗 Lie ce lecteur à une zone pour le contrôle d'accès</div>
         </div>
 
-        <div style="background:var(--bg3); border-radius:var(--radius); padding:16px; margin:16px 0">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:12px">
+        <div style="background:var(--bg3); border-radius:var(--radius); padding:20px; margin:20px 0">
+          <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:12px">
             🌐 Configuration réseau
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -81,8 +84,13 @@
             </div>
             <div class="form-row">
               <label class="form-label">Port</label>
-              <input class="form-input" name="port" type="number" value="{{ equipement.port|default:'5000' }}">
+              <input class="form-input" name="port" type="number" value="{{ equipement.port|default:'5000' }}" min="1" max="65535">
             </div>
+          </div>
+          <div class="form-row">
+            <label class="form-label">MAC Address (optionnel)</label>
+            <input class="form-input" name="mac_address" value="{{ equipement.mac_address|default:'' }}" 
+                   placeholder="AA:BB:CC:DD:EE:FF">
           </div>
         </div>
 
@@ -90,40 +98,128 @@
           <div class="form-row">
             <label class="form-label">Statut</label>
             <select class="form-select" name="statut">
-              <option value="actif" {% if equipement.statut == 'actif' %}selected{% endif %}>Actif</option>
-              <option value="inactif" {% if equipement.statut == 'inactif' %}selected{% endif %}>Inactif</option>
-              <option value="maintenance" {% if equipement.statut == 'maintenance' %}selected{% endif %}>Maintenance</option>
+              <option value="actif" {% if equipement.statut == 'actif' %}selected{% endif %}>✅ Actif - En service</option>
+              <option value="maintenance" {% if equipement.statut == 'maintenance' %}selected{% endif %}>🔧 Maintenance - Temporairement indisponible</option>
+              <option value="inactif" {% if equipement.statut == 'inactif' %}selected{% endif %}>❌ Inactif - Hors service</option>
             </select>
           </div>
           <div class="form-row">
-            <label class="form-label">Code (généré automatiquement)</label>
-            <input class="form-input" value="{% if is_edit %}{{ equipement.code }}{% else %}Auto-généré{% endif %}" disabled>
+            <label class="form-label">Code unique</label>
+            <div style="display:flex; gap:8px; align-items:center">
+              <input class="form-input" id="codePreview" value="{% if is_edit %}{{ equipement.code }}{% else %}Auto-généré{% endif %}" disabled style="font-family:var(--mono); background:var(--bg4)">
+              <button type="button" class="btn btn-sm btn-ghost" onclick="copyCode()" title="Copier le code">📋</button>
+            </div>
+            <div style="font-size:10px; color:var(--text3); margin-top:4px">🔑 Code unique d'identification de l'équipement</div>
           </div>
         </div>
 
         <div class="form-row">
           <label class="form-label">Description</label>
           <textarea class="form-input" name="description" rows="3" 
-                    placeholder="Description de l'équipement, son utilisation...">{{ equipement.description|default:'' }}</textarea>
+                    placeholder="Description détaillée de l'équipement, son utilisation, date d'installation...">{{ equipement.description|default:'' }}</textarea>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Notes de maintenance</label>
+          <textarea class="form-input" name="notes_maintenance" rows="2" 
+                    placeholder="Historique des maintenances, pannes, interventions...">{{ equipement.notes_maintenance|default:'' }}</textarea>
         </div>
 
         <div style="display:flex; gap:12px; justify-content:flex-end; padding-top:32px; border-top:1px solid var(--border); margin-top:24px">
           <a href="{% url 'equipement_list' %}" class="btn btn-ghost">Annuler</a>
-          <button type="submit" class="btn btn-primary">
+          <button type="submit" class="btn btn-primary" id="submitBtn">
             {% if is_edit %}💾 Enregistrer les modifications{% else %}➕ Ajouter l'équipement{% endif %}
           </button>
         </div>
       </form>
     </div>
   </div>
+
+  <!-- Guide rapide -->
+  <div class="card" style="margin-top:20px">
+    <div class="card-head">
+      <span>💡</span>
+      <span class="card-title">Guide d'installation</span>
+    </div>
+    <div class="card-body" style="font-size:12px; line-height:1.6">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+        <div>
+          <strong>🔖 Lecteurs RFID</strong>
+          <ul style="margin-top:8px; padding-left:20px; color:var(--text2)">
+            <li>Positionner le lecteur à hauteur de badge (1m-1.2m)</li>
+            <li>Distance de lecture: 5-10cm selon modèle</li>
+            <li>Alimenter via PoE ou adaptateur secteur</li>
+            <li>Configurer l'IP dans l'interface web</li>
+          </ul>
+        </div>
+        <div>
+          <strong>📱 Scanners QR Code</strong>
+          <ul style="margin-top:8px; padding-left:20px; color:var(--text2)">
+            <li>Positionner à hauteur des yeux pour un scan optimal</li>
+            <li>Distance de lecture: 10-30cm</li>
+            <li>Configurer la caméra via l'interface web</li>
+            <li>Générer des QR codes depuis l'espace employé</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
+<style>
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: block;
+}
+.form-input, .form-select, textarea.form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: var(--font);
+  outline: none;
+  transition: all 0.15s;
+}
+.form-input:focus, .form-select:focus, textarea.form-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(31,111,235,0.1);
+}
+</style>
+
 <script>
-// Aperçu du code généré (RFID-XXX ou QR-XXX)
-document.getElementById('typeSelect')?.addEventListener('change', function() {
-  const type = this.value;
-  const codePreview = type === 'RFID' ? 'RDR-XXX' : 'QR-XXX';
-  // Vous pouvez afficher ceci quelque part si besoin
-});
+function updateCodePreview() {
+  const type = document.getElementById('typeSelect').value;
+  const prefix = type === 'RFID' ? 'RDR' : 'QR';
+  const count = Math.floor(Math.random() * 1000);
+  document.getElementById('codePreview').value = `${prefix}-${String(count).padStart(3,'0')}`;
+}
+
+function copyCode() {
+  const codeInput = document.getElementById('codePreview');
+  codeInput.select();
+  document.execCommand('copy');
+  alert('✅ Code copié dans le presse-papier');
+}
+
+function previewCode() {
+  const type = document.getElementById('typeSelect').value;
+  const typeName = type === 'RFID' ? 'Lecteur RFID' : 'Scanner QR Code';
+  alert(`🔍 Aperçu du code généré:\n\nType: ${typeName}\nCode: ${document.getElementById('codePreview').value}\n\nCe code sera attribué automatiquement à la création.`);
+}
+
+// Initialisation
+window.onload = function() {
+  if (!document.getElementById('typeSelect').disabled) {
+    updateCodePreview();
+  }
+};
 </script>
 {% endblock %}

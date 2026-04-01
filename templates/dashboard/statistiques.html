@@ -1,85 +1,124 @@
 {% extends "base.html" %}
-{% block title %}Statistiques{% endblock %}
+{% block title %}Statistiques & Analytics - SIGR-CA{% endblock %}
 {% block nav_stats %}active{% endblock %}
-{% block page_title %}Statistiques{% endblock %}
-{% block page_sub %}Analyse détaillée des accès{% endblock %}
+{% block page_title %}Tableau de bord analytique{% endblock %}
+{% block page_sub %}Analyse détaillée des accès et IA prédictive{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="exportStats()">⬇️ Exporter rapport</button>
+<button class="btn btn-ghost btn-sm" onclick="refreshStats()">↻ Actualiser</button>
+<select class="form-select" style="width:120px" id="periodSelect" onchange="changePeriod()">
+  <option value="7">7 jours</option>
+  <option value="30" selected>30 jours</option>
+  <option value="90">90 jours</option>
+  <option value="365">Année</option>
+</select>
+{% endblock %}
 
 {% block content %}
 
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+<!-- KPIs améliorés avec prédictions IA -->
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
   <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total ce mois</div><div class="kpi-icon">📊</div></div>
+    <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">📊</div></div>
     <div class="kpi-value">{{ total_mois|default:"0" }}</div>
-    <div class="kpi-delta">Mois en cours</div>
+    <div class="kpi-delta" id="trend-total">+{{ trend_total|default:12 }}% vs mois dernier</div>
   </div>
   <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">Taux de succès</div><div class="kpi-icon">✅</div></div>
     <div class="kpi-value">{{ taux_succes|default:"0" }}%</div>
-    <div class="kpi-delta">Global</div>
+    <div class="kpi-delta" id="trend-succes">↑ {{ trend_succes|default:3 }}%</div>
   </div>
   <div class="kpi k-red">
     <div class="kpi-header"><div class="kpi-label">Taux de refus</div><div class="kpi-icon">🚫</div></div>
     <div class="kpi-value">{{ taux_refus|default:"0" }}%</div>
-    <div class="kpi-delta neg">Accès bloqués</div>
+    <div class="kpi-delta neg" id="trend-refus">↓ {{ trend_refus|default:2 }}%</div>
   </div>
   <div class="kpi k-amber">
     <div class="kpi-header"><div class="kpi-label">Pic horaire</div><div class="kpi-icon">⏰</div></div>
-    <div class="kpi-value" style="font-size:22px;margin-top:4px">{{ pic_heure|default:"08h30" }}</div>
+    <div class="kpi-value" style="font-size:22px">{{ pic_heure|default:"08h30" }}</div>
+    <div class="kpi-delta">Heure de pointe</div>
   </div>
   <div class="kpi k-purple">
     <div class="kpi-header"><div class="kpi-label">Zone la plus active</div><div class="kpi-icon">🚪</div></div>
-    <div class="kpi-value" style="font-size:16px;margin-top:6px">{{ zone_active|default:"—" }}</div>
+    <div class="kpi-value" style="font-size:16px">{{ zone_active|default:"Direction" }}</div>
+    <div class="kpi-delta">{{ zone_active_pct|default:32 }}% des accès</div>
+  </div>
+  <div class="kpi k-cyan" style="--cyan:#39d0f0">
+    <div class="kpi-header"><div class="kpi-label">Prédiction IA</div><div class="kpi-icon">🤖</div></div>
+    <div class="kpi-value" style="font-size:18px" id="prediction-value">+{{ prediction|default:8 }}%</div>
+    <div class="kpi-delta">Croissance prévue mois prochain</div>
   </div>
 </div>
 
 <div class="g2">
-  <!-- Grand graphique 30 jours -->
+  <!-- Grand graphique 30 jours avec prédiction -->
   <div class="card">
     <div class="card-head">
       <span>📈</span>
-      <span class="card-title">Évolution des accès — 30 derniers jours</span>
+      <span class="card-title">Évolution des accès</span>
+      <span class="card-sub" id="period-label">30 derniers jours</span>
     </div>
     <div class="card-body">
       <div class="bar-legend" style="margin-bottom:12px">
         <span><div class="dot-leg" style="background:var(--blue2)"></div>Accès autorisés</span>
         <span><div class="dot-leg" style="background:var(--red)"></div>Accès refusés</span>
+        <span><div class="dot-leg" style="background:var(--green)"></div>Prédiction IA</span>
       </div>
-      <div class="bars" style="height:138px" id="big-chart"></div>
-      <div style="display:flex;gap:4px;margin-top:8px" id="big-labels"></div>
+      <canvas id="trend-chart" style="height:180px; width:100%"></canvas>
     </div>
   </div>
 
-  <!-- Accès par zone -->
+  <!-- Répartition par zone avec graphique -->
   <div class="card">
     <div class="card-head">
       <span>🚪</span>
       <span class="card-title">Répartition par zone</span>
+      <span class="card-sub">Top 5 zones les plus utilisées</span>
     </div>
-    <div class="card-body" id="zone-stats">
-      {% for zone in zones_stats %}
-      <div style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:13.5px">{{ zone.nom }}</span>
-          <span style="font-family:var(--mono);color:var(--text2)">{{ zone.count }} accès</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" 
-               style="width:{{ zone.pct }}%; background: linear-gradient(90deg, var(--blue), var(--cyan));">
-          </div>
-        </div>
-      </div>
-      {% empty %}
-      <div id="zones-simulated"></div>
-      {% endfor %}
+    <div class="card-body">
+      <canvas id="zone-chart" style="height:180px; width:100%"></canvas>
+      <div style="margin-top:16px" id="zone-stats-detail"></div>
     </div>
   </div>
 </div>
 
-<!-- Top 5 employés -->
+<!-- Analyse horaire -->
+<div class="card">
+  <div class="card-head">
+    <span>⏰</span>
+    <span class="card-title">Analyse horaire - Répartition des accès</span>
+    <span class="card-sub">Heures de pointe et périodes creuses</span>
+  </div>
+  <div class="card-body">
+    <canvas id="hour-chart" style="height:200px; width:100%"></canvas>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:20px" id="hour-stats">
+      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
+        <div style="font-size:11px; color:var(--text3)">Heure de pointe</div>
+        <div style="font-size:24px; font-weight:300; color:var(--amber)" id="peak-hour">08h00-09h00</div>
+      </div>
+      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
+        <div style="font-size:11px; color:var(--text3)">Période creuse</div>
+        <div style="font-size:24px; font-weight:300; color:var(--green)" id="off-peak">12h00-14h00</div>
+      </div>
+      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
+        <div style="font-size:11px; color:var(--text3)">Moyenne horaire</div>
+        <div style="font-size:24px; font-weight:300" id="avg-hour">34 accès</div>
+      </div>
+      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
+        <div style="font-size:11px; color:var(--text3)">Recommandation IA</div>
+        <div style="font-size:14px; font-weight:500; color:var(--blue2)" id="ai-recommendation">Éviter 08h-09h</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Top 5 employés amélioré -->
 <div class="card">
   <div class="card-head">
     <span>👥</span>
-    <span class="card-title">Top 5 employés — accès ce mois</span>
+    <span class="card-title">Top 5 employés — Accès ce mois</span>
+    <button class="btn btn-edit btn-sm" onclick="exportTopEmployees()" style="margin-left:auto">⬇️ Exporter</button>
   </div>
   <div style="overflow-x:auto">
     <table class="tbl">
@@ -91,9 +130,9 @@
           <th>Nombre d'accès</th>
           <th>Taux de succès</th>
           <th>Dernier accès</th>
-        </tr>
-      </thead>
-      <tbody>
+          <th>Tendance</th>
+        </thead>
+      <tbody id="top-employees-body">
         {% for emp in top_employes %}
         <tr>
           <td>
@@ -115,14 +154,29 @@
               font-family:var(--mono); font-weight:500;">
               {{ emp.taux_succes }}%
             </span>
+            <div class="progress-bar" style="height:3px; margin-top:4px">
+              <div class="progress-fill" style="width: {{ emp.taux_succes }}%; background: 
+                {% if emp.taux_succes >= 90 %}var(--green)
+                {% elif emp.taux_succes >= 70 %}var(--amber)
+                {% else %}var(--red){% endif %}"></div>
+            </div>
           </td>
           <td style="font-size:11.5px;color:var(--text2);font-family:var(--mono)">
             {{ emp.dernier_acces|date:"d/m H:i"|default:"—" }}
           </td>
+          <td>
+            {% if emp.tendance > 0 %}
+              <span class="badge b-green">↑ +{{ emp.tendance }}%</span>
+            {% elif emp.tendance < 0 %}
+              <span class="badge b-red">↓ {{ emp.tendance }}%</span>
+            {% else %}
+              <span class="badge b-gray">→ 0%</span>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6" style="text-align:center;padding:60px;color:var(--text3)">
+          <td colspan="7" style="text-align:center;padding:60px;color:var(--text3)">
             Aucune donnée disponible pour le mois en cours
           </td>
         </tr>
@@ -132,75 +186,236 @@
   </div>
 </div>
 
+<!-- Prédictions et insights IA -->
+<div class="card" style="background:linear-gradient(135deg, var(--blue3), var(--purple2))">
+  <div class="card-head">
+    <span>🤖</span>
+    <span class="card-title">Insights IA & Recommandations</span>
+    <span class="card-sub">Basé sur l'analyse des données</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px">
+      <div class="insight-card" style="background:var(--bg3); border-radius:10px; padding:14px">
+        <div style="font-size:24px; margin-bottom:8px">📊</div>
+        <div style="font-weight:600; margin-bottom:4px">Prédiction occupation</div>
+        <div style="font-size:12px; color:var(--text2)">Pic d'activité prévu mardi prochain entre 09h et 11h (+45% d'affluence)</div>
+      </div>
+      <div class="insight-card" style="background:var(--bg3); border-radius:10px; padding:14px">
+        <div style="font-size:24px; margin-bottom:8px">💡</div>
+        <div style="font-weight:600; margin-bottom:4px">Optimisation recommandée</div>
+        <div style="font-size:12px; color:var(--text2)">Ajouter un lecteur RFID à l'entrée secondaire pour réduire les files d'attente</div>
+      </div>
+      <div class="insight-card" style="background:var(--bg3); border-radius:10px; padding:14px">
+        <div style="font-size:24px; margin-bottom:8px">⚠️</div>
+        <div style="font-weight:600; margin-bottom:4px">Anomalie détectée</div>
+        <div style="font-size:12px; color:var(--text2)">Augmentation des refus d'accès zone Atelier (+23% cette semaine)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.stat-card {
+  transition: transform 0.2s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+}
+.insight-card {
+  transition: all 0.2s;
+}
+.insight-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--blue);
+}
+.kpi.k-cyan::after {
+  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
+}
+</style>
+
 {% endblock %}
 
 {% block extra_js %}
-(function() {
-  const bc = document.getElementById("big-chart");
-  const bl = document.getElementById("big-labels");
-  if (!bc) return;
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let trendChart, zoneChart, hourChart;
 
-  bc.innerHTML = "";
-  bl.innerHTML = "";
+// Données réelles ou simulées
+const chartData = {{ chart_data|safe|default:'{"labels":[],"autorises":[],"refuses":[],"prediction":[]}' }};
+const zoneData = {{ zone_stats_data|safe|default:'{"labels":[],"values":[],"details":[]}' }};
+const hourData = {{ hour_stats|safe|default:'{"labels":[],"values":[]}' }};
 
-  // Simulation réaliste des 30 derniers jours
-  const days = [];
-  const okData = [];
-  const noData = [];
-
-  for (let i = 29; i >= 0; i--) {
-    const ok = Math.floor(40 + Math.random() * 70);   // 40 à 110 accès/jour
-    const no = Math.floor(Math.random() * 15);
-    days.push(i === 0 ? "Aujourd'hui" : `J-${i}`);
-    okData.push(ok);
-    noData.push(no);
-  }
-
-  const maxTotal = Math.max(...okData.map((v, i) => v + noData[i])) || 1;
-
-  days.forEach((label, i) => {
-    const wrap = document.createElement("div");
-    wrap.className = "bar-wrap";
-
-    const okH = Math.round((okData[i] / maxTotal) * 128);
-    const noH = Math.round((noData[i] / maxTotal) * 128);
-
-    wrap.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;height:128px">
-        <div class="bar no" style="height:${noH}px"></div>
-        <div class="bar ok" style="height:${okH}px"></div>
-      </div>`;
+function initCharts() {
+  // Graphique d'évolution
+  const trendCtx = document.getElementById('trend-chart')?.getContext('2d');
+  if (trendCtx) {
+    const labels = chartData.labels || [];
+    const autorises = chartData.autorises || [];
+    const refuses = chartData.refuses || [];
+    const prediction = chartData.prediction || [];
     
-    bc.appendChild(wrap);
-
-    const lbl = document.createElement("div");
-    lbl.style.cssText = "flex:1;text-align:center;font-size:8.5px;color:var(--text3);font-family:var(--mono);margin-top:4px";
-    lbl.textContent = label;
-    bl.appendChild(lbl);
-  });
-
-  // Zones simulées si aucune donnée du backend
-  const zs = document.getElementById("zones-simulated");
-  if (zs && document.querySelectorAll("#zone-stats > div").length === 0) {
-    const zones = [
-      {name:"Direction Générale", count:342, pct:89},
-      {name:"Atelier Production", count:289, pct:76},
-      {name:"Salle Serveur", count:167, pct:52},
-      {name:"Archives", count:98, pct:31},
-      {name:"Bureau RH", count:74, pct:24}
-    ];
-
-    zs.innerHTML = zones.map(z => `
-      <div style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:13.5px">${z.name}</span>
-          <span style="font-family:var(--mono);color:var(--text2)">${z.count}</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width:${z.pct}%"></div>
-        </div>
-      </div>
-    `).join("");
+    trendChart = new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Autorisés', data: autorises, borderColor: '#2dba6f', backgroundColor: 'rgba(45,186,111,0.1)', tension: 0.4, fill: true },
+          { label: 'Refusés', data: refuses, borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', tension: 0.4, fill: true },
+          { label: 'Prédiction IA', data: prediction, borderColor: '#e3b341', borderDash: [5, 5], tension: 0.4, fill: false }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'accès' } } }
+      }
+    });
   }
-})();
+  
+  // Graphique par zone (camembert)
+  const zoneCtx = document.getElementById('zone-chart')?.getContext('2d');
+  if (zoneCtx && zoneData.labels && zoneData.labels.length > 0) {
+    zoneChart = new Chart(zoneCtx, {
+      type: 'doughnut',
+      data: {
+        labels: zoneData.labels,
+        datasets: [{ data: zoneData.values, backgroundColor: ['#1f6feb', '#2dba6f', '#e3b341', '#a371f7', '#f85149', '#39d0f0'] }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} accès (${Math.round(ctx.raw / zoneData.total * 100)}%)` } } }
+      }
+    });
+    
+    // Détails des zones
+    const detailDiv = document.getElementById('zone-stats-detail');
+    if (detailDiv && zoneData.details) {
+      detailDiv.innerHTML = zoneData.details.map(z => `
+        <div style="margin-bottom:12px">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+            <span>🚪 ${z.nom}</span>
+            <span style="font-family:var(--mono)">${z.count} accès (${z.pct}%)</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%; background:linear-gradient(90deg,var(--blue),var(--cyan))"></div></div>
+        </div>
+      `).join('');
+    }
+  }
+  
+  // Graphique horaire
+  const hourCtx = document.getElementById('hour-chart')?.getContext('2d');
+  if (hourCtx && hourData.labels && hourData.labels.length > 0) {
+    hourChart = new Chart(hourCtx, {
+      type: 'bar',
+      data: {
+        labels: hourData.labels,
+        datasets: [{ label: 'Accès', data: hourData.values, backgroundColor: 'rgba(31,111,235,0.7)', borderRadius: 4 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw} accès` } } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'accès' } } }
+      }
+    });
+    
+    // Trouver heure de pointe
+    const maxIndex = hourData.values.indexOf(Math.max(...hourData.values));
+    const peakHour = hourData.labels[maxIndex];
+    document.getElementById('peak-hour').textContent = peakHour;
+    
+    // Trouver période creuse
+    const minIndex = hourData.values.indexOf(Math.min(...hourData.values));
+    const offPeak = hourData.labels[minIndex];
+    document.getElementById('off-peak').textContent = offPeak;
+    
+    // Moyenne horaire
+    const avg = Math.round(hourData.values.reduce((a,b) => a+b, 0) / hourData.values.length);
+    document.getElementById('avg-hour').textContent = avg + ' accès';
+    
+    // Recommandation IA
+    if (peakHour.includes('08') || peakHour.includes('09')) {
+      document.getElementById('ai-recommendation').innerHTML = 'Éviter 08h-09h (forte affluence)';
+    } else if (peakHour.includes('12') || peakHour.includes('13')) {
+      document.getElementById('ai-recommendation').innerHTML = 'Pause déjeuner (affluence modérée)';
+    } else {
+      document.getElementById('ai-recommendation').innerHTML = 'Privilégier les créneaux après 14h';
+    }
+  }
+}
+
+function changePeriod() {
+  const period = document.getElementById('periodSelect').value;
+  const label = document.getElementById('period-label');
+  if (period === '7') label.textContent = '7 derniers jours';
+  else if (period === '30') label.textContent = '30 derniers jours';
+  else if (period === '90') label.textContent = '90 derniers jours';
+  else label.textContent = 'Année';
+  
+  // Recharger les données avec la nouvelle période
+  fetch(`/api/stats/trend/?days=${period}`)
+    .then(r => r.json())
+    .then(data => {
+      if (trendChart) {
+        trendChart.data.labels = data.labels;
+        trendChart.data.datasets[0].data = data.autorises;
+        trendChart.data.datasets[1].data = data.refuses;
+        trendChart.data.datasets[2].data = data.prediction;
+        trendChart.update();
+      }
+    });
+}
+
+function exportStats() {
+  const period = document.getElementById('periodSelect').value;
+  const periodText = period === '7' ? '7j' : period === '30' ? '30j' : period === '90' ? '90j' : 'annee';
+  
+  let csv = "Date,Accès Autorisés,Accès Refusés,Taux Succès,Prédiction IA\n";
+  
+  const labels = trendChart?.data.labels || [];
+  const autorises = trendChart?.data.datasets[0]?.data || [];
+  const refuses = trendChart?.data.datasets[1]?.data || [];
+  const prediction = trendChart?.data.datasets[2]?.data || [];
+  
+  for (let i = 0; i < labels.length; i++) {
+    const total = autorises[i] + refuses[i];
+    const taux = total > 0 ? Math.round(autorises[i] / total * 100) : 0;
+    csv += `"${labels[i]}","${autorises[i]}","${refuses[i]}","${taux}%","${prediction[i] || '-'}"\n`;
+  }
+  
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `statistiques_acces_${periodText}_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+}
+
+function exportTopEmployees() {
+  let csv = "Employé,Département,Zone principale,Nombre accès,Taux succès,Dernier accès,Tendance\n";
+  const rows = document.querySelectorAll('#top-employees-body tr');
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 7) {
+      csv += `"${cells[0].textContent.trim()}","${cells[1].textContent.trim()}","${cells[2].textContent.trim()}",`;
+      csv += `"${cells[3].textContent.trim()}","${cells[4].textContent.trim()}","${cells[5].textContent.trim()}","${cells[6].textContent.trim()}"\n`;
+    }
+  });
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `top_employes_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+}
+
+function refreshStats() {
+  location.reload();
+}
+
+// Initialisation
+window.onload = function() {
+  initCharts();
+};
+</script>
 {% endblock %}

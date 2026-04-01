@@ -7,6 +7,7 @@
 {% block topbar_actions %}
 <a href="{% url 'employe_modifier' employe.id %}" class="btn btn-edit btn-sm">✏️ Modifier</a>
 <a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+<button class="btn btn-info btn-sm" onclick="exportEmployeeHistory()" style="background:var(--blue3);color:var(--blue2)">⬇️ Exporter historique</button>
 {% endblock %}
 
 {% block content %}
@@ -14,11 +15,7 @@
 <div class="card">
   <div class="card-body">
     <div class="profile-hdr">
-      {% if employe.statut == 'actif' %}
-        <div class="profile-av" style="background:#1f6feb; width:110px; height:110px; font-size:36px;">
-      {% else %}
-        <div class="profile-av" style="background:#484f58; width:110px; height:110px; font-size:36px;">
-      {% endif %}
+      <div class="profile-av" style="background:{% if employe.statut == 'actif' %}#1f6feb{% else %}#484f58{% endif %}; width:110px; height:110px; font-size:36px;">
         {{ employe.nom|slice:":1"|upper }}{{ employe.prenom|slice:":1"|upper }}
       </div>
 
@@ -29,13 +26,14 @@
         </div>
 
         <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap">
-          <span class="badge b-blue">{{ employe.badge_id|default:"Pas de badge" }}</span>
+          <span class="badge b-blue">🪪 {{ employe.badge_id|default:"Pas de badge" }}</span>
           {% if employe.statut == 'actif' %}
             <span class="badge b-green">● Actif</span>
           {% else %}
             <span class="badge b-gray">● Archivé</span>
           {% endif %}
           <span class="badge b-purple">{{ employe.niveau|default:"Staff" }}</span>
+          <span class="badge b-amber">📞 {{ employe.telephone|default:"—" }}</span>
         </div>
       </div>
 
@@ -49,9 +47,9 @@
       <div class="field-box"><div class="field-lbl">Email</div><div class="field-val">{{ employe.email|default:"—" }}</div></div>
       <div class="field-box"><div class="field-lbl">Téléphone</div><div class="field-val">{{ employe.telephone|default:"—" }}</div></div>
       <div class="field-box"><div class="field-lbl">Date d'embauche</div><div class="field-val">{{ employe.date_embauche|date:"d/m/Y"|default:"—" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Type de contrat</div><div class="field-val">{{ cycle_travail.type|default:"CDI" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Manager</div><div class="field-val">{{ cycle_travail.manager|default:"—" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Horaires hebdomadaires</div><div class="field-val">{{ cycle_travail.heures_hebdo|default:"35" }}h</div></div>
+      <div class="field-box"><div class="field-lbl">Type de contrat</div><div class="field-val">{{ employe.type_contrat|default:"CDI" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Manager</div><div class="field-val">{{ employe.manager|default:"—" }}</div></div>
+      <div class="field-box"><div class="field-lbl">Horaires hebdomadaires</div><div class="field-val">{{ employe.heures_hebdo|default:"35" }}h</div></div>
     </div>
 
     {% if employe.statut != 'actif' %}
@@ -64,7 +62,7 @@
 </div>
 
 <!-- KPI Employé -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px; margin:24px 0">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px; margin:24px 0">
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">🔑</div></div>
     <div class="kpi-value">{{ total_acces }}</div>
@@ -72,6 +70,13 @@
   <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">Taux succès</div><div class="kpi-icon">✅</div></div>
     <div class="kpi-value">{{ taux_succes }}%</div>
+    <div class="progress-bar" style="margin-top:8px; height:4px">
+      <div class="progress-fill" style="width: {{ taux_succes }}%; background:{% if taux_succes >= 80 %}#2dba6f{% elif taux_succes >= 50 %}#e3b341{% else %}#f85149{% endif %}"></div>
+    </div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
+    <div class="kpi-value">{{ acces_refuses }}</div>
   </div>
   <div class="kpi k-amber">
     <div class="kpi-header"><div class="kpi-label">Dernier accès</div><div class="kpi-icon">🕐</div></div>
@@ -81,9 +86,10 @@
   </div>
   <div class="kpi k-purple">
     <div class="kpi-header"><div class="kpi-label">Cycle travail</div><div class="kpi-icon">⏰</div></div>
-    <div class="kpi-value" style="font-size:15px">{{ cycle_travail.horaire|default:"08:00-17:00" }}</div>
+    <div class="kpi-value" style="font-size:15px">{{ employe.horaire|default:"08:00-17:00" }}</div>
   </div>
 </div>
+
 <!-- Planning Absences -->
 <div class="card" style="margin-top:24px">
   <div class="card-head">
@@ -92,24 +98,17 @@
   </div>
   <div class="card-body">
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
-      <div style="text-align:center">
-        <div style="font-size:28px;font-weight:300;color:var(--green)">{{ employe.solde_conges|default:25 }}</div>
+      <div style="text-align:center; padding:15px; background:var(--bg3); border-radius:10px">
+        <div style="font-size:32px;font-weight:300;color:var(--green)">{{ employe.solde_conges|default:25 }}</div>
         <div style="color:var(--text2);margin-top:4px">Congés payés</div>
       </div>
-      <div style="text-align:center">
-        <div style="font-size:28px;font-weight:300;color:var(--amber)">{{ employe.solde_rtt|default:10 }}</div>
+      <div style="text-align:center; padding:15px; background:var(--bg3); border-radius:10px">
+        <div style="font-size:32px;font-weight:300;color:var(--amber)">{{ employe.solde_rtt|default:10 }}</div>
         <div style="color:var(--text2);margin-top:4px">RTT</div>
       </div>
-      <div style="text-align:center">
-        <div style="font-size:28px;font-weight:300;color:var(--red)">{{ employe.solde_maladie|default:0 }}</div>
+      <div style="text-align:center; padding:15px; background:var(--bg3); border-radius:10px">
+        <div style="font-size:32px;font-weight:300;color:var(--red)">{{ employe.solde_maladie|default:0 }}</div>
         <div style="color:var(--text2);margin-top:4px">Maladie / CET</div>
-      </div>
-    </div>
-
-    <div style="margin-top:30px">
-      <strong>Prochaines absences prévues :</strong>
-      <div style="margin-top:12px; color:var(--text3); font-style:italic">
-        Aucune absence programmée pour le moment.
       </div>
     </div>
   </div>
@@ -143,19 +142,21 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
         <div>
           <strong style="color:var(--text2)">Horaires quotidiens</strong><br>
-          <div style="font-size:18px;margin:12px 0">{{ cycle_travail.horaire|default:"08:00 - 17:00" }}</div>
+          <div style="font-size:18px;margin:12px 0">{{ employe.horaire|default:"08:00 - 17:00" }}</div>
           <strong style="color:var(--text2)">Jours travaillés</strong><br>
           <div style="margin-top:8px">
-            {% for jour in cycle_travail.jours %}
+            {% for jour in employe.jours_travailles %}
               <span class="badge b-blue" style="margin-right:4px">{{ jour }}</span>
+            {% empty %}
+              <span class="badge b-gray">Lun-Ven</span>
             {% endfor %}
           </div>
         </div>
         <div>
           <strong style="color:var(--text2)">Type de contrat</strong><br>
-          <div style="font-size:16px;margin:10px 0">{{ cycle_travail.type|default:"CDI" }}</div>
+          <div style="font-size:16px;margin:10px 0">{{ employe.type_contrat|default:"CDI" }}</div>
           <strong style="color:var(--text2)">Heures hebdomadaires</strong><br>
-          <div style="font-size:22px;color:var(--green)">{{ cycle_travail.heures_hebdo|default:"35" }}h</div>
+          <div style="font-size:22px;color:var(--green)">{{ employe.heures_hebdo|default:"35" }}h</div>
         </div>
       </div>
     </div>
@@ -168,8 +169,13 @@
     <span>📋</span>
     <span class="card-title">Historique des accès</span>
     <span class="card-sub">{{ total_acces }} passages</span>
+    <div style="margin-left:auto; display:flex; gap:8px">
+      <button class="btn btn-sm btn-ghost" onclick="filterLogs('all')">Tous</button>
+      <button class="btn btn-sm btn-ghost" onclick="filterLogs('autorise')">Autorisés</button>
+      <button class="btn btn-sm btn-ghost" onclick="filterLogs('refuse')">Refusés</button>
+    </div>
   </div>
-  <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+  <div style="overflow-x:auto;max-height:500px;overflow-y:auto">
     <table class="tbl">
       <thead>
         <tr>
@@ -179,9 +185,9 @@
           <th>Résultat</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="logs-body">
         {% for a in acces %}
-        <tr>
+        <tr class="log-row" data-resultat="{{ a.resultat|lower }}">
           <td style="font-family:var(--mono)">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
           <td>{{ a.bureau_nom|default:"Inconnu" }}</td>
           <td><span style="font-family:var(--mono)">{{ a.type_acces|default:"RFID" }}</span></td>
@@ -198,5 +204,45 @@
     </table>
   </div>
 </div>
+
+<script>
+function filterLogs(filter) {
+  const rows = document.querySelectorAll('.log-row');
+  rows.forEach(row => {
+    const resultat = row.dataset.resultat;
+    if (filter === 'all') row.style.display = '';
+    else if (filter === 'autorise') row.style.display = resultat === 'autorise' ? '' : 'none';
+    else if (filter === 'refuse') row.style.display = resultat === 'refuse' ? '' : 'none';
+  });
+}
+
+function exportEmployeeHistory() {
+  let csv = "Date,Zone,Méthode,Résultat\n";
+  const rows = document.querySelectorAll('.log-row');
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    csv += `"${cells[0].textContent.trim()}","${cells[1].textContent.trim()}","${cells[2].textContent.trim()}","${cells[3].textContent.trim()}"\n`;
+  });
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `historique_${"{{ employe.nom }}_{{ employe.prenom }}"}_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+</script>
+
+<style>
+.feed-status {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  display: inline-block;
+}
+.fs-ok { background: var(--green2); color: var(--green); border: 1px solid rgba(45,186,111,.3); }
+.fs-no { background: var(--red2); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
+</style>
 
 {% endblock %}

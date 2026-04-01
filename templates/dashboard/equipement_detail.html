@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ equipement.nom }}{% endblock %}
+{% block title %}{{ equipement.nom }} - SIGR-CA{% endblock %}
 {% block nav_ressources %}active{% endblock %}
 {% block page_title %}{{ equipement.nom }}{% endblock %}
 {% block page_sub %}{{ equipement.type }} · {{ equipement.code }}{% endblock %}
@@ -7,15 +7,17 @@
 {% block topbar_actions %}
 <button class="btn btn-green btn-sm" onclick="testerConnexion()">📡 Tester connexion</button>
 <a href="{% url 'equipement_modifier' equipement.id %}" class="btn btn-edit btn-sm">✏️ Modifier</a>
+<button class="btn btn-ghost btn-sm" onclick="exportEquipmentLogs()">⬇️ Exporter logs</button>
 <a href="{% url 'equipement_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
 {% endblock %}
 
 {% block content %}
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+<!-- KPIs -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Type</div><div class="kpi-icon">📟</div></div>
-    <div class="kpi-value" style="font-size:20px">{{ equipement.type }}</div>
+    <div class="kpi-value" style="font-size:22px">{{ equipement.type }}</div>
   </div>
   <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">Statut</div><div class="kpi-icon">✅</div></div>
@@ -37,21 +39,28 @@
   <div class="kpi k-amber">
     <div class="kpi-header"><div class="kpi-label">Dernière connexion</div><div class="kpi-icon">🕐</div></div>
     <div class="kpi-value" style="font-size:15px">
-      {{ equipement.derniere_connexion|date:"d/m H:i"|default:"Jamais" }}
+      {{ equipement.derniere_connexion|date:"d/m/Y H:i"|default:"Jamais" }}
     </div>
+  </div>
+  <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Taux succès</div><div class="kpi-icon">📈</div></div>
+    <div class="kpi-value">{{ stats.taux_succes|default:0 }}%</div>
+    <div class="kpi-delta">autorisations</div>
   </div>
 </div>
 
 <div class="g2">
   <!-- Informations -->
   <div class="card">
-    <div class="card-head"><span>ℹ️</span><span class="card-title">Informations</span></div>
+    <div class="card-head"><span>ℹ️</span><span class="card-title">Informations générales</span></div>
     <div class="card-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div><span style="color:var(--text3)">Code:</span><br><strong style="font-family:var(--mono)">{{ equipement.code }}</strong></div>
         <div><span style="color:var(--text3)">Emplacement:</span><br><strong>{{ equipement.emplacement|default:"Non défini" }}</strong></div>
         <div><span style="color:var(--text3)">Bureau lié:</span><br><strong>{{ equipement.bureau.nom|default:"Non assigné" }}</strong></div>
         <div><span style="color:var(--text3)">IP / Port:</span><br><strong>{{ equipement.ip_address|default:"—" }}:{{ equipement.port|default:"—" }}</strong></div>
+        <div><span style="color:var(--text3)">MAC Address:</span><br><strong style="font-family:var(--mono); font-size:11px">{{ equipement.mac_address|default:"—" }}</strong></div>
+        <div><span style="color:var(--text3)">Date création:</span><br><strong>{{ equipement.created_at|date:"d/m/Y H:i"|default:"—" }}</strong></div>
       </div>
       {% if equipement.description %}
         <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border2)">
@@ -59,49 +68,69 @@
           <div style="margin-top:6px">{{ equipement.description }}</div>
         </div>
       {% endif %}
+      {% if equipement.notes_maintenance %}
+        <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border2)">
+          <span style="color:var(--text3)">📝 Notes de maintenance:</span><br>
+          <div style="margin-top:6px; font-size:12px; color:var(--text2)">{{ equipement.notes_maintenance }}</div>
+        </div>
+      {% endif %}
     </div>
   </div>
 
-  <!-- Statistiques -->
+  <!-- Statistiques graphiques -->
   <div class="card">
-    <div class="card-head"><span>📊</span><span class="card-title">Statistiques</span></div>
+    <div class="card-head"><span>📊</span><span class="card-title">Statistiques d'utilisation</span></div>
     <div class="card-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;text-align:center">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;text-align:center; margin-bottom:20px">
         <div>
-          <div style="font-size:28px;font-weight:300;color:var(--green)">{{ stats.autorises|default:"0" }}</div>
+          <div style="font-size:32px;font-weight:300;color:var(--green)">{{ stats.autorises|default:"0" }}</div>
           <div style="font-size:11px;color:var(--text3)">Accès autorisés</div>
+          <div class="progress-bar" style="margin-top:8px; height:4px">
+            <div class="progress-fill" style="width: {{ stats.taux_succes|default:0 }}%; background:var(--green)"></div>
+          </div>
         </div>
         <div>
-          <div style="font-size:28px;font-weight:300;color:var(--red)">{{ stats.refuses|default:"0" }}</div>
+          <div style="font-size:32px;font-weight:300;color:var(--red)">{{ stats.refuses|default:"0" }}</div>
           <div style="font-size:11px;color:var(--text3)">Accès refusés</div>
+          <div class="progress-bar" style="margin-top:8px; height:4px">
+            <div class="progress-fill" style="width: {{ stats.taux_refus|default:0 }}%; background:var(--red)"></div>
+          </div>
         </div>
-        <div>
-          <div style="font-size:28px;font-weight:300;color:var(--amber)">{{ stats.logs_24h|default:"0" }}</div>
-          <div style="font-size:11px;color:var(--text3)">24 dernières heures</div>
+      </div>
+      <div style="margin-top:16px">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+          <span>Activité sur 7 jours</span>
+          <span style="font-family:var(--mono)">{{ stats.logs_7j|default:0 }} accès</span>
         </div>
-        <div>
-          <div style="font-size:28px;font-weight:300;color:var(--blue)">{{ stats.logs_7j|default:"0" }}</div>
-          <div style="font-size:11px;color:var(--text3)">7 derniers jours</div>
+        <div class="progress-bar" style="height:8px">
+          <div class="progress-fill" style="width: {{ stats.tendance_7j|default:0 }}%; background:linear-gradient(90deg,var(--blue),var(--cyan))"></div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Commandes -->
+<!-- Commandes à distance -->
 <div class="card">
   <div class="card-head">
     <span>⚡</span>
     <span class="card-title">Commandes à distance</span>
+    <span class="card-sub">Contrôle IoT en temps réel</span>
   </div>
   <div class="card-body">
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;gap:12px;flex-wrap:wrap; margin-bottom:16px">
       <button onclick="envoyerCommande('test')" class="btn btn-ghost">🔍 Test de ping</button>
+      <button onclick="envoyerCommande('status')" class="btn btn-ghost">📊 État détaillé</button>
       <button onclick="envoyerCommande('reset')" class="btn btn-ghost">🔄 Réinitialiser</button>
       <button onclick="envoyerCommande('reboot')" class="btn btn-ghost">🔁 Redémarrer</button>
-      <button onclick="envoyerCommande('status')" class="btn btn-ghost">📊 État</button>
+      <button onclick="envoyerCommande('sync')" class="btn btn-ghost">🔄 Synchroniser horloge</button>
     </div>
-    <div id="commande-result" style="margin-top:16px; display:none" class="alert-box info"></div>
+    <div id="commande-result" style="display:none" class="alert-box info"></div>
+    
+    <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border2); font-size:11px; color:var(--text3)">
+      <span>⚡ Mode secours disponible: </span>
+      <button class="btn btn-sm btn-amber" onclick="emergencyUnlock()" style="background:var(--amber2); color:var(--amber)">🔓 Déverrouillage d'urgence</button>
+    </div>
   </div>
 </div>
 
@@ -111,21 +140,26 @@
     <span>📋</span>
     <span class="card-title">Historique des accès</span>
     <span class="card-sub">{{ logs|length }} dernières entrées</span>
+    <div style="margin-left:auto; display:flex; gap:8px">
+      <button class="btn btn-sm btn-ghost" onclick="filterLogs('all')">Tous</button>
+      <button class="btn btn-sm btn-ghost" onclick="filterLogs('autorise')">Autorisés</button>
+      <button class="btn btn-sm btn-ghost" onclick="filterLogs('refuse')">Refusés</button>
+    </div>
   </div>
   <div style="overflow-x:auto; max-height:400px; overflow-y:auto">
-    <table class="tbl">
+    <table class="tbl" id="logs-table">
       <thead>
-        <tr><th>Date & Heure</th><th>Employé</th><th>Résultat</th> </tr>
-      </thead>
-      <tbody>
+        <tr><th>Date & Heure</th><th>Employé</th><th>Badge</th><th>Résultat</th>  </thead>
+      <tbody id="logs-tbody">
         {% for log in logs %}
-        <tr>
-          <td style="font-family:var(--mono)">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
-          <td>{{ log.nom_utilisateur }}</td>
+        <tr class="log-row" data-resultat="{{ log.resultat|lower }}">
+          <td style="font-family:var(--mono); font-size:11px">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td>{{ log.nom_utilisateur|default:"Inconnu" }}</td>
+          <td style="font-family:var(--mono); font-size:10px">{{ log.badge_id|default:"—" }}</td>
           <td>{% if log.resultat == 'AUTORISE' %}<span class="badge b-green">✓ AUTORISÉ</span>{% else %}<span class="badge b-red">✗ REFUSÉ</span>{% endif %}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="3" style="text-align:center;padding:40px">Aucun accès enregistré</td></tr>
+        <tr><td colspan="4" style="text-align:center;padding:40px">Aucun accès enregistré</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -134,42 +168,109 @@
 
 <script>
 function testerConnexion() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ Test...';
+  
   fetch(`/equipements/{{ equipement.id }}/tester/`)
     .then(r => r.json())
     .then(data => {
       if (data.status === 'success') {
         alert(`✅ ${data.message}\nTemps de réponse: ${data.response_time}ms`);
-        location.reload();
       } else {
         alert(`❌ ${data.message}`);
       }
+    })
+    .catch(err => alert('❌ Erreur de connexion'))
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = '📡 Tester connexion';
     });
 }
 
 function envoyerCommande(commande) {
   const commandes = {
     test: 'Test de connexion',
+    status: 'État détaillé',
     reset: 'Réinitialisation',
     reboot: 'Redémarrage',
-    status: 'État'
+    sync: 'Synchronisation horloge'
   };
+  
+  const resultDiv = document.getElementById('commande-result');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = `<div class="alert-ico">⏳</div><div><div class="alert-text">Envoi de la commande "${commandes[commande]}"...</div></div>`;
   
   fetch(`/api/equipements/{{ equipement.id }}/commande/`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
     body: JSON.stringify({commande: commande})
   })
   .then(r => r.json())
   .then(data => {
-    const resultDiv = document.getElementById('commande-result');
-    resultDiv.style.display = 'block';
     resultDiv.innerHTML = `
       <div class="alert-ico">📡</div>
       <div><div class="alert-text">${data.message}</div></div>
     `;
     setTimeout(() => resultDiv.style.display = 'none', 3000);
   })
-  .catch(err => alert('Erreur: ' + err));
+  .catch(err => {
+    resultDiv.innerHTML = `<div class="alert-ico">❌</div><div><div class="alert-text">Erreur: ${err}</div></div>`;
+    setTimeout(() => resultDiv.style.display = 'none', 3000);
+  });
+}
+
+function emergencyUnlock() {
+  if(confirm('⚠️ ACTION D\'URGENCE ⚠️\n\nCette action déverrouillera TOUS les accès de cet équipement.\nCette action sera journalisée.\n\nConfirmez-vous le déverrouillage d\'urgence ?')) {
+    fetch(`/api/equipements/{{ equipement.id }}/emergency-unlock/`, {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    })
+    .then(r => r.json())
+    .then(data => {
+      alert(data.message || '✅ Déverrouillage d\'urgence activé');
+      location.reload();
+    })
+    .catch(() => alert('❌ Erreur lors du déverrouillage'));
+  }
+}
+
+function filterLogs(filter) {
+  const rows = document.querySelectorAll('#logs-tbody .log-row');
+  rows.forEach(row => {
+    const resultat = row.dataset.resultat;
+    if (filter === 'all') row.style.display = '';
+    else if (filter === 'autorise') row.style.display = resultat === 'autorise' ? '' : 'none';
+    else if (filter === 'refuse') row.style.display = resultat === 'refuse' ? '' : 'none';
+  });
+}
+
+function exportEquipmentLogs() {
+  let csv = "Date,Employé,Badge,Résultat\n";
+  const rows = document.querySelectorAll('#logs-tbody .log-row');
+  rows.forEach(row => {
+    if (row.style.display !== 'none') {
+      const cells = row.querySelectorAll('td');
+      csv += `"${cells[0].textContent.trim()}","${cells[1].textContent.trim()}","${cells[2].textContent.trim()}","${cells[3].textContent.trim()}"\n`;
+    }
+  });
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `equipement_${"{{ equipement.code }}"}_logs_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
 }
 </script>
+
+<style>
+.btn-amber {
+  background: var(--amber2);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.btn-amber:hover {
+  background: rgba(227,179,65,0.3);
+  transform: translateY(-1px);
+}
+</style>
 {% endblock %}

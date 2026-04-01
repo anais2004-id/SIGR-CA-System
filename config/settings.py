@@ -1,10 +1,14 @@
+# config/settings.py
+import os
 from pathlib import Path
+from pymongo import MongoClient
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-changez-moi-en-production'
+SECRET_KEY = 'your-secret-key-here'
 
 DEBUG = True
+
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -17,6 +21,7 @@ INSTALLED_APPS = [
     'dashboard',
 ]
 
+# config/settings.py - Ajoutez dans MIDDLEWARE
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -25,6 +30,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'dashboard.middleware.UserSessionMiddleware',  # Ajouter cette ligne
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -53,17 +59,15 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-# ====================== AUTHENTIFICATION ======================
-LOGIN_URL = '/login/'                    # ← Important
-LOGIN_REDIRECT_URL = '/'                 # Après connexion → dashboard
-LOGOUT_REDIRECT_URL = '/login/'          # Après déconnexion → login
 
-# Optionnel : message de succès après login
-MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
-# ====================== MONGO DB ======================
-import pymongo
-MONGO_CLIENT = pymongo.MongoClient('mongodb://localhost:27017/')
-MONGO_DB = MONGO_CLIENT['general_emballage']   # ← base utilisée partout
+AUTH_USER_MODEL = 'dashboard.Utilisateur'
+
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]
 
 LANGUAGE_CODE = 'fr-fr'
 TIME_ZONE = 'Africa/Algiers'
@@ -71,4 +75,23 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = '/static/'
-DEFAULT_AUTO_FIELD = 'django.models.BigAutoField'
+STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+
+# MongoDB Configuration
+MONGO_CLIENT = MongoClient('localhost', 27017)
+MONGO_DB = MONGO_CLIENT['general_emballage']
+# config/settings.py
+CSRF_COOKIE_SECURE = False  # Pour le développement
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000']

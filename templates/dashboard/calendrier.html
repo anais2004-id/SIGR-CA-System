@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Planning d'accès par employé{% endblock %}
+{% block title %}Planning d'accès par employé - SIGR-CA{% endblock %}
 {% block nav_calendrier %}active{% endblock %}
-{% block page_title %}Planning d'accès{% endblock %}
+{% block page_title %}Planning d'accès intelligent{% endblock %}
 {% block page_sub %}Autorisations horaires par employé et par zone{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:12px; align-items:center">
+<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
   <div class="search-inp" style="display:flex; align-items:center; gap:8px; padding:4px 12px">
     <span>🔍</span>
     <input type="text" id="employeeSearch" placeholder="Rechercher employé..." 
@@ -20,6 +20,8 @@
     </option>
     {% endfor %}
   </select>
+  <button class="btn btn-sm btn-ghost" onclick="openTemplateModal()" title="Utiliser un modèle">📋 Modèle</button>
+  <button class="btn btn-sm btn-ghost" onclick="copyWeekSchedule()" title="Copier la semaine">📅 Copier semaine</button>
   <div id="saveStatus" style="font-size:11px; color:var(--text2)"></div>
 </div>
 {% endblock %}
@@ -28,7 +30,7 @@
 
 <div class="g2" style="gap:24px">
 
-  <!-- Calendrier Principal -->
+  <!-- Calendrier Principal amélioré -->
   <div class="card" style="grid-column: span 2;">
     <div class="card-head">
       <span>📅</span>
@@ -37,27 +39,31 @@
     </div>
     <div class="card-body">
 
-      <!-- Navigation Calendrier -->
+      <!-- Navigation Calendrier améliorée -->
       <div class="cal-nav">
         <button class="cal-btn" onclick="chMon(-1)">‹ Mois précédent</button>
+        <button class="cal-btn" onclick="chYear(-1)">‹ Année</button>
         <span class="cal-month" id="cal-lbl" style="font-size:18px; font-weight:600"></span>
+        <button class="cal-btn" onclick="chYear(1)">Année ›</button>
         <button class="cal-btn" onclick="chMon(1)">Mois suivant ›</button>
         <button class="cal-btn btn-ghost" onclick="gotoToday()">📅 Aujourd'hui</button>
+        <button class="cal-btn btn-ghost" onclick="toggleWeekView()">📆 Vue semaine</button>
       </div>
       
       <div class="cal-grid" id="cal-grid"></div>
 
-      <!-- Légende -->
-      <div style="display:flex; gap:20px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border2)">
+      <!-- Légende améliorée -->
+      <div style="display:flex; gap:20px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border2); flex-wrap:wrap">
         <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--green); border-radius:2px"></div>Accès autorisé</span>
         <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--red); border-radius:2px"></div>Accès refusé</span>
         <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--blue); border-radius:2px"></div>Jour sélectionné</span>
         <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--amber); border-radius:2px"></div>Règle configurée</span>
+        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--purple); border-radius:2px"></div>Modèle appliqué</span>
       </div>
     </div>
   </div>
 
-  <!-- Configuration des horaires -->
+  <!-- Configuration des horaires améliorée -->
   <div class="card">
     <div class="card-head">
       <span>⏰</span>
@@ -66,6 +72,17 @@
     </div>
     <div class="card-body" style="padding:20px">
 
+      <!-- Vue rapide des créneaux -->
+      <div id="quick-slots" style="display:none; margin-bottom:16px; padding:12px; background:var(--blue3); border-radius:8px">
+        <div style="font-size:12px; font-weight:600; margin-bottom:8px">⚡ Créneaux pré-définis</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('08:00','12:00')">Matin (8h-12h)</button>
+          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('14:00','18:00')">Après-midi (14h-18h)</button>
+          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('08:00','18:00')">Journée complète</button>
+          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('','')">Désactiver tous</button>
+        </div>
+      </div>
+
       <div id="zone-rules-container" style="min-height:400px">
         <div style="text-align:center; padding:60px; color:var(--text3)">
           <div style="font-size:48px; margin-bottom:16px">📅</div>
@@ -73,19 +90,22 @@
         </div>
       </div>
 
-      <div style="margin-top:20px; display:flex; gap:12px; justify-content:flex-end">
+      <div style="margin-top:20px; display:flex; gap:12px; justify-content:flex-end; flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="copyToNextDay()">📋 Copier au jour suivant</button>
+        <button class="btn btn-ghost btn-sm" onclick="copyToAllWeek()">📅 Appliquer à toute la semaine</button>
         <button class="btn btn-ghost btn-sm" onclick="resetDayRules()">↺ Réinitialiser</button>
         <button class="btn btn-primary btn-sm" onclick="saveCurrentDayRules()">💾 Enregistrer pour ce jour</button>
       </div>
     </div>
   </div>
 
-  <!-- Récapitulatif des règles -->
+  <!-- Récapitulatif des règles amélioré -->
   <div class="card">
     <div class="card-head">
       <span>📋</span>
       <span class="card-title">Règles d'accès de l'employé</span>
       <button class="btn btn-edit btn-sm" onclick="exportRules()" style="margin-left:auto">⬇️ Exporter</button>
+      <button class="btn btn-edit btn-sm" onclick="importRules()">📂 Importer</button>
       <button class="btn btn-primary btn-sm" onclick="saveAllRules()">💾 Tout enregistrer</button>
     </div>
     <div class="card-body" id="rules-summary" style="max-height:400px; overflow-y:auto">
@@ -97,6 +117,154 @@
 
 </div>
 
+<!-- Modal Modèle -->
+<div class="modal-overlay" id="templateModal" style="display:none" onclick="if(event.target===this)closeTemplateModal()">
+  <div class="modal" style="width:500px">
+    <div class="modal-title">📋 Appliquer un modèle</div>
+    <div class="modal-sub">Choisissez un modèle de planning prédéfini</div>
+    <div style="margin:20px 0">
+      <div class="form-row">
+        <label class="form-label">Modèle</label>
+        <select id="templateSelect" class="form-select">
+          <option value="">— Sélectionner un modèle —</option>
+          <option value="standard">🏢 Standard (9h-17h, tous les jours)</option>
+          <option value="shift">🔄 Horaires postés (6h-14h / 14h-22h alternés)</option>
+          <option value="parttime">⏳ Mi-temps (9h-13h, lun-ven)</option>
+          <option value="weekend">🌙 Weekend uniquement (sam-dim, 10h-18h)</option>
+          <option value="night">🌙 Nuit (22h-6h, autorisé uniquement)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Appliquer à</label>
+        <select id="templateRange" class="form-select">
+          <option value="current">Jour sélectionné uniquement</option>
+          <option value="week">Toute la semaine</option>
+          <option value="month">Tout le mois</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeTemplateModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="applyTemplate()">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Importer -->
+<div class="modal-overlay" id="importModal" style="display:none" onclick="if(event.target===this)closeImportModal()">
+  <div class="modal" style="width:500px">
+    <div class="modal-title">📂 Importer des règles</div>
+    <div class="modal-sub">Importez un fichier CSV ou JSON</div>
+    <div class="form-row">
+      <label class="form-label">Format</label>
+      <select id="importFormat" class="form-select">
+        <option value="csv">CSV</option>
+        <option value="json">JSON</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Fichier</label>
+      <input type="file" id="importFile" class="form-input" accept=".csv,.json">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeImportModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="processImport()">Importer</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.cal-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.cal-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.cal-btn:hover {
+  background: var(--blue2);
+  border-color: var(--blue);
+  color: white;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.cal-d {
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 10px 6px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+  position: relative;
+}
+.cal-d:hover {
+  background: var(--blue3);
+  transform: translateY(-2px);
+}
+.cal-d.sel {
+  background: var(--blue);
+  color: white;
+}
+.cal-d.today {
+  border: 2px solid var(--blue);
+  font-weight: bold;
+}
+.cal-d.has-r {
+  border-bottom: 3px solid var(--amber);
+}
+.cal-d.weekend {
+  opacity: 0.7;
+}
+.cal-d.other {
+  opacity: 0.4;
+}
+.cal-dh {
+  background: var(--bg3);
+  border-radius: 6px;
+  padding: 8px 4px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text2);
+}
+.quick-slot-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.quick-slot-btn:hover {
+  background: var(--blue3);
+  border-color: var(--blue);
+}
+@media (max-width: 768px) {
+  .cal-grid {
+    gap: 4px;
+  }
+  .cal-d, .cal-dh {
+    padding: 6px 2px;
+    font-size: 11px;
+  }
+}
+</style>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -106,14 +274,13 @@ let selectedDay = null;
 let selectedDayYear = null;
 let selectedDayMonth = null;
 let selectedEmployeeId = null;
-// employeeRules: clés = "ANNEE-MOIS-JOUR" (ex: "2026-3-15")
 let employeeRules = {};
 let zones = [];
+let weekView = false;
 
 const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
-// Récupère le token CSRF depuis les cookies
 function getCsrfToken() {
   const name = 'csrftoken';
   const cookies = document.cookie.split(';');
@@ -126,12 +293,10 @@ function getCsrfToken() {
   return '';
 }
 
-// Crée une clé unique pour identifier un jour précis
 function dayKey(year, month, day) {
   return `${year}-${month + 1}-${day}`;
 }
 
-// Charger les zones
 async function loadZones() {
   try {
     const response = await fetch('/api/bureaux/');
@@ -153,7 +318,6 @@ async function loadZones() {
 
 function renderCalendar() {
   const firstDay = new Date(currentYear, currentMonth, 1);
-  // getDay() retourne 0=dim, 1=lun… On veut 0=lun, 6=dim
   const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const today = new Date();
@@ -165,7 +329,6 @@ function renderCalendar() {
   const grid = document.getElementById("cal-grid");
   grid.innerHTML = "";
 
-  // En-têtes des jours
   DAYS.forEach(d => {
     const el = document.createElement("div");
     el.className = "cal-dh";
@@ -173,7 +336,6 @@ function renderCalendar() {
     grid.appendChild(el);
   });
 
-  // Jours du mois précédent (remplissage)
   const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
   for (let i = 0; i < startDay; i++) {
     const d = document.createElement("div");
@@ -182,7 +344,6 @@ function renderCalendar() {
     grid.appendChild(d);
   }
 
-  // Jours du mois courant
   for (let day = 1; day <= daysInMonth; day++) {
     const d = document.createElement("div");
     const date = new Date(currentYear, currentMonth, day);
@@ -196,7 +357,6 @@ function renderCalendar() {
 
     if (selectedEmployeeId && employeeRules[key] && Object.keys(employeeRules[key]).length > 0) {
       cls += " has-r";
-      d.style.borderBottom = "2px solid var(--amber)";
     }
 
     d.className = cls;
@@ -206,7 +366,6 @@ function renderCalendar() {
     grid.appendChild(d);
   }
 
-  // Jours du mois suivant (remplissage pour compléter à 42 cellules)
   const totalCells = 42;
   const remaining = totalCells - (startDay + daysInMonth);
   for (let i = 1; i <= remaining; i++) {
@@ -217,19 +376,28 @@ function renderCalendar() {
   }
 }
 
+function chYear(dir) {
+  currentYear += dir;
+  renderCalendar();
+  if (selectedEmployeeId && selectedDay !== null) {
+    renderZoneRulesForDay();
+  }
+}
+
+function toggleWeekView() {
+  weekView = !weekView;
+  renderCalendar();
+}
+
 function selectDay(day) {
   selectedDay = day;
   selectedDayYear = currentYear;
   selectedDayMonth = currentMonth;
-
-  // Mettre à jour l'affichage de la date sélectionnée
   const dateStr = `${day} ${MONTHS[currentMonth]} ${currentYear}`;
   document.getElementById("selected-date-display").textContent = dateStr;
-
-  // Re-rendre le calendrier pour mettre à jour la classe "sel"
   renderCalendar();
-
   renderZoneRulesForDay();
+  document.getElementById('quick-slots').style.display = 'block';
 }
 
 function gotoToday() {
@@ -245,10 +413,7 @@ function chMon(dir) {
   if (currentMonth > 11) { currentMonth = 0; currentYear++; }
   if (currentMonth < 0) { currentMonth = 11; currentYear--; }
   renderCalendar();
-  // On met à jour le panneau de configuration seulement si un jour est sélectionné
   if (selectedEmployeeId && selectedDay !== null) {
-    const dateStr = `${selectedDay} ${MONTHS[selectedDayMonth]} ${selectedDayYear}`;
-    document.getElementById("selected-date-display").textContent = dateStr;
     renderZoneRulesForDay();
   }
 }
@@ -288,7 +453,6 @@ async function loadEmployeeRules() {
     const data = await response.json();
 
     if (data.status === 'success') {
-      // Les règles arrivent avec des clés "ANNEE-MOIS-JOUR" (converties côté serveur)
       employeeRules = data.rules || {};
     } else {
       employeeRules = {};
@@ -299,7 +463,6 @@ async function loadEmployeeRules() {
     if (selectedDay !== null) {
       renderZoneRulesForDay();
     }
-
   } catch (error) {
     console.error('Erreur chargement règles:', error);
     employeeRules = {};
@@ -321,11 +484,9 @@ function renderRulesSummary(rules) {
   }
 
   let html = '<div style="display:flex; flex-direction:column; gap:12px">';
-
-  // Regrouper par zone
   const rulesByZone = {};
+  
   for (const [key, zonesRules] of Object.entries(rules)) {
-    // key = "ANNEE-MOIS-JOUR"
     const [yr, mo, dy] = key.split('-');
     const label = `${dy} ${MONTHS[parseInt(mo) - 1]} ${yr}`;
     for (const [zoneName, rule] of Object.entries(zonesRules)) {
@@ -355,30 +516,20 @@ function renderRulesSummary(rules) {
           </div>
         </div>`;
     });
-
     html += `</div></div>`;
   }
-
   html += '</div>';
   summaryDiv.innerHTML = html;
 }
 
 function renderZoneRulesForDay() {
   if (!selectedEmployeeId) {
-    document.getElementById("zone-rules-container").innerHTML = `
-      <div style="text-align:center; padding:60px; color:var(--text3)">
-        <div style="font-size:48px; margin-bottom:16px">👥</div>
-        <div>Sélectionnez un employé pour commencer</div>
-      </div>`;
+    document.getElementById("zone-rules-container").innerHTML = `<div style="text-align:center; padding:60px; color:var(--text3)"><div style="font-size:48px; margin-bottom:16px">👥</div><div>Sélectionnez un employé pour commencer</div></div>`;
     return;
   }
 
   if (selectedDay === null) {
-    document.getElementById("zone-rules-container").innerHTML = `
-      <div style="text-align:center; padding:60px; color:var(--text3)">
-        <div style="font-size:48px; margin-bottom:16px">📅</div>
-        <div>Cliquez sur un jour du calendrier pour le configurer</div>
-      </div>`;
+    document.getElementById("zone-rules-container").innerHTML = `<div style="text-align:center; padding:60px; color:var(--text3)"><div style="font-size:48px; margin-bottom:16px">📅</div><div>Cliquez sur un jour du calendrier pour le configurer</div></div>`;
     return;
   }
 
@@ -401,44 +552,19 @@ function renderZoneRulesForDay() {
       <div style="background:var(--bg3); border-radius:10px; margin-bottom:12px; overflow:hidden">
         <div style="padding:12px 16px; border-bottom:1px solid var(--border2)">
           <div style="display:flex; justify-content:space-between; align-items:center">
-            <div>
-              <span style="font-weight:600">🚪 ${zone.nom}</span>
-              <span class="badge ${niveauClass}" style="margin-left:8px">${niveauText}</span>
-            </div>
-            <label class="tswitch">
-              <input type="checkbox" class="zone-toggle" data-zone="${zone.nom}" 
-                     ${zoneRule.acces_autorise !== false ? 'checked' : ''} 
-                     onchange="toggleZoneAccess('${zone.nom}', this.checked)">
-              <span class="tslider"></span>
-            </label>
+            <div><span style="font-weight:600">🚪 ${zone.nom}</span><span class="badge ${niveauClass}" style="margin-left:8px">${niveauText}</span></div>
+            <label class="tswitch"><input type="checkbox" class="zone-toggle" data-zone="${zone.nom}" ${zoneRule.acces_autorise !== false ? 'checked' : ''} onchange="toggleZoneAccess('${zone.nom}', this.checked)"><span class="tslider"></span></label>
           </div>
         </div>
         <div style="padding:12px 16px">
           <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
-            <div style="display:flex; align-items:center; gap:8px">
-              <span style="font-size:12px; color:var(--text2)">🕐 De</span>
-              <input type="time" class="form-input" style="width:100px" 
-                     value="${zoneRule.heure_debut || '08:00'}" 
-                     data-zone="${zone.nom}" data-type="start"
-                     onchange="updateZoneTime('${zone.nom}', 'start', this.value)">
-            </div>
-            <div style="display:flex; align-items:center; gap:8px">
-              <span style="font-size:12px; color:var(--text2)">à</span>
-              <input type="time" class="form-input" style="width:100px" 
-                     value="${zoneRule.heure_fin || '18:00'}" 
-                     data-zone="${zone.nom}" data-type="end"
-                     onchange="updateZoneTime('${zone.nom}', 'end', this.value)">
-            </div>
-            <div style="margin-left:auto">
-              <span class="badge ${zoneRule.acces_autorise !== false ? 'b-green' : 'b-red'}">
-                ${zoneRule.acces_autorise !== false ? '✓ Accès autorisé' : '✗ Accès bloqué'}
-              </span>
-            </div>
+            <div style="display:flex; align-items:center; gap:8px"><span style="font-size:12px; color:var(--text2)">🕐 De</span><input type="time" class="form-input" style="width:100px" value="${zoneRule.heure_debut || '08:00'}" data-zone="${zone.nom}" data-type="start" onchange="updateZoneTime('${zone.nom}', 'start', this.value)"></div>
+            <div style="display:flex; align-items:center; gap:8px"><span style="font-size:12px; color:var(--text2)">à</span><input type="time" class="form-input" style="width:100px" value="${zoneRule.heure_fin || '18:00'}" data-zone="${zone.nom}" data-type="end" onchange="updateZoneTime('${zone.nom}', 'end', this.value)"></div>
+            <div style="margin-left:auto"><span class="badge ${zoneRule.acces_autorise !== false ? 'b-green' : 'b-red'}">${zoneRule.acces_autorise !== false ? '✓ Accès autorisé' : '✗ Accès bloqué'}</span></div>
           </div>
         </div>
       </div>`;
   });
-
   html += `</div>`;
   document.getElementById("zone-rules-container").innerHTML = html;
 }
@@ -448,11 +574,9 @@ function toggleZoneAccess(zoneName, enabled) {
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   if (!employeeRules[key]) employeeRules[key] = {};
   if (!employeeRules[key][zoneName]) employeeRules[key][zoneName] = {};
-
   employeeRules[key][zoneName].acces_autorise = enabled;
   employeeRules[key][zoneName].heure_debut = employeeRules[key][zoneName].heure_debut || '08:00';
   employeeRules[key][zoneName].heure_fin = employeeRules[key][zoneName].heure_fin || '18:00';
-
   renderZoneRulesForDay();
   renderCalendar();
 }
@@ -462,148 +586,220 @@ function updateZoneTime(zoneName, type, value) {
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   if (!employeeRules[key]) employeeRules[key] = {};
   if (!employeeRules[key][zoneName]) employeeRules[key][zoneName] = { acces_autorise: true };
-
-  if (type === 'start') {
-    employeeRules[key][zoneName].heure_debut = value;
-  } else {
-    employeeRules[key][zoneName].heure_fin = value;
-  }
+  if (type === 'start') employeeRules[key][zoneName].heure_debut = value;
+  else employeeRules[key][zoneName].heure_fin = value;
 }
 
 function resetDayRules() {
   if (!selectedEmployeeId || selectedDay === null) return;
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
-  if (employeeRules[key]) {
-    delete employeeRules[key];
+  if (employeeRules[key]) delete employeeRules[key];
+  renderZoneRulesForDay();
+  renderCalendar();
+}
+
+function applyQuickSlot(start, end) {
+  if (!selectedEmployeeId || selectedDay === null) return;
+  const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  if (!employeeRules[key]) employeeRules[key] = {};
+  
+  zones.forEach(zone => {
+    if (!employeeRules[key][zone.nom]) employeeRules[key][zone.nom] = {};
+    employeeRules[key][zone.nom].acces_autorise = start && end;
+    employeeRules[key][zone.nom].heure_debut = start || '00:00';
+    employeeRules[key][zone.nom].heure_fin = end || '00:00';
+  });
+  renderZoneRulesForDay();
+  renderCalendar();
+}
+
+function copyToNextDay() {
+  if (!selectedEmployeeId || selectedDay === null) return;
+  const currentKey = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  const nextDay = selectedDay + 1;
+  const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
+  if (nextDay > daysInMonth) {
+    showSaveStatus("⚠️ Fin du mois atteinte", true);
+    return;
+  }
+  const nextKey = dayKey(selectedDayYear, selectedDayMonth, nextDay);
+  if (employeeRules[currentKey]) {
+    employeeRules[nextKey] = JSON.parse(JSON.stringify(employeeRules[currentKey]));
+    showSaveStatus("✅ Règles copiées au jour suivant");
   }
   renderZoneRulesForDay();
   renderCalendar();
+}
+
+function copyToAllWeek() {
+  if (!selectedEmployeeId || selectedDay === null) return;
+  const currentKey = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  if (!employeeRules[currentKey]) return;
+  
+  const startDay = selectedDay;
+  const endDay = Math.min(selectedDay + 6, new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate());
+  
+  for (let d = startDay + 1; d <= endDay; d++) {
+    const newKey = dayKey(selectedDayYear, selectedDayMonth, d);
+    employeeRules[newKey] = JSON.parse(JSON.stringify(employeeRules[currentKey]));
+  }
+  showSaveStatus(`✅ Règles copiées du ${startDay} au ${endDay}`);
+  renderZoneRulesForDay();
+  renderCalendar();
+}
+
+function openTemplateModal() { document.getElementById('templateModal').style.display = 'flex'; }
+function closeTemplateModal() { document.getElementById('templateModal').style.display = 'none'; }
+function openImportModal() { document.getElementById('importModal').style.display = 'flex'; }
+function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
+function importRules() { openImportModal(); }
+
+function applyTemplate() {
+  const template = document.getElementById('templateSelect').value;
+  const range = document.getElementById('templateRange').value;
+  if (!template) { alert("Veuillez sélectionner un modèle"); return; }
+  
+  const templates = {
+    standard: { start: '09:00', end: '17:00', enabled: true },
+    shift: { start: '06:00', end: '14:00', enabled: true },
+    parttime: { start: '09:00', end: '13:00', enabled: true },
+    weekend: { start: '10:00', end: '18:00', enabled: true },
+    night: { start: '22:00', end: '06:00', enabled: true }
+  };
+  const tpl = templates[template];
+  
+  if (range === 'current' && selectedDay) {
+    const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+    if (!employeeRules[key]) employeeRules[key] = {};
+    zones.forEach(zone => {
+      employeeRules[key][zone.nom] = { acces_autorise: tpl.enabled, heure_debut: tpl.start, heure_fin: tpl.end };
+    });
+  } else if (range === 'week' && selectedDay) {
+    const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
+    const endDay = Math.min(selectedDay + 6, daysInMonth);
+    for (let d = selectedDay; d <= endDay; d++) {
+      const key = dayKey(selectedDayYear, selectedDayMonth, d);
+      if (!employeeRules[key]) employeeRules[key] = {};
+      zones.forEach(zone => {
+        employeeRules[key][zone.nom] = { acces_autorise: tpl.enabled, heure_debut: tpl.start, heure_fin: tpl.end };
+      });
+    }
+  } else if (range === 'month') {
+    const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = dayKey(selectedDayYear, selectedDayMonth, d);
+      if (!employeeRules[key]) employeeRules[key] = {};
+      zones.forEach(zone => {
+        employeeRules[key][zone.nom] = { acces_autorise: tpl.enabled, heure_debut: tpl.start, heure_fin: tpl.end };
+      });
+    }
+  }
+  
+  showSaveStatus(`✅ Modèle "${template}" appliqué`);
+  renderZoneRulesForDay();
+  renderCalendar();
+  closeTemplateModal();
+}
+
+function processImport() {
+  const file = document.getElementById('importFile').files[0];
+  if (!file) { alert("Veuillez sélectionner un fichier"); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const content = e.target.result;
+      const format = document.getElementById('importFormat').value;
+      let imported = {};
+      if (format === 'json') imported = JSON.parse(content);
+      else {
+        const lines = content.split('\n');
+        lines.slice(1).forEach(line => {
+          const [date, zone, access, start, end] = line.split(',');
+          if (date && zone) {
+            if (!imported[date]) imported[date] = {};
+            imported[date][zone] = { acces_autorise: access.trim() === 'AUTORISÉ', heure_debut: start, heure_fin: end };
+          }
+        });
+      }
+      employeeRules = imported;
+      renderRulesSummary(employeeRules);
+      renderZoneRulesForDay();
+      renderCalendar();
+      showSaveStatus(`✅ Import réussi : ${Object.keys(imported).length} règles`);
+    } catch (err) { alert("Erreur d'import: " + err.message); }
+  };
+  reader.readAsText(file);
+  closeImportModal();
 }
 
 function showSaveStatus(message, isError = false) {
   const statusDiv = document.getElementById('saveStatus');
   statusDiv.textContent = message;
   statusDiv.style.color = isError ? 'var(--red)' : 'var(--green)';
-  setTimeout(() => {
-    statusDiv.textContent = '';
-  }, 3000);
+  setTimeout(() => statusDiv.textContent = '', 3000);
 }
 
 async function saveCurrentDayRules() {
-  if (!selectedEmployeeId) {
-    alert("Veuillez sélectionner un employé");
-    return;
-  }
-  if (selectedDay === null) {
-    alert("Veuillez sélectionner un jour dans le calendrier");
-    return;
-  }
-
+  if (!selectedEmployeeId) { alert("Veuillez sélectionner un employé"); return; }
+  if (selectedDay === null) { alert("Veuillez sélectionner un jour dans le calendrier"); return; }
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   const dayRules = employeeRules[key] || {};
   const rulesToSave = [];
-
   for (const [zoneName, rule] of Object.entries(dayRules)) {
     rulesToSave.push({
-      employe_id: selectedEmployeeId,
-      zone_nom: zoneName,
-      jour: selectedDay,
-      mois: selectedDayMonth + 1,
-      annee: selectedDayYear,
-      heure_debut: rule.heure_debut || '08:00',
-      heure_fin: rule.heure_fin || '18:00',
+      employe_id: selectedEmployeeId, zone_nom: zoneName,
+      jour: selectedDay, mois: selectedDayMonth + 1, annee: selectedDayYear,
+      heure_debut: rule.heure_debut || '08:00', heure_fin: rule.heure_fin || '18:00',
       acces_autorise: rule.acces_autorise !== false
     });
   }
-
   if (rulesToSave.length === 0) {
-    rulesToSave.push({
-      employe_id: selectedEmployeeId,
-      zone_nom: '__DELETE__',
-      jour: selectedDay,
-      mois: selectedDayMonth + 1,
-      annee: selectedDayYear
-    });
+    rulesToSave.push({ employe_id: selectedEmployeeId, zone_nom: '__DELETE__',
+      jour: selectedDay, mois: selectedDayMonth + 1, annee: selectedDayYear });
   }
-
   try {
     const response = await fetch('/api/save-day-rules/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCsrfToken()
-      },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({rules: rulesToSave, employe_id: selectedEmployeeId})
     });
-
     const result = await response.json();
-
     if (result.status === 'success') {
       showSaveStatus(`✅ ${result.message}`);
       renderRulesSummary(employeeRules);
       renderCalendar();
-    } else {
-      showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
-    }
-  } catch (error) {
-    console.error('Erreur sauvegarde:', error);
-    showSaveStatus('❌ Erreur de connexion au serveur', true);
-  }
+    } else showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
+  } catch (error) { showSaveStatus('❌ Erreur de connexion au serveur', true); }
 }
 
 async function saveAllRules() {
-  if (!selectedEmployeeId) {
-    alert("Veuillez sélectionner un employé");
-    return;
-  }
-
+  if (!selectedEmployeeId) { alert("Veuillez sélectionner un employé"); return; }
   const allRules = [];
   for (const [key, dayRules] of Object.entries(employeeRules)) {
     const [yr, mo, dy] = key.split('-');
     for (const [zoneName, rule] of Object.entries(dayRules)) {
       allRules.push({
-        employe_id: selectedEmployeeId,
-        zone_nom: zoneName,
-        jour: parseInt(dy),
-        mois: parseInt(mo),
-        annee: parseInt(yr),
-        heure_debut: rule.heure_debut || '08:00',
-        heure_fin: rule.heure_fin || '18:00',
+        employe_id: selectedEmployeeId, zone_nom: zoneName,
+        jour: parseInt(dy), mois: parseInt(mo), annee: parseInt(yr),
+        heure_debut: rule.heure_debut || '08:00', heure_fin: rule.heure_fin || '18:00',
         acces_autorise: rule.acces_autorise !== false
       });
     }
   }
-
   try {
     const response = await fetch('/api/save-all-rules/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCsrfToken()
-      },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({employe_id: selectedEmployeeId, rules: allRules})
     });
-
     const result = await response.json();
-
-    if (result.status === 'success') {
-      showSaveStatus(`✅ ${result.message}`);
-      renderRulesSummary(employeeRules);
-    } else {
-      showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
-    }
-  } catch (error) {
-    console.error('Erreur sauvegarde:', error);
-    showSaveStatus('❌ Erreur de connexion au serveur', true);
-  }
+    if (result.status === 'success') showSaveStatus(`✅ ${result.message}`);
+    else showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
+  } catch (error) { showSaveStatus('❌ Erreur de connexion au serveur', true); }
 }
 
 function exportRules() {
   if (!selectedEmployeeId || Object.keys(employeeRules).length === 0) {
-    alert("Aucune règle à exporter");
-    return;
+    alert("Aucune règle à exporter"); return;
   }
-
   let csv = "Date,Zone,Accès,Heure Début,Heure Fin\n";
   for (const [key, dayRules] of Object.entries(employeeRules)) {
     const [yr, mo, dy] = key.split('-');
@@ -612,19 +808,14 @@ function exportRules() {
       csv += `${dateLabel},${zoneName},${rule.acces_autorise !== false ? 'AUTORISÉ' : 'REFUSÉ'},${rule.heure_debut || '08:00'},${rule.heure_fin || '18:00'}\n`;
     }
   }
-
   const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
   const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  link.href = url;
+  link.href = URL.createObjectURL(blob);
   link.download = `regles_acces_${selectedEmployeeId}_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(link.href);
 }
 
-// Initialisation
 window.onload = async function() {
   await loadZones();
   renderCalendar();

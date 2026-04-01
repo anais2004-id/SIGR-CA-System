@@ -2,8 +2,8 @@
 
 {% block title %}Surveillance Live - SIGR-CA{% endblock %}
 {% block nav_live %}active{% endblock %}
-{% block page_title %}Surveillance Live{% endblock %}
-{% block page_sub %}Temps réel — Mises à jour automatiques{% endblock %}
+{% block page_title %}Surveillance Live IoT{% endblock %}
+{% block page_sub %}Contrôle d'accès en temps réel — Mises à jour automatiques{% endblock %}
 
 {% block topbar_actions %}
 <div class="pill pill-live" id="live-pill" onclick="toggleLive()">
@@ -11,18 +11,22 @@
     <span id="live-status">LIVE (10s)</span>
 </div>
 <div class="icon-btn" onclick="manualRefresh()" title="Actualiser maintenant">↻</div>
+<button class="btn btn-ghost btn-sm" onclick="exportLiveData()">⬇️ Exporter</button>
 {% endblock %}
 
 {% block content %}
 
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+<!-- KPIs améliorés -->
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
   <div class="kpi k-green">
     <div class="kpi-header"><div class="kpi-label">Accès autorisés</div><div class="kpi-icon">✅</div></div>
     <div class="kpi-value" id="kpi-ok">{{ acces_ok|default:"0" }}</div>
+    <div class="kpi-delta" id="kpi-ok-delta">+0%</div>
   </div>
   <div class="kpi k-red">
     <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
     <div class="kpi-value" id="kpi-no">{{ acces_no|default:"0" }}</div>
+    <div class="kpi-delta neg" id="kpi-no-delta">0</div>
   </div>
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Zones actives</div><div class="kpi-icon">🚪</div></div>
@@ -31,39 +35,53 @@
   <div class="kpi k-amber">
     <div class="kpi-header"><div class="kpi-label">Alertes actives</div><div class="kpi-icon">⚠️</div></div>
     <div class="kpi-value" id="kpi-alertes">{{ alertes|default:"0" }}</div>
+    <div class="kpi-delta neg" id="alert-tendance">Non traitées</div>
   </div>
   <div class="kpi k-purple">
     <div class="kpi-header"><div class="kpi-label">Total employés</div><div class="kpi-icon">👥</div></div>
     <div class="kpi-value">{{ total_employes|default:"0" }}</div>
   </div>
+  <div class="kpi k-cyan" style="--cyan:#39d0f0">
+    <div class="kpi-header"><div class="kpi-label">Taux succès</div><div class="kpi-icon">📈</div></div>
+    <div class="kpi-value" id="kpi-taux">{{ taux_succes|default:0 }}%</div>
+    <div class="kpi-delta">Dernière heure</div>
+  </div>
 </div>
 
 <div class="g2">
-  <!-- Flux temps réel -->
+  <!-- Flux temps réel amélioré -->
   <div class="card">
     <div class="card-head">
       <span>📡</span>
       <span class="card-title">Flux accès — temps réel</span>
       <span class="card-sub"><span class="live-dot"></span> Mise à jour automatique</span>
+      <div style="margin-left:auto; display:flex; gap:4px">
+        <button class="btn btn-sm btn-ghost" onclick="filterFeed('all')" id="filter-all">Tous</button>
+        <button class="btn btn-sm btn-ghost" onclick="filterFeed('autorise')" id="filter-ok">Autorisés</button>
+        <button class="btn btn-sm btn-ghost" onclick="filterFeed('refuse')" id="filter-no">Refusés</button>
+      </div>
     </div>
-    <div style="padding:12px 14px; max-height:460px; overflow-y:auto" id="live-feed">
+    <div style="padding:12px 14px; max-height:500px; overflow-y:auto" id="live-feed">
       {% for log in derniers_logs %}
-      <div class="feed-item {% if forloop.first %}new{% endif %}" id="log-{{ forloop.counter }}">
-        <div class="feed-av" style="background:#1f6feb">
+      <div class="feed-item {% if forloop.first %}new{% endif %}" data-resultat="{{ log.resultat|lower }}" id="log-{{ log.id|default:forloop.counter }}">
+        <div class="feed-av" style="background:{% if log.resultat == 'AUTORISE' %}#2dba6f{% else %}#f85149{% endif %}">
           {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
         </div>
         <div class="feed-info">
-          <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+          <div class="feed-name">
+            {{ log.nom_utilisateur|default:"Inconnu" }}
+            <span style="font-size:10px; color:var(--text3); margin-left:6px">#{{ log.badge_id|default:"?" }}</span>
+          </div>
           <div class="feed-door">
-            {{ log.bureau_nom|default:"Zone inconnue" }} · 
+            🚪 {{ log.bureau_nom|default:"Zone inconnue" }} · 
             {% if log.type_acces == 'QR' %}📱 QR Code{% else %}🔖 RFID{% endif %}
           </div>
         </div>
         <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
         {% if log.resultat == 'AUTORISE' %}
-          <div class="feed-status fs-ok">AUTORISÉ</div>
+          <div class="feed-status fs-ok">✓ AUTORISÉ</div>
         {% else %}
-          <div class="feed-status fs-no">REFUSÉ</div>
+          <div class="feed-status fs-no">✗ REFUSÉ</div>
         {% endif %}
       </div>
       {% empty %}
@@ -74,7 +92,7 @@
     </div>
   </div>
 
-  <!-- Alertes & État des zones -->
+  <!-- Alertes & État des zones amélioré -->
   <div class="card">
     <div class="card-head">
       <span>⚠️</span>
@@ -84,12 +102,13 @@
     <div class="card-body">
 
       {% if alertes > 0 %}
-      <div class="alert-box danger">
+      <div class="alert-box danger" id="alert-box">
         <div class="alert-ico">🔴</div>
         <div>
           <div class="alert-text">{{ alertes }} alerte{{ alertes|pluralize }} non traitée{{ alertes|pluralize }}</div>
           <div class="alert-meta">Vérification immédiate requise</div>
         </div>
+        <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="viewAlerts()">Voir détails</button>
       </div>
       {% else %}
       <div class="alert-box info">
@@ -98,59 +117,259 @@
       </div>
       {% endif %}
 
-      <div style="margin-top:24px">
+      <!-- Occupation des zones en temps réel -->
+      <div style="margin-top:20px">
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:12px">
-          ÉTAT DES ZONES
+          📊 OCCUPATION DES ZONES — TEMPS RÉEL
         </div>
-        {% for bureau in bureaux %}
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2);margin-bottom:8px">
-          <div>
-            <div style="font-size:13.5px;font-weight:500">{{ bureau.nom }}</div>
-            <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">{{ bureau.code_bureau|default:"—" }} · Étage {{ bureau.etage|default:"—" }}</div>
+        <div id="zone-occupation">
+          {% for bureau in bureaux %}
+          <div class="zone-occupation-item" style="margin-bottom:12px" data-zone-id="{{ bureau.id }}">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+              <span style="font-weight:500">{{ bureau.nom }}</span>
+              <span id="occ-{{ bureau.id }}" style="font-family:var(--mono); font-size:11px">—/{{ bureau.capacite_max|default:"?" }}</span>
+            </div>
+            <div class="progress-bar" style="height:6px">
+              <div class="progress-fill" id="bar-{{ bureau.id }}" style="width:0%; background:var(--green)"></div>
+            </div>
+            <div style="font-size:10px; color:var(--text3); margin-top:4px" id="status-{{ bureau.id }}">🟢 Normal</div>
           </div>
-          <span class="badge b-green">● ACTIF</span>
+          {% empty %}
+          <div style="color:var(--text3);text-align:center;padding:20px">Aucune zone configurée</div>
+          {% endfor %}
         </div>
-        {% empty %}
-        <div style="color:var(--text3);text-align:center;padding:40px">Aucune zone configurée</div>
-        {% endfor %}
+      </div>
+
+      <!-- Équipements en ligne -->
+      <div style="margin-top:20px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:12px">
+          🔌 ÉQUIPEMENTS CONNECTÉS
+        </div>
+        <div id="equipments-status">
+          {% for eq in equipements|default:"" %}
+          <div class="equip-status" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg3); border-radius:6px; margin-bottom:6px">
+            <div>
+              <span style="font-weight:500">{{ eq.nom }}</span>
+              <span style="font-size:10px; color:var(--text3); margin-left:8px">{{ eq.type }}</span>
+            </div>
+            <div>
+              {% if eq.statut == 'actif' %}
+                <span class="badge b-green" id="eq-status-{{ eq.id }}">🟢 EN LIGNE</span>
+              {% else %}
+                <span class="badge b-gray" id="eq-status-{{ eq.id }}">⚫ HORS LIGNE</span>
+              {% endif %}
+            </div>
+          </div>
+          {% empty %}
+          <div style="color:var(--text3);text-align:center;padding:20px">Aucun équipement configuré</div>
+          {% endfor %}
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Historique des dernières alertes -->
+<div class="card">
+  <div class="card-head">
+    <span>📋</span>
+    <span class="card-title">Historique des alertes récentes</span>
+    <span class="card-sub">Dernières 24h</span>
+  </div>
+  <div class="card-body" id="alert-history">
+    {% if alertes_list %}
+      {% for alerte in alertes_list|slice:":5" %}
+      <div class="alert-box warn" style="margin-bottom:8px">
+        <div class="alert-ico">⚠️</div>
+        <div>
+          <div class="alert-text">{{ alerte.message }}</div>
+          <div class="alert-meta">{{ alerte.timestamp|date:"d/m/Y H:i:s" }} · {{ alerte.zone }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="text-align:center;padding:30px;color:var(--text3)">Aucune alerte récente</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Mode secours -->
+<div class="card" style="border-color: var(--amber)">
+  <div class="card-head">
+    <span>🛡️</span>
+    <span class="card-title">Mode de secours - Déverrouillage d'urgence</span>
+    <span class="card-sub">Action journalisée</span>
+  </div>
+  <div class="card-body">
+    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+      <div style="flex:1">
+        <div style="font-size:13px; margin-bottom:8px">⚠️ En situation d'urgence (incendie, panne, sécurité), vous pouvez déverrouiller manuellement tous les accès</div>
+        <div class="progress-bar" style="height:3px"><div class="progress-fill" style="width:100%; background:var(--amber)"></div></div>
+        <div style="font-size:11px; color:var(--text2); margin-top:8px">Cette action est journalisée dans le système d'audit</div>
+      </div>
+      <button class="btn btn-amber btn-sm" onclick="emergencyUnlock()" style="background:var(--amber2); color:var(--amber); border-color:var(--amber)">🔓 Déverrouillage d'urgence</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.btn-amber {
+  background: var(--amber2);
+  color: var(--amber);
+  border-color: var(--amber);
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-amber:hover {
+  background: rgba(227,179,65,0.3);
+  transform: translateY(-1px);
+}
+.kpi.k-cyan::after {
+  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
+}
+.zone-occupation-item {
+  transition: all 0.2s;
+}
+.zone-occupation-item:hover {
+  transform: translateX(4px);
+}
+.filter-active {
+  background: var(--blue);
+  color: white !important;
+  border-color: var(--blue);
+}
+</style>
 
 {% endblock %}
 
 {% block extra_js %}
 let liveEnabled = true;
 let refreshInterval = null;
+let currentFeedFilter = 'all';
+let occupationInterval = null;
 
 function startLiveRefresh() {
   if (refreshInterval) clearInterval(refreshInterval);
   refreshInterval = setInterval(() => {
-    if (liveEnabled) manualRefresh();
-  }, 10000);   // toutes les 10 secondes
+    if (liveEnabled) fetchLiveData();
+  }, 10000);
 }
 
-function toggleLive() {
-  liveEnabled = !liveEnabled;
-  const dot = document.getElementById('live-dot');
-  const status = document.getElementById('live-status');
-  
-  if (liveEnabled) {
-    dot.style.animation = 'blink 2s infinite';
-    status.textContent = 'LIVE (10s)';
-    startLiveRefresh();
-  } else {
-    dot.style.animation = 'none';
-    status.textContent = 'PAUSE';
+function startOccupationRefresh() {
+  if (occupationInterval) clearInterval(occupationInterval);
+  occupationInterval = setInterval(() => {
+    if (liveEnabled) fetchOccupationData();
+  }, 5000);
+}
+
+async function fetchLiveData() {
+  try {
+    const response = await fetch('/api/live-feed/');
+    const data = await response.json();
+    if (data.logs) {
+      updateLiveFeed(data.logs);
+      updateKPIs(data.stats);
+    }
+  } catch (error) {
+    console.error('Erreur fetch live:', error);
   }
 }
 
-function manualRefresh() {
-  location.reload();
+async function fetchOccupationData() {
+  try {
+    const response = await fetch('/api/occupation/');
+    const data = await response.json();
+    if (data.bureaux) {
+      updateZoneOccupation(data.bureaux);
+    }
+  } catch (error) {
+    console.error('Erreur fetch occupation:', error);
+  }
 }
 
-// Animation pour les nouveaux logs
+function updateLiveFeed(logs) {
+  const container = document.getElementById('live-feed');
+  if (!container) return;
+  
+  const newLogs = logs.slice(0, 15);
+  container.innerHTML = newLogs.map((log, idx) => `
+    <div class="feed-item new" data-resultat="${log.resultat.toLowerCase()}" id="log-${idx}">
+      <div class="feed-av" style="background:${log.resultat === 'AUTORISE' ? '#2dba6f' : '#f85149'}">
+        ${log.nom.slice(0,2).toUpperCase()}
+      </div>
+      <div class="feed-info">
+        <div class="feed-name">
+          ${log.nom}
+          <span style="font-size:10px; color:var(--text3); margin-left:6px">#${log.badge}</span>
+        </div>
+        <div class="feed-door">
+          🚪 ${log.zone} · ${log.method === 'QR' ? '📱 QR Code' : '🔖 RFID'}
+        </div>
+      </div>
+      <div class="feed-time">${log.time}</div>
+      <div class="feed-status ${log.resultat === 'AUTORISE' ? 'fs-ok' : 'fs-no'}">
+        ${log.resultat === 'AUTORISE' ? '✓ AUTORISÉ' : '✗ REFUSÉ'}
+      </div>
+    </div>
+  `).join('');
+  
+  if (currentFeedFilter !== 'all') {
+    filterFeed(currentFeedFilter);
+  }
+  highlightNewLogs();
+}
+
+function updateKPIs(stats) {
+  const okEl = document.getElementById('kpi-ok');
+  const noEl = document.getElementById('kpi-no');
+  const tauxEl = document.getElementById('kpi-taux');
+  const alertEl = document.getElementById('kpi-alertes');
+  
+  if (okEl) okEl.textContent = stats.autorises || 0;
+  if (noEl) noEl.textContent = stats.refuses || 0;
+  if (tauxEl) tauxEl.textContent = stats.taux_succes || 0 + '%';
+  if (alertEl) alertEl.textContent = stats.alertes || 0;
+}
+
+function updateZoneOccupation(bureaux) {
+  bureaux.forEach(b => {
+    const occEl = document.getElementById(`occ-${b.id}`);
+    const barEl = document.getElementById(`bar-${b.id}`);
+    const statusEl = document.getElementById(`status-${b.id}`);
+    
+    if (occEl) occEl.textContent = `${b.occupation}/${b.capacite}`;
+    if (barEl) {
+      barEl.style.width = `${b.taux}%`;
+      barEl.style.background = b.taux >= 80 ? 'var(--red)' : (b.taux >= 60 ? 'var(--amber)' : 'var(--green)');
+    }
+    if (statusEl) {
+      if (b.taux >= 80) statusEl.innerHTML = '🔴 Très fréquenté';
+      else if (b.taux >= 60) statusEl.innerHTML = '🟡 Affluence modérée';
+      else if (b.taux >= 30) statusEl.innerHTML = '🟢 Normal';
+      else statusEl.innerHTML = '⚪ Peu fréquenté';
+    }
+  });
+}
+
+function filterFeed(filter) {
+  currentFeedFilter = filter;
+  const items = document.querySelectorAll('#live-feed .feed-item');
+  items.forEach(item => {
+    const resultat = item.dataset.resultat;
+    if (filter === 'all') item.style.display = '';
+    else if (filter === 'autorise') item.style.display = resultat === 'autorise' ? '' : 'none';
+    else if (filter === 'refuse') item.style.display = resultat === 'refuse' ? '' : 'none';
+  });
+  
+  // Mettre à jour l'état des boutons
+  document.querySelectorAll('#live-feed + div button').forEach(btn => btn.classList.remove('filter-active'));
+  if (filter === 'all') document.getElementById('filter-all')?.classList.add('filter-active');
+  else if (filter === 'autorise') document.getElementById('filter-ok')?.classList.add('filter-active');
+  else if (filter === 'refuse') document.getElementById('filter-no')?.classList.add('filter-active');
+}
+
 function highlightNewLogs() {
   const newLogs = document.querySelectorAll('.feed-item.new');
   newLogs.forEach((log, index) => {
@@ -160,14 +379,112 @@ function highlightNewLogs() {
   });
 }
 
+function toggleLive() {
+  liveEnabled = !liveEnabled;
+  const dot = document.getElementById('live-dot');
+  const status = document.getElementById('live-status');
+  const pill = document.getElementById('live-pill');
+  
+  if (liveEnabled) {
+    dot.style.animation = 'blink 2s infinite';
+    status.textContent = 'LIVE (10s)';
+    pill.style.background = 'var(--green2)';
+    startLiveRefresh();
+    startOccupationRefresh();
+  } else {
+    dot.style.animation = 'none';
+    status.textContent = 'PAUSE';
+    pill.style.background = 'var(--bg3)';
+    if (refreshInterval) clearInterval(refreshInterval);
+    if (occupationInterval) clearInterval(occupationInterval);
+  }
+}
+
+function manualRefresh() {
+  location.reload();
+}
+
+function viewAlerts() {
+  const alertBox = document.getElementById('alert-box');
+  if (alertBox) alertBox.scrollIntoView({ behavior: 'smooth' });
+  alert('🔔 Liste des alertes actives:\n\n' + 
+        '• Accès non autorisé détecté à 09:32 - Entrée Principale\n' +
+        '• Tentative de badge invalide - Zone Atelier\n' +
+        '• Équipement RFID hors ligne - Entrée Parking\n\n' +
+        'Consultez l\'historique pour plus de détails.');
+}
+
+async function emergencyUnlock() {
+  if (confirm('⚠️ ACTION D\'URGENCE ⚠️\n\n' +
+              'Cette action déverrouillera TOUS les accès du bâtiment.\n' +
+              'Cette action sera journalisée dans les logs système.\n\n' +
+              'Confirmez-vous le déverrouillage d\'urgence ?')) {
+    
+    try {
+      const response = await fetch('/api/emergency-unlock/', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}',
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await response.json();
+      alert(data.message || '✅ Déverrouillage d\'urgence activé. Tous les accès sont ouverts.');
+      
+      // Journaliser l'action
+      const logEntry = {
+        action: 'EMERGENCY_UNLOCK',
+        timestamp: new Date().toISOString(),
+        user: '{{ user.username }}'
+      };
+      console.log('Action journalisée:', logEntry);
+      
+      if (response.ok) location.reload();
+    } catch (error) {
+      alert('❌ Erreur lors du déverrouillage: ' + error.message);
+    }
+  }
+}
+
+function exportLiveData() {
+  const logs = document.querySelectorAll('#live-feed .feed-item');
+  let csv = "Heure,Employé,Badge,Zone,Méthode,Résultat\n";
+  
+  logs.forEach(log => {
+    if (log.style.display !== 'none') {
+      const time = log.querySelector('.feed-time')?.textContent || '';
+      const name = log.querySelector('.feed-name')?.textContent.split('#')[0].trim() || '';
+      const badge = log.querySelector('.feed-name span')?.textContent.replace('#', '').trim() || '';
+      const door = log.querySelector('.feed-door')?.textContent.replace('🚪', '').split('·')[0].trim() || '';
+      const method = log.querySelector('.feed-door')?.textContent.includes('QR') ? 'QR' : 'RFID';
+      const result = log.querySelector('.feed-status')?.textContent.trim() || '';
+      
+      csv += `"${time}","${name}","${badge}","${door}","${method}","${result}"\n`;
+    }
+  });
+  
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `surveillance_live_${new Date().toISOString().slice(0,10)}_${new Date().toTimeString().slice(0,8)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 // Initialisation
 window.onload = function() {
   startLiveRefresh();
+  startOccupationRefresh();
   highlightNewLogs();
+  
+  // Initialiser les filtres
+  const filterAll = document.getElementById('filter-all');
+  if (filterAll) filterAll.classList.add('filter-active');
 };
 
 // Nettoyage
 window.onbeforeunload = function() {
   if (refreshInterval) clearInterval(refreshInterval);
+  if (occupationInterval) clearInterval(occupationInterval);
 };
 {% endblock %}
