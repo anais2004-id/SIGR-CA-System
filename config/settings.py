@@ -20,7 +20,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'dashboard',
 ]
-
+# Configuration des sessions pour qu'elles soient partagées
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Utilise la base de données
+SESSION_COOKIE_AGE = 3600 * 24 * 7  # 7 jours
+SESSION_SAVE_EVERY_REQUEST = True  # Sauvegarde à chaque requête
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 # config/settings.py - Ajoutez dans MIDDLEWARE
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -30,7 +34,15 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'dashboard.middleware.UserSessionMiddleware',  # Ajouter cette ligne
+    'dashboard.middleware.UserSessionMiddleware', 
+     'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',  # ← CRUCIAL
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'dashboard.middleware.UserSessionMiddleware',  # Votre middleware # Ajouter cette ligne
 ]
 
 ROOT_URLCONF = 'config.urls'

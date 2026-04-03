@@ -1,17 +1,21 @@
 # dashboard/middleware.py
+
 from django.utils.timezone import now
 from django.contrib.auth import get_user_model
 from django.db import OperationalError
+from django.contrib.sessions.models import Session
+import json
 
 User = get_user_model()
 
 class UserSessionMiddleware:
-    """Middleware pour capturer les sessions utilisateur"""
+    """Middleware pour capturer TOUTES les sessions utilisateur sur TOUS les PC"""
     
     def __init__(self, get_response):
         self.get_response = get_response
     
     def __call__(self, request):
+        # Traitement avant la vue
         response = self.get_response(request)
         
         # Capturer les sessions pour les utilisateurs authentifiés
@@ -24,24 +28,21 @@ class UserSessionMiddleware:
                     
                     # Vérifier si la table existe
                     try:
-                        user_session, created = UserSession.objects.get_or_create(
+                        # Mettre à jour ou créer la session
+                        user_session, created = UserSession.objects.update_or_create(
                             session_key=session_key,
                             defaults={
                                 'user': request.user,
                                 'ip_address': self.get_client_ip(request),
                                 'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],
                                 'last_activity': now(),
-                                'login_time': now(),
                                 'is_active': True,
+                                'device_type': self.get_device_type(request),
                             }
                         )
                         
-                        if not created:
-                            user_session.last_activity = now()
-                            user_session.user = request.user  # Mettre à jour l'utilisateur
-                            user_session.ip_address = self.get_client_ip(request)
-                            user_session.user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
-                            user_session.is_active = True
+                        if created:
+                            user_session.login_time = now()
                             user_session.save()
                             
                     except OperationalError:
@@ -54,10 +55,21 @@ class UserSessionMiddleware:
         return response
     
     def get_client_ip(self, request):
-        """Récupère l'IP du client"""
+        """Récupère l'IP réelle du client (même derrière un proxy)"""
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
             ip = x_forwarded_for.split(',')[0]
         else:
             ip = request.META.get('REMOTE_ADDR')
         return ip
+    
+    def get_device_type(self, request):
+        """Détecte le type d'appareil"""
+        user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
+        
+        if 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent:
+            return 'mobile'
+        elif 'tablet' in user_agent or 'ipad' in user_agent:
+            return 'tablet'
+        else:
+            return 'desktop'

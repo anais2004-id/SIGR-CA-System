@@ -2142,15 +2142,23 @@ def api_stats_predictions(request):
 
 # ====================== SESSIONS ACTIVES ======================
 
+# dashboard/views.py - Mettez à jour la vue active_sessions
+
 @login_required
 def active_sessions(request):
     if not request.user.is_staff:
         return redirect('employe_espace')
     
+    # Récupérer TOUTES les sessions actives, pas seulement celles du PC local
     active_sessions = UserSession.objects.filter(
         is_active=True,
         logout_time__isnull=True
     ).select_related('user').order_by('-last_activity')
+    
+    # Afficher toutes les sessions dans la console pour déboguer
+    print(f"📊 {active_sessions.count()} sessions actives trouvées:")
+    for s in active_sessions:
+        print(f"  - {s.user.username} | IP: {s.ip_address} | Dernière activité: {s.last_activity}")
     
     total_connected = active_sessions.count()
     total_users = Utilisateur.objects.filter(is_active=True).count()
@@ -2159,6 +2167,13 @@ def active_sessions(request):
     inactive_threshold = timezone.now() - timedelta(minutes=30)
     inactive_sessions = active_sessions.filter(last_activity__lt=inactive_threshold).count()
     
+    # Récupérer l'historique des dernières 24h
+    last_24h = timezone.now() - timedelta(hours=24)
+    recent_history = UserSession.objects.filter(
+        logout_time__isnull=False,
+        logout_time__gte=last_24h
+    ).select_related('user').order_by('-logout_time')[:50]
+    
     return render(request, 'dashboard/active_sessions.html', {
         'active_sessions': active_sessions,
         'total_connected': total_connected,
@@ -2166,8 +2181,9 @@ def active_sessions(request):
         'admin_sessions': admin_sessions,
         'employee_sessions': employee_sessions,
         'inactive_sessions': inactive_sessions,
+        'recent_history': recent_history,
+        'now': timezone.now(),
     })
-
 
 @login_required
 def terminate_session(request, session_id):

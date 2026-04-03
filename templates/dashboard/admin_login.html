@@ -1,141 +1,225 @@
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SIGR-CA — Connexion Administrateur</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-  <style>
-    :root {
-      --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --bg4:#21262d;
-      --border:rgba(48,54,61,0.8); --border2:rgba(255,255,255,0.06);
-      --blue:#1f6feb; --blue2:#388bfd; --blue3:rgba(31,111,235,0.12);
-      --cyan:#39d0f0; --green:#2dba6f; --green2:rgba(45,186,111,0.12);
-      --red:#f85149; --red2:rgba(248,81,73,0.12);
-      --text:#e6edf3; --text2:#8b949e; --text3:#484f58;
-      --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
-      --radius:8px;
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family:var(--font); background:var(--bg); color:var(--text);
-      min-height:100vh; display:flex; align-items:center; justify-content:center;
-      padding:20px;
-    }
-    body::before {
-      content:''; position:fixed; inset:0; z-index:0;
-      background: radial-gradient(ellipse at 20% 50%, rgba(31,111,235,.08) 0%, transparent 60%),
-                  radial-gradient(ellipse at 80% 20%, rgba(57,208,240,.05) 0%, transparent 50%);
-      pointer-events:none;
-    }
-    .wrap { position:relative; z-index:1; width:100%; max-width:420px; }
+{% extends "base.html" %}
 
-    .logo-zone { text-align:center; margin-bottom:32px; }
-    .logo-circle {
-      width:70px; height:70px; margin:0 auto 16px;
-      background:linear-gradient(135deg,var(--blue),var(--cyan));
-      border-radius:20px; display:flex; align-items:center; justify-content:center;
-      font-size:30px; box-shadow:0 0 40px rgba(31,111,235,.35);
-    }
-    .logo-title { font-size:22px; font-weight:700; color:var(--text); }
-    .logo-sub { font-size:12px; color:var(--text3); margin-top:4px; font-family:var(--mono); letter-spacing:.5px; }
+{% block title %}Sessions actives - SIGR-CA{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block page_title %}Sessions utilisateur actives{% endblock %}
+{% block page_sub %}Utilisateurs connectés en temps réel{% endblock %}
 
-    .card {
-      background:var(--bg2); border:1px solid var(--border);
-      border-radius:14px; overflow:hidden;
-      box-shadow:0 20px 60px rgba(0,0,0,.5);
-    }
-    .card-tabs {
-      display:flex; border-bottom:1px solid var(--border);
-    }
-    .card-tab {
-      flex:1; padding:14px; text-align:center; font-size:13px;
-      font-weight:500; cursor:pointer; color:var(--text2);
-      border:none; background:transparent; font-family:var(--font);
-      transition:all .15s; text-decoration:none; display:block;
-    }
-    .card-tab.active { color:var(--blue2); border-bottom:2px solid var(--blue2); background:var(--blue3); }
-    .card-tab:hover:not(.active) { color:var(--text); background:var(--bg3); }
-    .card-body { padding:32px 36px; }
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="refreshSessions()">↻ Actualiser</button>
+<form method="post" action="{% url 'terminate_all_sessions' %}" style="display:inline" onsubmit="return confirm('Terminer toutes les sessions sauf la vôtre ?')">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-del btn-sm">⚠️ Terminer toutes les sessions</button>
+</form>
+{% endblock %}
 
-    .msg { display:flex; gap:10px; padding:11px 14px; border-radius:var(--radius); margin-bottom:18px; font-size:12.5px; }
-    .msg.err  { background:var(--red2);   border:1px solid rgba(248,81,73,.3);  color:var(--red); }
-    .msg.succ { background:var(--green2); border:1px solid rgba(45,186,111,.3); color:var(--green); }
+{% block content %}
 
-    .form-row { margin-bottom:18px; }
-    .form-label { font-size:10.5px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:7px; display:block; }
-    .form-input {
-      width:100%; background:var(--bg3); border:1px solid var(--border);
-      border-radius:var(--radius); padding:11px 14px; font-size:13.5px;
-      color:var(--text); font-family:var(--font); outline:none; transition:all .15s;
-    }
-    .form-input:focus { border-color:var(--blue2); box-shadow:0 0 0 3px rgba(31,111,235,.12); }
-    .form-input::placeholder { color:var(--text3); }
-
-    .btn-submit {
-      width:100%; padding:13px; background:var(--blue); color:white;
-      border:none; border-radius:var(--radius); font-size:14px;
-      font-weight:600; cursor:pointer; font-family:var(--font);
-      transition:all .2s; margin-top:8px;
-    }
-    .btn-submit:hover { background:var(--blue2); transform:translateY(-1px); box-shadow:0 6px 20px rgba(31,111,235,.4); }
-
-    .bottom-link { text-align:center; margin-top:22px; font-size:12px; color:var(--text3); }
-    .bottom-link a { color:var(--blue2); text-decoration:none; font-weight:500; }
-    .bottom-link a:hover { text-decoration:underline; }
-
-    .employe-sep { text-align:center; margin-top:24px; padding-top:20px; border-top:1px solid var(--border); font-size:11px; color:var(--text3); }
-    .employe-sep a { color:var(--text3); text-decoration:none; }
-    .employe-sep a:hover { color:var(--text2); text-decoration:underline; }
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="logo-zone">
-    <div class="logo-circle">🔐</div>
-    <div class="logo-title">SIGR-CA</div>
-    <div class="logo-sub">Système Intelligent de Gestion des Ressources</div>
-  </div>
-
-  <div class="card">
-    <div class="card-tabs">
-      <a href="{% url 'login' %}" class="card-tab active">👨‍💼 Administrateur</a>
-      <a href="{% url 'login_employe' %}" class="card-tab">👤 Espace Employé</a>
+<!-- KPIs -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+    <div class="kpi k-green">
+        <div class="kpi-header"><div class="kpi-label">Connectés</div><div class="kpi-icon">🟢</div></div>
+        <div class="kpi-value" id="kpi-connected">{{ total_connected }}</div>
+        <div class="kpi-delta">utilisateurs actifs</div>
     </div>
-    <div class="card-body">
-
-      {% if messages %}
-      {% for message in messages %}
-      <div class="msg {% if message.tags == 'error' %}err{% else %}succ{% endif %}">
-        {% if message.tags == 'error' %}⚠️{% else %}✅{% endif %} {{ message }}
-      </div>
-      {% endfor %}
-      {% endif %}
-
-      <form method="post">
-        {% csrf_token %}
-
-        <div class="form-row">
-          <label class="form-label">Nom d'utilisateur</label>
-          <input class="form-input" type="text" name="username"
-                 placeholder="Identifiant administrateur" autofocus required>
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Mot de passe</label>
-          <input class="form-input" type="password" name="password"
-                 placeholder="••••••••" required>
-        </div>
-
-        <button type="submit" class="btn-submit">Accéder au tableau de bord →</button>
-      </form>
-
-      <div class="employe-sep">
-        Espace employé ? <a href="{% url 'login_employe' %}">Se connecter →</a>
-      </div>
-
+    <div class="kpi k-blue">
+        <div class="kpi-header"><div class="kpi-label">Administrateurs</div><div class="kpi-icon">👑</div></div>
+        <div class="kpi-value">{{ admin_sessions }}</div>
     </div>
-  </div>
+    <div class="kpi k-purple">
+        <div class="kpi-header"><div class="kpi-label">Employés</div><div class="kpi-icon">👥</div></div>
+        <div class="kpi-value">{{ employee_sessions }}</div>
+    </div>
+    <div class="kpi k-amber">
+        <div class="kpi-header"><div class="kpi-label">Inactifs >30min</div><div class="kpi-icon">⏰</div></div>
+        <div class="kpi-value">{{ inactive_sessions }}</div>
+    </div>
+    <div class="kpi k-gray">
+        <div class="kpi-header"><div class="kpi-label">Total utilisateurs</div><div class="kpi-icon">📊</div></div>
+        <div class="kpi-value">{{ total_users }}</div>
+    </div>
 </div>
-</body>
-</html>
+
+<!-- Tableau des sessions actives -->
+<div class="card">
+    <div class="card-head">
+        <span>🟢</span>
+        <span class="card-title">Sessions actives</span>
+        <span class="card-sub">Mise à jour automatique toutes les 10s</span>
+        <div style="margin-left:auto; display:flex; gap:8px">
+            <div class="pill pill-live">
+                <div class="live-dot"></div>
+                <span id="live-status">LIVE</span>
+            </div>
+        </div>
+    </div>
+    <div style="overflow-x:auto">
+        <table class="tbl">
+            <thead>
+                <tr>
+                    <th>Utilisateur</th>
+                    <th>Rôle</th>
+                    <th>Connecté depuis</th>
+                    <th>Dernière activité</th>
+                    <th>Adresse IP</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </thead>
+            <tbody id="sessions-body">
+                {% for session in active_sessions %}
+                <tr class="session-row" data-session-id="{{ session.id }}">
+                    <td>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div class="emp-av" style="background:{% if session.user.is_staff %}#a371f7{% else %}#1f6feb{% endif %}">
+                                {{ session.user.username|slice:":2"|upper }}
+                            </div>
+                            <div>
+                                <div style="font-weight:500">{{ session.user.get_full_name|default:session.user.username }}</div>
+                                <div style="font-size:10px;color:var(--text3)">{{ session.user.email|default:"—" }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if session.user.is_staff %}
+                            <span class="badge b-purple">👑 Administrateur</span>
+                        {% else %}
+                            <span class="badge b-blue">👤 Employé</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-family:var(--mono);font-size:11px">
+                        {{ session.login_time|date:"d/m/Y H:i:s" }}
+                    </td>
+                    <td style="font-family:var(--mono);font-size:11px" id="last-activity-{{ session.id }}">
+                        {{ session.last_activity|date:"d/m/Y H:i:s" }}
+                    </td>
+                    <td style="font-family:var(--mono);font-size:11px">
+                        {{ session.ip_address|default:"—" }}
+                    </td>
+                    <td>
+                        {% if session.last_activity > now|date:"U"|add:"-300" %}
+                            <span class="badge b-green">🟢 Actif</span>
+                        {% else %}
+                            <span class="badge b-amber">🟡 Inactif</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if session.session_key != request.session.session_key %}
+                        <form method="post" action="{% url 'terminate_session' session.id %}" style="display:inline" 
+                              onsubmit="return confirm('Terminer la session de {{ session.user.username }} ?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-del btn-sm" title="Terminer la session">🔒 Terminer</button>
+                        </form>
+                        {% else %}
+                            <span class="badge b-gray">Vous</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" style="text-align:center;padding:60px;color:var(--text3)">
+                        Aucun utilisateur connecté
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Historique des connexions récentes -->
+<div class="card" style="margin-top:20px">
+    <div class="card-head">
+        <span>📋</span>
+        <span class="card-title">Historique des connexions</span>
+        <span class="card-sub">Dernières 24h</span>
+    </div>
+    <div style="overflow-x:auto; max-height:300px; overflow-y:auto">
+        <table class="tbl">
+            <thead>
+                <tr>
+                    <th>Utilisateur</th>
+                    <th>Connexion</th>
+                    <th>Déconnexion</th>
+                    <th>Durée</th>
+                    <th>IP</th>
+                </thead>
+            <tbody id="history-body">
+                {% for session in recent_history %}
+                <tr>
+                    <td>{{ session.user.get_full_name|default:session.user.username }}</td>
+                    <td style="font-family:monospace;font-size:11px">{{ session.login_time|date:"d/m/Y H:i:s" }}</td>
+                    <td style="font-family:monospace;font-size:11px">{{ session.logout_time|date:"d/m/Y H:i:s"|default:"En cours" }}</td>
+                    <td>
+                        {% if session.logout_time %}
+                            {{ session.logout_time|timeuntil:session.login_time }}
+                        {% else %}
+                            En cours
+                        {% endif %}
+                    </td>
+                    <td style="font-family:monospace;font-size:11px">{{ session.ip_address|default:"—" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" style="text-align:center;padding:40px">Aucun historique</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+let refreshInterval;
+
+function startAutoRefresh() {
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(() => {
+        refreshSessions();
+    }, 10000);
+}
+
+function refreshSessions() {
+    fetch('/api/connected-users/')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('kpi-connected').textContent = data.total;
+            
+            const tbody = document.getElementById('sessions-body');
+            if (data.users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:60px;color:var(--text3)">Aucun utilisateur connecté</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.users.map(user => `
+                <tr>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div class="emp-av" style="background:${user.is_staff ? '#a371f7' : '#1f6feb'}">
+                                ${user.username.slice(0,2).toUpperCase()}
+                            </div>
+                            <div>
+                                <div style="font-weight:500">${user.full_name || user.username}</div>
+                                <div style="font-size:10px;color:var(--text3)">—</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${user.is_staff ? '<span class="badge b-purple">👑 Administrateur</span>' : '<span class="badge b-blue">👤 Employé</span>'}</td>
+                    <td style="font-family:monospace;font-size:11px">${user.login_time}</td>
+                    <td style="font-family:monospace;font-size:11px">${user.last_activity}</td>
+                    <td style="font-family:monospace;font-size:11px">${user.ip_address}</td>
+                    <td>${user.is_active ? '<span class="badge b-green">🟢 Actif</span>' : '<span class="badge b-amber">🟡 Inactif</span>'}</td>
+                    <td>${user.session_key !== '{{ request.session.session_key }}' ? 
+                        `<form method="post" action="/terminate-session/${user.id}/" style="display:inline" onsubmit="return confirm('Terminer cette session ?')">
+                            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn-del btn-sm">🔒 Terminer</button>
+                        </form>` : 
+                        '<span class="badge b-gray">Vous</span>'}
+                    </td>
+                </tr>
+            `).join('');
+        })
+        .catch(err => console.error('Erreur rafraîchissement:', err));
+}
+
+startAutoRefresh();
+</script>
+
+{% endblock %}

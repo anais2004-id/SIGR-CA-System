@@ -1,7 +1,8 @@
 # dashboard/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 class Utilisateur(AbstractUser):
     """Modèle utilisateur personnalisé"""
     badge_rfid = models.CharField(max_length=50, blank=True, null=True, unique=True)
@@ -22,30 +23,30 @@ class Utilisateur(AbstractUser):
         help_text='Specific permissions for this user.'
     )
 # dashboard/models.py - Ajoutez cette classe après Utilisateur
+User = get_user_model()
 
 class UserSession(models.Model):
-    """Suivi des sessions utilisateur"""
-    user = models.ForeignKey(Utilisateur, on_delete=models.CASCADE, related_name='sessions')
-    session_key = models.CharField(max_length=40, unique=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sessions')
+    session_key = models.CharField(max_length=40, unique=True, db_index=True)  # Index pour meilleures performances
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
+    device_type = models.CharField(max_length=50, blank=True, default='unknown')
     login_time = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
     logout_time = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     
     class Meta:
-        db_table = 'user_sessions'
+        verbose_name = 'Session utilisateur'
+        verbose_name_plural = 'Sessions utilisateurs'
         ordering = ['-last_activity']
+        indexes = [
+            models.Index(fields=['session_key']),
+            models.Index(fields=['user', 'is_active']),
+        ]
     
     def __str__(self):
-        return f"{self.user.username} - {self.login_time}"
-    class Meta:
-        verbose_name = "Utilisateur"
-        verbose_name_plural = "Utilisateurs"
-
-    def __str__(self):
-        return f"{self.first_name} {self.last_name} ({self.username})"
+        return f"{self.user.username} - {self.ip_address} - {self.last_activity.strftime('%d/%m/%Y %H:%M')}"
 
 
 class AccessRule(models.Model):
