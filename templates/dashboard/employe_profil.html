@@ -3,318 +3,185 @@
 {% block title %}Mon Profil - SIGR-CA{% endblock %}
 {% block page_title %}Mon Profil{% endblock %}
 {% block page_sub %}Modifier mes informations personnelles{% endblock %}
-
 {% block nav_emp_home %}active{% endblock %}
 
 {% block content %}
 
-<div class="content">
+<div class="profile-hdr">
+  <div class="profile-av">
+    {{ employe.prenom|slice:":1"|upper }}{{ employe.nom|slice:":1"|upper }}
+  </div>
+  <div>
+    <h2 style="margin:0 0 4px 0;">
+      {{ employe.prenom|default:user.first_name }} {{ employe.nom|default:user.last_name }}
+    </h2>
+    <p style="margin:0; color:var(--text2);">
+      {{ employe.poste|default:"Employé" }} • {{ employe.departement|default:"—" }}
+    </p>
+    <p style="margin:8px 0 0 0; font-size:13px;">
+      🪪 {{ employe.badge_id|default:"—" }} ● <span class="b-green">Actif</span>
+    </p>
+  </div>
+</div>
 
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+<!-- Messages -->
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+      <span class="alert-ico">{{ message.tags|slice:":1"|upper }}</span>
+      <div>
         <div class="alert-text">{{ message }}</div>
       </div>
-    {% endfor %}
-  {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
 
-  <div class="card" style="max-width:900px; margin:0 auto;">
+<div class="g3-2">
+  <!-- Colonne gauche : Informations personnelles -->
+  <div class="card">
     <div class="card-head">
-      <span>👤</span>
-      <span class="card-title">Informations personnelles</span>
-      <span class="card-sub">Modifiez vos informations</span>
+      <div class="card-title">👤 Informations personnelles</div>
     </div>
     <div class="card-body">
-
-      <!-- Profil Header -->
-      <div style="display:flex; align-items:center; gap:24px; margin-bottom:32px; flex-wrap:wrap;">
-        <div style="width:100px; height:100px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--cyan)); 
-                    display:flex; align-items:center; justify-content:center; font-size:42px; color:white; font-weight:700; flex-shrink:0;">
-          {{ employe.prenom|slice:":1"|upper }}{{ employe.nom|slice:":1"|upper }}
-        </div>
-        <div style="flex:1">
-          <h2 style="font-size:24px; margin-bottom:8px;">
-            {{ employe.prenom|default:user.first_name }} {{ employe.nom|default:user.last_name }}
-          </h2>
-          <p style="color:var(--text2);">
-            {{ employe.poste|default:"Employé" }} • {{ employe.departement|default:"—" }}
-          </p>
-          <div style="display:flex; gap:12px; margin-top:12px; flex-wrap:wrap;">
-            <span class="badge b-blue">🪪 {{ employe.badge_id|default:"—" }}</span>
-            <span class="badge b-green">● Actif</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Formulaire principal -->
-      <form method="post" action="{% url 'employe_profil' %}">
+      <form method="post">
         {% csrf_token %}
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:20px; margin-bottom:30px;">
-
-          <div class="field-box">
-            <div class="field-lbl">Prénom</div>
-            <input class="form-input" name="prenom" value="{{ employe.prenom|default:user.first_name }}" required>
-          </div>
-
-          <div class="field-box">
-            <div class="field-lbl">Nom</div>
-            <input class="form-input" name="nom" value="{{ employe.nom|default:user.last_name }}" required>
-          </div>
-
-          <div class="field-box">
-            <div class="field-lbl">Email professionnel</div>
-            <input type="email" class="form-input" name="email" value="{{ employe.email|default:user.email }}">
-          </div>
-
-          <div class="field-box">
-            <div class="field-lbl">Téléphone</div>
-            <input class="form-input" name="telephone" value="{{ employe.telephone|default:'' }}" placeholder="+213 5XX XX XX XX">
-          </div>
-
-          <div class="field-box">
-            <div class="field-lbl">Poste / Fonction</div>
-            <input class="form-input" name="poste" value="{{ employe.poste|default:'' }}" placeholder="ex: Chef de projet">
-          </div>
-
-          <div class="field-box">
-            <div class="field-lbl">Département</div>
-            <select class="form-select" name="departement">
-              <option value="">— Sélectionner —</option>
-              <option value="Informatique" {% if employe.departement == 'Informatique' %}selected{% endif %}>Informatique</option>
-              <option value="Ressources Humaines" {% if employe.departement == 'Ressources Humaines' %}selected{% endif %}>Ressources Humaines</option>
-              <option value="Finance" {% if employe.departement == 'Finance' %}selected{% endif %}>Finance</option>
-              <option value="Production" {% if employe.departement == 'Production' %}selected{% endif %}>Production</option>
-              <option value="Commercial" {% if employe.departement == 'Commercial' %}selected{% endif %}>Commercial</option>
-              <option value="Maintenance" {% if employe.departement == 'Maintenance' %}selected{% endif %}>Maintenance</option>
-              <option value="Direction" {% if employe.departement == 'Direction' %}selected{% endif %}>Direction</option>
-            </select>
-          </div>
-
-          <div class="field-box">
-            <div class="field-lbl">Badge RFID</div>
-            <input class="form-input" value="{{ employe.badge_id|default:'—' }}" readonly disabled>
-            <small style="color:var(--text3); font-size:10px;">(Modifiable uniquement par un administrateur)</small>
-          </div>
-
+        <div class="form-row">
+          <label class="form-label">Prénom</label>
+          <input type="text" class="form-input" name="prenom" value="{{ employe.prenom|default:user.first_name }}">
         </div>
 
-        <!-- Préférences de notification -->
-        <div style="margin-top:32px; padding:20px; background:var(--bg3); border-radius:12px;">
-          <div class="field-lbl" style="margin-bottom:16px;">📧 Préférences de notification</div>
-          
-          <label class="toggle-row" style="margin-bottom:12px;">
-            <div class="toggle-info">
-              <div class="toggle-name">Recevoir les rappels par email</div>
-              <div class="toggle-desc">30 minutes avant chaque réservation</div>
-            </div>
-            <div class="toggle-right">
-              <label class="tswitch">
-                <input type="checkbox" name="notif_email" {% if employe.preferences_notifications.email %}checked{% endif %}>
-                <span class="tslider"></span>
-              </label>
-            </div>
-          </label>
-
-          <label class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-name">Recevoir les rappels par SMS</div>
-              <div class="toggle-desc">Notification par SMS pour les réservations</div>
-            </div>
-            <div class="toggle-right">
-              <label class="tswitch">
-                <input type="checkbox" name="notif_sms" {% if employe.preferences_notifications.sms %}checked{% endif %}>
-                <span class="tslider"></span>
-              </label>
-            </div>
-          </label>
+        <div class="form-row">
+          <label class="form-label">Nom</label>
+          <input type="text" class="form-input" name="nom" value="{{ employe.nom|default:user.last_name }}">
         </div>
 
-        <!-- Actions -->
-        <div style="margin-top:28px; display:flex; gap:12px; justify-content:flex-end;">
-          <a href="{% url 'employe_espace' %}" class="btn btn-ghost">Annuler</a>
+        <div class="form-row">
+          <label class="form-label">Email professionnel</label>
+          <input type="email" class="form-input" name="email" value="{{ employe.email|default:user.email }}" readonly>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Téléphone</label>
+          <input type="tel" class="form-input" name="telephone" value="{{ employe.telephone|default:'' }}">
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Poste / Fonction</label>
+          <input type="text" class="form-input" name="poste" value="{{ employe.poste }}">
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Département</label>
+          <select class="form-select" name="departement">
+            <option value="">— Sélectionner —</option>
+            <option value="Informatique" {% if employe.departement == "Informatique" %}selected{% endif %}>Informatique</option>
+            <option value="Ressources Humaines" {% if employe.departement == "Ressources Humaines" %}selected{% endif %}>Ressources Humaines</option>
+            <!-- Ajoute les autres options -->
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Badge RFID</label>
+          <input type="text" class="form-input" value="{{ employe.badge_id|default:'—' }}" readonly>
+          <small style="color:var(--text3); font-size:10px;">(Modifiable uniquement par un administrateur)</small>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost">Annuler</button>
           <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
         </div>
       </form>
+    </div>
+  </div>
 
-      <!-- Changer mot de passe -->
-      <div style="margin-top:40px; border-top:1px solid var(--border); padding-top:28px;">
-        <h3 style="font-size:16px; margin-bottom:16px; color:var(--amber);">🔑 Changer mon mot de passe</h3>
-        
-        <form method="post" action="{% url 'employe_change_password' %}">
-          {% csrf_token %}
-          
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:16px;">
-            <div>
-              <label class="form-label">Mot de passe actuel</label>
-              <input type="password" class="form-input" name="old_password" placeholder="••••••••" required>
-            </div>
-            <div>
-              <label class="form-label">Nouveau mot de passe</label>
-              <input type="password" class="form-input" name="new_password" id="new_password" placeholder="•••••••• (min. 6 caractères)" required>
-              <div id="password-strength" style="font-size:10px; margin-top:5px;"></div>
-            </div>
-            <div>
-              <label class="form-label">Confirmer le nouveau mot de passe</label>
-              <input type="password" class="form-input" name="confirm_password" id="confirm_password" placeholder="••••••••" required>
-              <div id="password-match" style="font-size:10px; margin-top:5px;"></div>
-            </div>
-          </div>
-          
-          <div style="margin-top:20px; text-align:right;">
-            <button type="submit" class="btn btn-primary" id="changePwdBtn">🔒 Changer le mot de passe</button>
-          </div>
-        </form>
+  <!-- Colonne droite : Préférences + Changer mot de passe -->
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">📧 Préférences de notification</div>
       </div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Recevoir les rappels par email</div>
+            <div class="toggle-desc">30 minutes avant chaque réservation</div>
+          </div>
+          <div class="toggle-right">
+            <label class="tswitch">
+              <input type="checkbox" checked>
+              <span class="tslider"></span>
+            </label>
+          </div>
+        </div>
 
-      <!-- Statistiques personnelles -->
-      <div style="margin-top:40px; border-top:1px solid var(--border); padding-top:28px;">
-        <h3 style="font-size:16px; margin-bottom:16px;">📊 Mes statistiques</h3>
-        
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:16px;">
-          <div style="background:var(--bg3); border-radius:10px; padding:15px; text-align:center;">
-            <div style="font-size:28px; font-weight:300; color:var(--blue);">{{ total_acces|default:0 }}</div>
-            <div style="font-size:11px; color:var(--text2); margin-top:4px;">Total des accès</div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Recevoir les rappels par SMS</div>
+            <div class="toggle-desc">Notification par SMS pour les réservations</div>
           </div>
-          <div style="background:var(--bg3); border-radius:10px; padding:15px; text-align:center;">
-            <div style="font-size:28px; font-weight:300; color:var(--green);">{{ taux_succes|default:0 }}%</div>
-            <div style="font-size:11px; color:var(--text2); margin-top:4px;">Taux de succès</div>
-          </div>
-          <div style="background:var(--bg3); border-radius:10px; padding:15px; text-align:center;">
-            <div style="font-size:28px; font-weight:300; color:var(--purple);">{{ reservations_count|default:0 }}</div>
-            <div style="font-size:11px; color:var(--text2); margin-top:4px;">Réservations</div>
-          </div>
-          <div style="background:var(--bg3); border-radius:10px; padding:15px; text-align:center;">
-            <div style="font-size:28px; font-weight:300; color:var(--amber);">{{ employe.date_embauche|date:"Y"|default:"—" }}</div>
-            <div style="font-size:11px; color:var(--text2); margin-top:4px;">Année d'embauche</div>
+          <div class="toggle-right">
+            <label class="tswitch">
+              <input type="checkbox">
+              <span class="tslider"></span>
+            </label>
           </div>
         </div>
       </div>
+    </div>
 
+    <div class="card" style="margin-top:16px;">
+      <div class="card-head">
+        <div class="card-title">🔑 Changer mon mot de passe</div>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <div class="form-row">
+            <label class="form-label">Mot de passe actuel</label>
+            <input type="password" class="form-input" name="old_password">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Nouveau mot de passe</label>
+            <input type="password" class="form-input" name="new_password1">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Confirmer le nouveau mot de passe</label>
+            <input type="password" class="form-input" name="new_password2">
+          </div>
+          <button type="submit" class="btn btn-primary">🔒 Changer le mot de passe</button>
+        </form>
+      </div>
     </div>
   </div>
 </div>
 
-<style>
-.field-box {
-  background: var(--bg3);
-  border-radius: 10px;
-  padding: 12px 16px;
-  border: 1px solid var(--border2);
-}
-.field-lbl {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text2);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
-.form-input, .form-select {
-  width: 100%;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-size: 14px;
-  color: var(--text);
-  font-family: var(--font);
-  outline: none;
-  transition: all 0.15s;
-}
-.form-input:focus, .form-select:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 2px rgba(31,111,235,0.1);
-}
-.form-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border2);
-}
-.toggle-row:last-child {
-  border-bottom: none;
-}
-.toggle-info {
-  flex: 1;
-}
-.toggle-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-}
-.toggle-desc {
-  font-size: 10.5px;
-  color: var(--text2);
-  margin-top: 2px;
-}
-</style>
-
-<script>
-// Force de mot de passe
-const newPwd = document.getElementById('new_password');
-const strengthDiv = document.getElementById('password-strength');
-
-if (newPwd) {
-  newPwd.addEventListener('input', function() {
-    const pwd = this.value;
-    if (!pwd) {
-      strengthDiv.innerHTML = '';
-      return;
-    }
-    
-    let strength = 0;
-    if (pwd.length >= 8) strength++;
-    if (pwd.match(/[a-z]/)) strength++;
-    if (pwd.match(/[A-Z]/)) strength++;
-    if (pwd.match(/[0-9]/)) strength++;
-    if (pwd.match(/[^a-zA-Z0-9]/)) strength++;
-    
-    const colors = ['var(--red)', 'var(--red)', 'var(--amber)', 'var(--green)', 'var(--green)'];
-    const texts = ['Très faible', 'Faible', 'Moyen', 'Fort', 'Très fort'];
-    
-    strengthDiv.innerHTML = `
-      <div style="display:flex; align-items:center; gap:8px;">
-        <div style="flex:1; background:var(--bg4); height:4px; border-radius:2px;">
-          <div style="width: ${strength * 20}%; height:100%; background:${colors[strength-1]}; border-radius:2px;"></div>
+<!-- Statistiques -->
+<div class="card">
+  <div class="card-head">
+    <div class="card-title">📊 Mes statistiques</div>
+  </div>
+  <div class="card-body">
+    <div class="g2">
+      <div class="kpi k-blue">
+        <div class="kpi-header">
+          <div>
+            <div class="kpi-label">Total des accès</div>
+            <div class="kpi-value">{{ total_acces|default:0 }}</div>
+          </div>
         </div>
-        <span style="color:${colors[strength-1]}">${texts[strength-1]}</span>
       </div>
-    `;
-  });
-}
-
-// Confirmation mot de passe
-const confirmPwd = document.getElementById('confirm_password');
-const matchDiv = document.getElementById('password-match');
-
-if (confirmPwd) {
-  confirmPwd.addEventListener('input', function() {
-    const pwd = document.getElementById('new_password').value;
-    const matchDiv = document.getElementById('password-match');
-    const submitBtn = document.getElementById('changePwdBtn');
-    
-    if (!this.value) {
-      matchDiv.innerHTML = '';
-      if (submitBtn) submitBtn.disabled = false;
-      return;
-    }
-    
-    if (pwd === this.value) {
-      matchDiv.innerHTML = '<span style="color:var(--green)">✅ Les mots de passe correspondent</span>';
-      if (submitBtn) submitBtn.disabled = false;
-    } else {
-      matchDiv.innerHTML = '<span style="color:var(--red)">❌ Les mots de passe ne correspondent pas</span>';
-      if (submitBtn) submitBtn.disabled = true;
-    }
-  });
-}
-</script>
+      <div class="kpi k-green">
+        <div class="kpi-header">
+          <div>
+            <div class="kpi-label">Taux de succès</div>
+            <div class="kpi-value">{{ taux_succes|default:0 }}<span style="font-size:18px;">%</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- Ajoute les autres KPI de la même façon -->
+    </div>
+  </div>
+</div>
 
 {% endblock %}

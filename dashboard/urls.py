@@ -140,4 +140,12 @@ urlpatterns = [
      path('api/reservations/calendrier/', views.api_reservations_calendrier, name='api_reservations_calendrier'),
       path('api/reservations/<str:reservation_id>/details/', views.api_reservation_details, name='api_reservation_details'),
        path('employe/profil/', views.employe_profil, name='employe_profil'),
-    path('employe/change-password/', views.employe_change_password, name='employe_change_password'),]
+    path('employe/change-password/', views.employe_change_password, name='employe_change_password'),
+     # ── Gestion des réservations admin ──────────────────────────────────
+    path('reservations/',                          views.reservation_list,        name='reservation_list'),
+    path('reservations/<str:reservation_id>/',     views.reservation_detail,      name='reservation_detail'),
+    path('reservations/<str:reservation_id>/confirmer/', views.reservation_confirmer, name='reservation_confirmer'),
+    path('reservations/<str:reservation_id>/refuser/',    views.reservation_refuser,  name='reservation_refuser'),
+    
+    # ── API QR Code ──────────────────────────────────────────────────────
+    path('api/reservations/<str:reservation_id>/qr/', views.api_reservation_qr,      name='api_reservation_qr'),]

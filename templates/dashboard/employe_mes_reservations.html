@@ -8,8 +8,6 @@
 
 {% block content %}
 
-<div class="content">
-
   {% if messages %}
     {% for message in messages %}
       <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
@@ -237,7 +235,7 @@
       </div>
     </form>
   </div>
-</div>
+
 
 <style>
 .cal-day {

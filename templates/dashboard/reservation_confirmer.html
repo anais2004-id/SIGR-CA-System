@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Confirmer une réservation - SIGR-CA{% endblock %}
+{% block nav_reservations %}active{% endblock %}
+{% block page_title %}Confirmation de réservation{% endblock %}
+{% block page_sub %}Valider la demande et générer le QR code{% endblock %}
+
+{% block content %}
+
+<div style="max-width:600px; margin:0 auto">
+
+    <div class="card">
+        <div class="card-head">
+            <span>✅</span>
+            <span class="card-title">Confirmer la réservation</span>
+        </div>
+        <div class="card-body">
+
+            <!-- Informations de la réservation -->
+            <div style="background:var(--bg3); border-radius:10px; padding:16px; margin-bottom:20px">
+                <div style="display:flex; gap:12px; margin-bottom:12px">
+                    <div style="font-size:36px">📅</div>
+                    <div>
+                        <div style="font-size:16px; font-weight:600">{{ reservation.titre|default:"Sans titre" }}</div>
+                        <div style="color:var(--text2); font-size:12px">ID: {{ reservation.id }}</div>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px">
+                    <div>
+                        <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Employé</div>
+                        <div style="font-weight:500">{{ employe.prenom|default:'' }} {{ employe.nom|default:'' }}</div>
+                        <div style="font-size:11px; color:var(--text2)">Badge: {{ employe.badge_id|default:'—' }}</div>
+                        <div style="font-size:11px; color:var(--text2)">Email: {{ employe.email|default:'—' }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Salle</div>
+                        <div style="font-weight:500">{{ bureau.nom|default:'—' }}</div>
+                        <div style="font-size:11px; color:var(--text2)">Capacité: {{ bureau.capacite_max|default:'—' }} personnes</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Date</div>
+                        <div>{{ reservation.date_debut|date:"d/m/Y" }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Horaire</div>
+                        <div>{{ reservation.date_debut|date:"H:i" }} → {{ reservation.date_fin|date:"H:i" }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Participants</div>
+                        <div>{{ reservation.nb_participants|default:1 }} personne(s)</div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Créée le</div>
+                        <div>{{ reservation.created_at|date:"d/m/Y H:i" }}</div>
+                    </div>
+                </div>
+
+                {% if reservation.description %}
+                <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border2)">
+                    <div style="font-size:10px; color:var(--text3); text-transform:uppercase">Description</div>
+                    <div style="font-size:13px; margin-top:4px">{{ reservation.description }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Aperçu QR Code -->
+            <div id="qr-preview" style="text-align:center; margin-bottom:20px; padding:20px; background:var(--bg3); border-radius:10px; display:none">
+                <div style="font-size:12px; color:var(--green); margin-bottom:12px">✅ QR Code généré avec succès !</div>
+                <div id="qr-image-preview" style="margin:10px auto"></div>
+                <div style="font-size:11px; color:var(--text2); margin-top:12px">Ce QR code permettra à l'employé d'accéder à la salle.</div>
+            </div>
+
+            <!-- Actions -->
+            <form method="post" id="confirmForm">
+                {% csrf_token %}
+                <input type="hidden" name="redirect_to" value="{% if request.GET.from_list %}list{% else %}detail{% endif %}">
+                
+                <div style="display:flex; gap:12px; justify-content:flex-end">
+                    <a href="{% url 'reservation_list' %}" class="btn btn-ghost">Annuler</a>
+                    <button type="submit" class="btn btn-primary" style="background:var(--green)" id="confirmBtn">
+                        ✅ Confirmer et générer le QR code
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top:20px; padding:12px; background:var(--amber2); border-radius:8px; font-size:12px">
+                <span>⚠️</span> La confirmation générera un QR code unique pour cette réservation.
+                L'employé recevra une notification par email avec son QR code.
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+document.getElementById('confirmForm')?.addEventListener('submit', function(e) {
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Génération du QR code...';
+});
+</script>
+
+{% endblock %}

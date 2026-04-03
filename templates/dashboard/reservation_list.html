@@ -2,7 +2,7 @@
 {% block title %}Réservations - SIGR-CA{% endblock %}
 {% block nav_reservations %}active{% endblock %}
 {% block page_title %}Gestion des réservations{% endblock %}
-{% block page_sub %}Salles, équipements et ressources{% endblock %}
+{% block page_sub %}Gérer les demandes et confirmer les réservations{% endblock %}
 
 {% block topbar_actions %}
 <a href="{% url 'reservation_ajouter' %}" class="btn btn-primary btn-sm">+ Nouvelle réservation</a>
@@ -23,44 +23,45 @@
 {% endif %}
 
 <!-- KPIs améliorés -->
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
   <div class="kpi k-blue">
     <div class="kpi-header"><div class="kpi-label">Total réservations</div><div class="kpi-icon">📆</div></div>
     <div class="kpi-value">{{ total }}</div>
     <div class="kpi-delta">Toutes périodes</div>
   </div>
   <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">En cours</div><div class="kpi-icon">🟢</div></div>
-    <div class="kpi-value">{{ actives }}</div>
-    <div class="kpi-delta">Salles occupées</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏳</div></div>
-    <div class="kpi-value">{{ a_venir }}</div>
-    <div class="kpi-delta">Prochaines 7j</div>
+    <div class="kpi-header"><div class="kpi-label">Confirmées</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ confirmees }}</div>
+    <div class="kpi-delta">Validées</div>
   </div>
   <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏸️</div></div>
+    <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏳</div></div>
     <div class="kpi-value">{{ en_attente }}</div>
     <div class="kpi-delta">À modérer</div>
   </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏰</div></div>
+    <div class="kpi-value">{{ a_venir }}</div>
+    <div class="kpi-delta">Prochaines 7j</div>
+  </div>
   <div class="kpi k-red">
+    <div class="kpi-header"><div class="kpi-label">Annulées</div><div class="kpi-icon">❌</div></div>
+    <div class="kpi-value">{{ annulees }}</div>
+    <div class="kpi-delta">Non honorées</div>
+  </div>
+  <div class="kpi k-cyan" style="--cyan:#39d0f0">
     <div class="kpi-header"><div class="kpi-label">Taux occupation</div><div class="kpi-icon">📊</div></div>
     <div class="kpi-value">{{ taux_occupation|default:0 }}%</div>
     <div class="kpi-delta">Moyenne du mois</div>
   </div>
 </div>
 
-<!-- Suggestions IA -->
-<div class="alert-box info" style="margin-bottom:16px; background:linear-gradient(135deg, var(--blue3), var(--purple2))">
-  <div class="alert-ico">🤖</div>
-  <div>
-    <div class="alert-text">Recommandation IA : Les créneaux de 14h-16h sont les moins occupés cette semaine</div>
-    <div class="alert-meta">Taux d'occupation : 34% · Suggéré : réserver maintenant</div>
-  </div>
-  <div style="margin-left:auto">
-    <button class="btn btn-sm btn-primary" onclick="suggestAlternative()">Voir alternatives</button>
-  </div>
+<!-- Onglets rapides -->
+<div style="display:flex; gap:4px; background:var(--bg3); padding:4px; border-radius:10px; margin-bottom:20px">
+  <button class="tab-btn active" onclick="quickFilter('all', this)">📋 Toutes</button>
+  <button class="tab-btn" onclick="quickFilter('en_attente', this)">⏳ En attente <span class="badge" style="background:var(--amber); color:black">{{ en_attente }}</span></button>
+  <button class="tab-btn" onclick="quickFilter('confirmee', this)">✅ Confirmées</button>
+  <button class="tab-btn" onclick="quickFilter('annulee', this)">❌ Annulées</button>
 </div>
 
 <!-- Vue Calendrier (toggle) -->
@@ -117,54 +118,54 @@
     <span class="card-title">Liste des réservations</span>
     <span class="card-sub" id="reservationCount">{{ total }} réservation(s)</span>
   </div>
-  <div style="overflow-x:auto; max-height:500px; overflow-y:auto">
+  <div style="overflow-x:auto; max-height:600px; overflow-y:auto">
     <table class="tbl">
       <thead>
         <tr>
           <th>Titre</th>
-          <th>Salle / Ressource</th>
-          <th>Réservé par</th>
+          <th>Salle</th>
+          <th>Employé / Badge</th>
           <th>Début</th>
           <th>Fin</th>
           <th>Participants</th>
           <th>Statut</th>
+          <th>QR Code</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="reservations-table-body">
         {% for r in reservations %}
         <tr class="resa-row" 
+            data-id="{{ r.id }}"
             data-titre="{{ r.titre|lower }}" 
             data-bureau="{{ r.bureau_nom|lower }}" 
             data-emp="{{ r.employe_nom|lower }}" 
             data-statut="{{ r.statut }}"
             data-date="{{ r.date_debut|date:'Y-m-d' }}">
-          <td>
+          
+          <td style="min-width:180px">
             <div style="font-weight:500;color:var(--text)">{{ r.titre|default:"Sans titre" }}</div>
             {% if r.description %}
             <div style="font-size:10.5px;color:var(--text3);margin-top:2px">{{ r.description|truncatechars:50 }}</div>
             {% endif %}
           </td>
+          <td><span class="badge b-blue">🚪 {{ r.bureau_nom }}</span></td>
           <td>
-            <span class="badge b-blue">🚪 {{ r.bureau_nom }}</span>
-          </td>
-          <td>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div class="emp-av" style="background:#1f6feb;width:28px;height:28px;font-size:11px">
-                {{ r.employe_nom|slice:":1"|upper }}
+            <div style="display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="emp-av" style="background:#1f6feb;width:28px;height:28px;font-size:11px">
+                  {{ r.employe_nom|slice:":1"|upper }}
+                </div>
+                <span>{{ r.employe_nom }}</span>
               </div>
-              {{ r.employe_nom }}
+              <div style="font-size:10px; color:var(--text3); margin-top:2px">
+                🪪 Badge: {{ r.employe_badge|default:"—" }}
+              </div>
             </div>
           </td>
-          <td style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
-            {{ r.date_debut|date:"d/m/Y H:i" }}
-          </td>
-          <td style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
-            {{ r.date_fin|date:"d/m/Y H:i" }}
-          </td>
-          <td style="text-align:center;font-family:var(--mono)">
-            👥 {{ r.nb_participants|default:"1" }}
-          </td>
+          <td style="font-family:var(--mono);font-size:11.5px">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
+          <td style="font-family:var(--mono);font-size:11.5px">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
+          <td style="text-align:center">👥 {{ r.nb_participants|default:"1" }}</td>
           <td>
             {% if r.statut == 'confirmee' %}
               <span class="badge b-green">✅ Confirmée</span>
@@ -177,22 +178,39 @@
             {% endif %}
           </td>
           <td>
-            <div style="display:flex;gap:4px">
+            {% if r.statut == 'confirmee' and r.qr_code %}
+              <button class="btn btn-sm btn-info" onclick="showQRCodeAdmin('{{ r.id }}', '{{ r.titre|escapejs }}')" 
+                      style="background:var(--blue3);color:var(--blue2)" title="Voir QR Code">
+                📱 QR
+              </button>
+            {% elif r.statut == 'en_attente' %}
+              <span class="badge b-amber">En attente</span>
+            {% else %}
+              <span class="badge b-gray">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:4px; flex-wrap:wrap">
               <a href="{% url 'reservation_modifier' r.id %}" class="btn btn-edit btn-sm" title="Modifier">✏️</a>
               <button class="btn btn-info btn-sm" onclick="showReservationDetails('{{ r.id }}')" title="Détails" style="background:var(--blue3);color:var(--blue2)">👁️</button>
-              {% if r.statut != 'annulee' %}
+              
+              {% if r.statut == 'en_attente' %}
+                <a href="{% url 'reservation_confirmer' r.id %}" class="btn btn-primary btn-sm" title="Confirmer et générer QR">✅ Confirmer</a>
+                <button class="btn btn-del btn-sm" onclick="showRefuseModal('{{ r.id }}', '{{ r.titre|escapejs }}')" title="Refuser">❌ Refuser</button>
+              {% endif %}
+              
+              {% if r.statut != 'annulee' and r.statut != 'terminee' and r.statut != 'en_attente' %}
               <form method="post" action="{% url 'reservation_annuler' r.id %}" style="display:inline" onsubmit="return confirm('Annuler cette réservation ?')">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-del btn-sm" title="Annuler">🗑️</button>
               </form>
               {% endif %}
-              <button class="btn btn-ghost btn-sm" onclick="copyReservation('{{ r.id }}')" title="Dupliquer">📋</button>
             </div>
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="8" style="text-align:center;padding:60px;color:var(--text3)">
+          <td colspan="9" style="text-align:center;padding:60px;color:var(--text3)">
             Aucune réservation enregistrée
             <br><br>
             <a href="{% url 'reservation_ajouter' %}" class="btn btn-primary btn-sm">+ Créer la première réservation</a>
@@ -222,11 +240,43 @@
 
 <!-- Modal Détails -->
 <div class="modal-overlay" id="detailsModal" style="display:none" onclick="if(event.target===this)closeDetailsModal()">
-  <div class="modal" style="width:500px">
+  <div class="modal" style="width:550px; max-width:95vw">
     <div class="modal-title">📋 Détails de la réservation</div>
     <div id="details-content"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeDetailsModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Refus -->
+<div class="modal-overlay" id="refuseModal" style="display:none" onclick="if(event.target===this)closeRefuseModal()">
+  <div class="modal" style="width:450px; max-width:95vw">
+    <div class="modal-title">❌ Refuser la réservation</div>
+    <div class="modal-sub" id="refuse-title"></div>
+    <form method="post" id="refuseForm">
+      {% csrf_token %}
+      <div class="form-row">
+        <label class="form-label">Motif du refus</label>
+        <textarea class="form-input" name="motif" rows="3" placeholder="Raison du refus (sera communiqué à l'employé)..." required></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeRefuseModal()">Annuler</button>
+        <button type="submit" class="btn btn-del">❌ Confirmer le refus</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal QR Code Admin -->
+<div class="modal-overlay" id="qrModalAdmin" style="display:none" onclick="if(event.target===this)closeQRModalAdmin()">
+  <div class="modal" style="width:450px; text-align:center">
+    <div class="modal-title" id="qr-title-admin">QR Code d'accès</div>
+    <div class="modal-sub" id="qr-subtitle-admin"></div>
+    <div id="qr-image-admin" style="margin:20px auto; padding:20px; background:white; border-radius:10px; display:inline-block"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" id="downloadQRAdminBtn">⬇️ Télécharger</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeQRModalAdmin()">Fermer</button>
     </div>
   </div>
 </div>
@@ -246,24 +296,61 @@
   color: white;
   border-color: var(--blue);
 }
+.tab-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.tab-btn.active {
+  background: var(--blue);
+  color: white;
+}
+.tab-btn:hover:not(.active) {
+  background: var(--bg4);
+  color: var(--text);
+}
+.btn-info {
+  background: var(--blue3);
+  color: var(--blue2);
+  border: 1px solid rgba(31,111,235,0.3);
+}
 .btn-info:hover {
-  opacity: 0.8;
+  background: rgba(31,111,235,0.2);
+  transform: translateY(-1px);
+}
+.kpi.k-cyan::after {
+  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
 }
 </style>
 
-{% endblock %}
-
-{% block extra_js %}
+<script>
 let currentStatutFilter = 'all';
 let currentPage = 1;
 let rowsPerPage = 20;
 let allRows = [];
+let currentQRDataAdmin = null;
+let currentRefuseId = null;
 
 document.addEventListener('DOMContentLoaded', function() {
   allRows = Array.from(document.querySelectorAll('.resa-row'));
   updateReservationCount();
   setupPagination();
 });
+
+function quickFilter(statut, el) {
+  currentStatutFilter = statut;
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  if (el) el.classList.add('active');
+  
+  // Mettre à jour le filtre statut
+  document.querySelectorAll('.filter-tab').forEach(btn => btn.classList.remove('active'));
+  filterTable();
+}
 
 function filterTable() {
   const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
@@ -401,22 +488,10 @@ function filterByDate(date) {
   filterTable();
 }
 
-// reservation_list.html - Remplacez la fonction showReservationDetails
-
 function showReservationDetails(id) {
-    console.log('Chargement détails pour ID:', id); // Pour déboguer
-    
     fetch(`/api/reservations/${id}/details/`)
-        .then(r => {
-            if (!r.ok) {
-                throw new Error('Erreur réseau');
-            }
-            return r.json();
-        })
+        .then(r => r.json())
         .then(data => {
-            console.log('Données reçues:', data); // Pour déboguer
-            
-            // Formater les dates
             let debutFormate = 'Non définie';
             let finFormate = 'Non définie';
             
@@ -424,11 +499,8 @@ function showReservationDetails(id) {
                 const debut = new Date(data.date_debut);
                 if (!isNaN(debut.getTime())) {
                     debutFormate = debut.toLocaleString('fr-FR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
                     });
                 }
             }
@@ -437,16 +509,12 @@ function showReservationDetails(id) {
                 const fin = new Date(data.date_fin);
                 if (!isNaN(fin.getTime())) {
                     finFormate = fin.toLocaleString('fr-FR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
                     });
                 }
             }
             
-            // Afficher les détails
             const content = document.getElementById('details-content');
             content.innerHTML = `
                 <div style="margin:20px 0">
@@ -496,9 +564,70 @@ function showReservationDetails(id) {
             document.getElementById('detailsModal').style.display = 'flex';
         });
 }
+
 function closeDetailsModal() {
   document.getElementById('detailsModal').style.display = 'none';
 }
+
+function showRefuseModal(id, titre) {
+  currentRefuseId = id;
+  document.getElementById('refuse-title').textContent = titre;
+  document.getElementById('refuseModal').style.display = 'flex';
+}
+
+function closeRefuseModal() {
+  document.getElementById('refuseModal').style.display = 'none';
+  currentRefuseId = null;
+}
+
+// Soumettre le refus
+document.getElementById('refuseForm')?.addEventListener('submit', function(e) {
+  e.preventDefault();
+  const motif = document.querySelector('#refuseForm textarea[name="motif"]').value;
+  
+  fetch(`/reservations/${currentRefuseId}/refuser/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: `motif=${encodeURIComponent(motif)}`
+  })
+  .then(() => {
+    closeRefuseModal();
+    location.reload();
+  });
+});
+
+function showQRCodeAdmin(reservationId, titre) {
+  fetch(`/api/reservations/${reservationId}/qr/`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.qr_code) {
+        currentQRDataAdmin = data.qr_code;
+        document.getElementById('qr-title-admin').textContent = `QR Code - ${titre}`;
+        document.getElementById('qr-subtitle-admin').textContent = `Réservation du ${new Date(data.date_debut).toLocaleDateString('fr-FR')}`;
+        document.getElementById('qr-image-admin').innerHTML = `<img src="data:image/png;base64,${data.qr_code}" style="max-width:250px; border-radius:8px">`;
+        document.getElementById('qrModalAdmin').style.display = 'flex';
+      } else {
+        alert('QR code non disponible');
+      }
+    });
+}
+
+function closeQRModalAdmin() {
+  document.getElementById('qrModalAdmin').style.display = 'none';
+  currentQRDataAdmin = null;
+}
+
+document.getElementById('downloadQRAdminBtn')?.addEventListener('click', function() {
+  if (currentQRDataAdmin) {
+    const link = document.createElement('a');
+    link.href = `data:image/png;base64,${currentQRDataAdmin}`;
+    link.download = `qr_reservation_${Date.now()}.png`;
+    link.click();
+  }
+});
 
 function copyReservation(id) {
   fetch(`/api/reservations/${id}/duplicate/`, {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
@@ -518,14 +647,15 @@ function suggestAlternative() {
 }
 
 function exportReservations() {
-  let csv = "Titre,Salle,Réservé par,Début,Fin,Participants,Statut\n";
+  let csv = "Titre,Salle,Réservé par,Badge,Début,Fin,Participants,Statut\n";
   const rows = document.querySelectorAll('.resa-row');
   rows.forEach(row => {
     if (row.style.display !== 'none') {
       const cells = row.querySelectorAll('td');
       csv += `"${cells[0].querySelector('div:first-child')?.textContent.trim() || ''}",`;
       csv += `"${cells[1].textContent.trim()}",`;
-      csv += `"${cells[2].textContent.trim()}",`;
+      csv += `"${cells[2].querySelector('span:last-child')?.textContent.trim() || ''}",`;
+      csv += `"${cells[2].querySelector('div:last-child')?.textContent.replace('🪪 Badge:', '').trim() || ''}",`;
       csv += `"${cells[3].textContent.trim()}",`;
       csv += `"${cells[4].textContent.trim()}",`;
       csv += `"${cells[5].textContent.trim()}",`;
@@ -538,4 +668,5 @@ function exportReservations() {
   link.download = `reservations_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
 }
+</script>
 {% endblock %}

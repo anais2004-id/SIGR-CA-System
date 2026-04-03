@@ -18,7 +18,10 @@ from django.core.mail import send_mail
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import get_user_model
 from django.contrib.auth import update_session_auth_hash
-
+import qrcode
+from io import BytesIO
+from django.core.files.base import ContentFile
+import base64
 import logging
 
 from .models import Utilisateur, UserSession
@@ -198,6 +201,8 @@ def employe_espace(request):
     })
 
 
+# dashboard/views.py - Modifiez la fonction employe_mes_reservations
+
 @login_required
 def employe_mes_reservations(request):
     if request.user.is_staff:
@@ -248,6 +253,7 @@ def employe_mes_reservations(request):
                 if chevauchement:
                     messages.error(request, "Cette salle est déjà réservée sur ce créneau.")
                 else:
+                    # CRITIQUE: Changement ici - statut = 'en_attente' au lieu de 'confirmee'
                     reservation_data = {
                         'titre': request.POST.get('titre', '').strip(),
                         'description': request.POST.get('description', '').strip(),
@@ -257,15 +263,26 @@ def employe_mes_reservations(request):
                         'date_debut': date_debut,
                         'date_fin': date_fin,
                         'nb_participants': int(request.POST.get('nb_participants', 1)),
-                        'statut': 'confirmee',
+                        'statut': 'en_attente',  # ← Changement important
+                        'qr_code': None,  # Pas de QR code tant que non confirmée
                         'created_at': datetime.now(),
                         'created_by': request.user.username,
                     }
                     db.reservations.insert_one(reservation_data)
-                    messages.success(request, "Réservation créée avec succès !")
+                    
+                    # Notification à l'admin
+                    notify_admin_new_reservation(employe, reservation_data)
+                    
+                    messages.success(request, "Réservation créée avec succès ! En attente de validation par un administrateur.")
                     return redirect('employe_mes_reservations')
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
+    
+    # Convertir les réservations en JSON pour le calendrier
+    reservations_json = json.dumps([{
+        'id': str(r['_id']),
+        'date_debut': r['date_debut'].isoformat() if r.get('date_debut') else None,
+    } for r in reservations], default=str)
     
     return render(request, 'dashboard/employe_mes_reservations.html', {
         'employe': employe,
@@ -275,11 +292,50 @@ def employe_mes_reservations(request):
         'actives': actives,
         'a_venir': a_venir,
         'en_attente': en_attente,
-        'reservations_json': json.dumps([{
-            'id': str(r['_id']),
-            'date_debut': r['date_debut'].isoformat() if r.get('date_debut') else None,
-        } for r in reservations], default=str),
+        'reservations_json': reservations_json,
     })
+
+
+def notify_admin_new_reservation(employe, reservation_data):
+    """Notifie les administrateurs d'une nouvelle réservation"""
+    admins = Utilisateur.objects.filter(is_staff=True, is_active=True)
+    
+    message = f"""
+    🆕 NOUVELLE RÉSERVATION EN ATTENTE
+    
+    Employé: {employe.get('prenom', '')} {employe.get('nom', '')}
+    Titre: {reservation_data.get('titre')}
+    Salle: {reservation_data.get('bureau_id')}
+    Date: {reservation_data['date_debut'].strftime('%d/%m/%Y %H:%M')} → {reservation_data['date_fin'].strftime('%H:%M')}
+    Participants: {reservation_data.get('nb_participants', 1)}
+    
+    Connectez-vous à l'interface admin pour confirmer ou refuser cette réservation.
+    """
+    
+    for admin in admins:
+        db.notifications.insert_one({
+            'destinataire': admin.email,
+            'type_notification': 'email',
+            'categorie': 'reservation_attente',
+            'sujet': f"Nouvelle réservation en attente - {reservation_data.get('titre')}",
+            'message': message,
+            'statut': 'envoyee',
+            'reservation_id': str(reservation_data.get('_id')),
+            'created_at': datetime.now(),
+        })
+        
+        if admin.email:
+            try:
+                from django.core.mail import send_mail
+                send_mail(
+                    f"Nouvelle réservation en attente - {reservation_data.get('titre')}",
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [admin.email],
+                    fail_silently=True,
+                )
+            except:
+                pass
 
 
 @login_required
@@ -2399,3 +2455,373 @@ class JSONEncoder(json.JSONEncoder):
         if isinstance(o, datetime):
             return o.isoformat()
         return super().default(o)
+        # dashboard/views.py - Ajoutez ces fonctions
+
+
+@login_required
+def reservation_list(request):
+    """Liste des réservations pour l'admin avec onglets"""
+    if not request.user.is_staff:
+        return redirect('employe_espace')
+    
+    # Récupérer toutes les réservations
+    reservations = list(db.reservations.find().sort('date_debut', -1))
+    
+    for r in reservations:
+        r['id'] = str(r['_id'])
+        
+        # Récupérer le nom de l'employé
+        employe_id = r.get('employe_id')
+        if employe_id:
+            try:
+                if isinstance(employe_id, str) and len(employe_id) == 24:
+                    emp = db.employees.find_one({'_id': ObjectId(employe_id)})
+                else:
+                    emp = db.employees.find_one({'django_user_id': employe_id}) or db.employees.find_one({'_id': employe_id})
+                
+                if emp:
+                    r['employe_nom'] = f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or 'Inconnu'
+                    r['employe_badge'] = emp.get('badge_id', '—')
+                else:
+                    r['employe_nom'] = 'Inconnu'
+                    r['employe_badge'] = '—'
+            except:
+                r['employe_nom'] = 'Inconnu'
+                r['employe_badge'] = '—'
+        else:
+            r['employe_nom'] = 'Inconnu'
+            r['employe_badge'] = '—'
+        
+        # Récupérer le nom de la salle
+        bureau_id = r.get('bureau_id')
+        if bureau_id:
+            try:
+                bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+                r['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+            except:
+                r['bureau_nom'] = 'Salle inconnue'
+        else:
+            r['bureau_nom'] = 'Salle inconnue'
+        
+        # Vérifier si la réservation a un QR code
+        r['has_qr'] = r.get('qr_code') is not None
+    
+    # Statistiques
+    now = datetime.now()
+    en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+    confirmees = sum(1 for r in reservations if r.get('statut') == 'confirmee')
+    annulees = sum(1 for r in reservations if r.get('statut') == 'annulee')
+    terminees = sum(1 for r in reservations if r.get('statut') == 'terminee')
+    
+    return render(request, 'dashboard/reservation_list.html', {
+        'reservations': reservations,
+        'total': len(reservations),
+        'en_attente': en_attente,
+        'confirmees': confirmees,
+        'annulees': annulees,
+        'terminees': terminees,
+        'now': now,
+    })
+
+
+@login_required
+def reservation_confirmer(request, reservation_id):
+    """Confirmer une réservation et générer un QR code"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    try:
+        reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
+        if not reservation:
+            messages.error(request, "Réservation non trouvée")
+            return redirect('reservation_list')
+        
+        if request.method == 'POST':
+            # Générer le QR code
+            qr_data = f"RESA-{reservation_id}-{reservation.get('employe_id')}-{reservation.get('date_debut').strftime('%Y%m%d%H%M')}"
+            
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(qr_data)
+            qr.make(fit=True)
+            
+            img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convertir l'image en base64 pour stockage MongoDB
+            buffer = BytesIO()
+            img.save(buffer, format='PNG')
+            qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            # Mettre à jour la réservation
+            db.reservations.update_one(
+                {'_id': ObjectId(reservation_id)},
+                {'$set': {
+                    'statut': 'confirmee',
+                    'qr_code': qr_base64,
+                    'confirmed_at': datetime.now(),
+                    'confirmed_by': request.user.username,
+                }}
+            )
+            
+            # Récupérer l'employé pour la notification
+            employe_id = reservation.get('employe_id')
+            employe = None
+            try:
+                if isinstance(employe_id, str) and len(employe_id) == 24:
+                    employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+                else:
+                    employe = db.employees.find_one({'django_user_id': employe_id})
+            except:
+                pass
+            
+            # Envoyer notification à l'employé
+            if employe and employe.get('email'):
+                send_reservation_confirmation_email(employe, reservation, qr_base64)
+            
+            messages.success(request, f"Réservation '{reservation.get('titre')}' confirmée avec QR code généré.")
+            
+            # Redirection selon la provenance
+            if request.POST.get('redirect_to') == 'list':
+                return redirect('reservation_list')
+            return redirect('reservation_detail', reservation_id=reservation_id)
+        
+        # Récupérer les détails pour l'affichage
+        employe = None
+        employe_id = reservation.get('employe_id')
+        if employe_id:
+            try:
+                if isinstance(employe_id, str) and len(employe_id) == 24:
+                    employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+                else:
+                    employe = db.employees.find_one({'django_user_id': employe_id})
+            except:
+                pass
+        
+        bureau = None
+        bureau_id = reservation.get('bureau_id')
+        if bureau_id:
+            try:
+                bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+            except:
+                pass
+        
+        return render(request, 'dashboard/reservation_confirmer.html', {
+            'reservation': reservation,
+            'employe': employe,
+            'bureau': bureau,
+        })
+        
+    except Exception as e:
+        messages.error(request, f"Erreur: {str(e)}")
+        return redirect('reservation_list')
+
+
+@login_required
+def reservation_refuser(request, reservation_id):
+    """Refuser une réservation"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    if request.method == 'POST':
+        try:
+            reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
+            if reservation:
+                motif = request.POST.get('motif', 'Non spécifié')
+                
+                db.reservations.update_one(
+                    {'_id': ObjectId(reservation_id)},
+                    {'$set': {
+                        'statut': 'annulee',
+                        'refused_at': datetime.now(),
+                        'refused_by': request.user.username,
+                        'refusal_reason': motif,
+                    }}
+                )
+                
+                # Notifier l'employé
+                employe_id = reservation.get('employe_id')
+                employe = None
+                try:
+                    if isinstance(employe_id, str) and len(employe_id) == 24:
+                        employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+                    else:
+                        employe = db.employees.find_one({'django_user_id': employe_id})
+                except:
+                    pass
+                
+                if employe and employe.get('email'):
+                    send_reservation_refusal_email(employe, reservation, motif)
+                
+                messages.success(request, f"Réservation '{reservation.get('titre')}' refusée.")
+        except Exception as e:
+            messages.error(request, f"Erreur: {str(e)}")
+    
+    return redirect('reservation_list')
+
+
+@login_required
+def reservation_detail(request, reservation_id):
+    """Voir les détails d'une réservation (avec QR code si confirmée)"""
+    if not request.user.is_staff:
+        return redirect('employe_espace')
+    
+    try:
+        reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
+        if not reservation:
+            messages.error(request, "Réservation non trouvée")
+            return redirect('reservation_list')
+        
+        reservation['id'] = str(reservation['_id'])
+        
+        # Récupérer l'employé
+        employe = None
+        employe_id = reservation.get('employe_id')
+        if employe_id:
+            try:
+                if isinstance(employe_id, str) and len(employe_id) == 24:
+                    employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+                else:
+                    employe = db.employees.find_one({'django_user_id': employe_id})
+            except:
+                pass
+        
+        # Récupérer la salle
+        bureau = None
+        bureau_id = reservation.get('bureau_id')
+        if bureau_id:
+            try:
+                bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+            except:
+                pass
+        
+        return render(request, 'dashboard/reservation_detail.html', {
+            'reservation': reservation,
+            'employe': employe,
+            'bureau': bureau,
+        })
+        
+    except Exception as e:
+        messages.error(request, f"Erreur: {str(e)}")
+        return redirect('reservation_list')
+
+
+def send_reservation_confirmation_email(employe, reservation, qr_base64):
+    """Envoie un email de confirmation avec QR code"""
+    message = f"""
+    Bonjour {employe.get('prenom', '')} {employe.get('nom', '')},
+    
+    ✅ Votre réservation a été CONFIRMÉE par l'administrateur !
+    
+    Détails de la réservation:
+    - Titre: {reservation.get('titre')}
+    - Date: {reservation['date_debut'].strftime('%d/%m/%Y %H:%M')} → {reservation['date_fin'].strftime('%H:%M')}
+    - Participants: {reservation.get('nb_participants', 1)}
+    
+    🔐 QR Code d'accès:
+    Présentez ce QR code au lecteur à l'entrée de la salle.
+    
+    (Le QR code est également disponible dans votre espace employé)
+    
+    Merci d'utiliser SIGR-CA.
+    """
+    
+    db.notifications.insert_one({
+        'destinataire': employe.get('email'),
+        'type_notification': 'email',
+        'categorie': 'confirmation',
+        'sujet': f"Réservation confirmée - {reservation.get('titre')}",
+        'message': message,
+        'statut': 'envoyee',
+        'reservation_id': str(reservation['_id']),
+        'created_at': datetime.now(),
+    })
+    
+    try:
+        from django.core.mail import send_mail
+        send_mail(
+            f"Réservation confirmée - {reservation.get('titre')}",
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [employe.get('email')],
+            fail_silently=True,
+        )
+    except:
+        pass
+
+
+def send_reservation_refusal_email(employe, reservation, motif):
+    """Envoie un email de refus de réservation"""
+    message = f"""
+    Bonjour {employe.get('prenom', '')} {employe.get('nom', '')},
+    
+    ❌ Votre réservation a été REFUSÉE par l'administrateur.
+    
+    Détails de la réservation:
+    - Titre: {reservation.get('titre')}
+    - Date: {reservation['date_debut'].strftime('%d/%m/%Y %H:%M')} → {reservation['date_fin'].strftime('%H:%M')}
+    
+    Motif du refus: {motif}
+    
+    Vous pouvez effectuer une nouvelle demande de réservation depuis votre espace employé.
+    
+    Cordialement,
+    SIGR-CA
+    """
+    
+    db.notifications.insert_one({
+        'destinataire': employe.get('email'),
+        'type_notification': 'email',
+        'categorie': 'annulation',
+        'sujet': f"Réservation refusée - {reservation.get('titre')}",
+        'message': message,
+        'statut': 'envoyee',
+        'reservation_id': str(reservation['_id']),
+        'created_at': datetime.now(),
+    })
+    
+    try:
+        from django.core.mail import send_mail
+        send_mail(
+            f"Réservation refusée - {reservation.get('titre')}",
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [employe.get('email')],
+            fail_silently=True,
+        )
+    except:
+        pass
+        # dashboard/views.py - Ajoutez cette API
+
+@login_required
+def api_reservation_qr(request, reservation_id):
+    """API pour récupérer le QR code d'une réservation"""
+    try:
+        # Vérifier que l'utilisateur a le droit d'accéder au QR code
+        if request.user.is_staff:
+            reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
+        else:
+            # Pour les employés, vérifier que c'est bien leur réservation
+            employe = db.employees.find_one({'django_user_id': request.user.id})
+            if not employe:
+                return JsonResponse({'error': 'Employé non trouvé'}, status=404)
+            reservation = db.reservations.find_one({
+                '_id': ObjectId(reservation_id),
+                'employe_id': str(employe['_id'])
+            })
+        
+        if not reservation:
+            return JsonResponse({'error': 'Réservation non trouvée'}, status=404)
+        
+        return JsonResponse({
+            'qr_code': reservation.get('qr_code'),
+            'date_debut': reservation.get('date_debut'),
+            'date_fin': reservation.get('date_fin'),
+            'titre': reservation.get('titre'),
+            'statut': reservation.get('statut'),
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
