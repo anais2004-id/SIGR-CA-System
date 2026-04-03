@@ -351,44 +351,54 @@ def employe_mon_historique(request):
 
 # ====================== API RÉSERVATIONS ======================
 
+# dashboard/views.py - Version simplifiée de l'API
+
 @login_required
 def api_reservation_details(request, reservation_id):
+    """API pour récupérer les détails d'une réservation (version simplifiée)"""
     try:
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
+        
         if not reservation:
             return JsonResponse({'error': 'Réservation non trouvée'}, status=404)
         
-        bureau_nom = "Salle inconnue"
-        if reservation.get('bureau_id'):
-            try:
-                bureau = db.bureaux.find_one({'_id': reservation['bureau_id']})
-                if bureau:
-                    bureau_nom = bureau.get('nom', 'Salle inconnue')
-            except:
-                pass
-        
-        employe_nom = "Inconnu"
-        employe_id = reservation.get('employe_id')
-        if employe_id:
-            try:
-                emp = db.employees.find_one({'_id': ObjectId(employe_id)})
-                if emp:
-                    employe_nom = f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip()
-                    if not employe_nom:
-                        employe_nom = emp.get('django_username', 'Inconnu')
-            except:
-                pass
-        
-        return JsonResponse({
+        # Données basiques
+        response_data = {
             'titre': reservation.get('titre', 'Sans titre'),
             'description': reservation.get('description', ''),
-            'bureau_nom': bureau_nom,
-            'employe_nom': employe_nom,
+            'bureau_nom': str(reservation.get('bureau_id', 'Salle inconnue')),
+            'employe_nom': str(reservation.get('employe_id', 'Inconnu')),
             'date_debut': reservation.get('date_debut'),
             'date_fin': reservation.get('date_fin'),
             'nb_participants': reservation.get('nb_participants', 1),
             'statut': reservation.get('statut', 'en_attente'),
-        }, default=str)
+        }
+        
+        # Essayer d'enrichir avec les vrais noms
+        if reservation.get('bureau_id'):
+            try:
+                bureau = db.bureaux.find_one({'_id': reservation['bureau_id']})
+                if bureau:
+                    response_data['bureau_nom'] = bureau.get('nom', 'Salle inconnue')
+            except:
+                pass
+        
+        if reservation.get('employe_id'):
+            try:
+                emp = db.employees.find_one({'_id': ObjectId(reservation['employe_id'])})
+                if emp:
+                    response_data['employe_nom'] = f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or 'Employé'
+            except:
+                pass
+        
+        # Convertir les dates en string
+        if response_data['date_debut']:
+            response_data['date_debut'] = response_data['date_debut'].isoformat()
+        if response_data['date_fin']:
+            response_data['date_fin'] = response_data['date_fin'].isoformat()
+        
+        return JsonResponse(response_data)
+        
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
