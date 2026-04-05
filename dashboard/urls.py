@@ -179,4 +179,32 @@ path('bureau/supprimer/<str:bureau_id>/', views.bureau_supprimer, name='bureau_s
     path('ressources/', views.ressources, name='ressources'),
     path('bureaux/ajouter/', views.bureau_ajouter, name='bureau_ajouter'),
     path('bureaux/<str:bureau_id>/', views.bureau_detail, name='bureau_detail'),
-    path('bureaux/<str:bureau_id>/supprimer/', views.bureau_supprimer, name='bureau_supprimer'),]
+    path('bureaux/<str:bureau_id>/supprimer/', views.bureau_supprimer, name='bureau_supprimer'),
+    # Ajoutez ces routes pour le profil employé
+path('employe/profil/', views.employe_profil, name='employe_profil'),
+path('employe/change-password/', views.employe_change_password, name='employe_change_password'),
+path('api/save-preferences/', views.api_save_preferences, name='api_save_preferences'),
+path('api/employee/stats/', views.api_employee_stats, name='api_employee_stats'),
+path('api/employee/update-profil/', views.employe_update_profil, name='employe_update_profil'),
+# Notifications employé
+path('employe/notifications/', views.employe_notifications, name='employe_notifications'),
+path('employe/notifications/mark-read/', views.employe_notifications, name='employe_notifications_mark_read'),
+path('api/send-test-notification/', views.api_send_test_notification, name='api_send_test_notification'),
+# Centre d'aide
+path('employe/aide/', views.employe_aide, name='employe_aide'),
+# dashboard/urls.py - Ajoutez ces lignes dans urlpatterns
+
+# ── Espace Employé - Nouvelles fonctionnalités ──────────────────────────
+path('employe/notifications/', views.employe_notifications, name='employe_notifications'),
+path('employe/plan-zones/', views.employe_plan_zones, name='employe_plan_zones'),
+path('employe/badge-virtuel/', views.employe_badge_virtuel, name='employe_badge_virtuel'),
+path('employe/aide/', views.employe_aide, name='employe_aide'),
+
+# API pour les notifications
+path('api/save-preferences/', views.api_save_preferences, name='api_save_preferences'),
+path('api/employee/stats/', views.api_employee_stats, name='api_employee_stats'),
+# Dans urls.py
+path('api/reservations/<str:reservation_id>/qr/', views.api_reservation_qr, name='api_reservation_qr'),
+path('api/reservations/<str:reservation_id>/duplicate/', views.api_reservation_duplicate, name='api_reservation_duplicate'),
+path('api/bureaux/<str:bureau_id>/schedule/', views.api_bureau_schedule, name='api_bureau_schedule'),
+path('api/bureaux/<str:bureau_id>/suggestions/', views.api_bureau_suggestions, name='api_bureau_suggestions'),]

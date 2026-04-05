@@ -2,265 +2,331 @@
 {% block title %}Réservations - SIGR-CA{% endblock %}
 {% block nav_reservations %}active{% endblock %}
 {% block page_title %}Gestion des réservations{% endblock %}
-{% block page_sub %}Gérer les demandes et confirmer les réservations{% endblock %}
+{% block page_sub %}Calendrier et gestion des créneaux{% endblock %}
 
 {% block topbar_actions %}
 <a href="{% url 'reservation_ajouter' %}" class="btn btn-primary btn-sm">+ Nouvelle réservation</a>
-<button class="btn btn-ghost btn-sm" onclick="exportReservations()">⬇️ Exporter CSV</button>
-<button class="btn btn-ghost btn-sm" onclick="toggleCalendarView()">📅 Vue calendrier</button>
+<button class="btn btn-ghost btn-sm" onclick="toggleView()">📋 Vue liste</button>
+<button class="btn btn-ghost btn-sm" onclick="exportReservations()">⬇️ Exporter</button>
 <button class="btn btn-ghost btn-sm" onclick="location.reload()">↻ Actualiser</button>
 {% endblock %}
 
 {% block content %}
 
-{% if messages %}
-{% for message in messages %}
-<div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-  <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-  <div><div class="alert-text">{{ message }}</div></div>
-</div>
-{% endfor %}
-{% endif %}
+<style>
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.kpi-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.kpi-label {
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+}
+.kpi.k-blue .kpi-value { color: #1f6feb; }
+.kpi.k-green .kpi-value { color: #2dba6f; }
+.kpi.k-amber .kpi-value { color: #e3b341; }
+.kpi.k-purple .kpi-value { color: #a371f7; }
+.kpi.k-red .kpi-value { color: #f85149; }
+.kpi.k-cyan .kpi-value { color: #39d0f0; }
 
-<!-- KPIs améliorés -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total réservations</div><div class="kpi-icon">📆</div></div>
-    <div class="kpi-value">{{ total }}</div>
-    <div class="kpi-delta">Toutes périodes</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Confirmées</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ confirmees }}</div>
-    <div class="kpi-delta">Validées</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏳</div></div>
-    <div class="kpi-value">{{ en_attente }}</div>
-    <div class="kpi-delta">À modérer</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏰</div></div>
-    <div class="kpi-value">{{ a_venir }}</div>
-    <div class="kpi-delta">Prochaines 7j</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Annulées</div><div class="kpi-icon">❌</div></div>
-    <div class="kpi-value">{{ annulees }}</div>
-    <div class="kpi-delta">Non honorées</div>
-  </div>
-  <div class="kpi k-cyan" style="--cyan:#39d0f0">
-    <div class="kpi-header"><div class="kpi-label">Taux occupation</div><div class="kpi-icon">📊</div></div>
-    <div class="kpi-value">{{ taux_occupation|default:0 }}%</div>
-    <div class="kpi-delta">Moyenne du mois</div>
-  </div>
+.resource-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.resource-tab {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text2);
+}
+.resource-tab.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+.month-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--bg2);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.month-nav button {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--text);
+}
+.month-nav span {
+  font-size: 18px;
+  font-weight: 600;
+}
+.calendar-container {
+  background: var(--bg2);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+.calendar-table th {
+  background: var(--bg3);
+  padding: 12px;
+  text-align: center;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.calendar-table td {
+  border: 1px solid var(--border2);
+  vertical-align: top;
+  padding: 8px;
+  width: 14%;
+  height: 100px;
+}
+.calendar-day-number {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text2);
+}
+.calendar-day-number.today {
+  color: var(--blue);
+}
+.reservation-slot {
+  background: var(--blue3);
+  border-left: 3px solid var(--blue);
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.reservation-slot:hover {
+  transform: translateX(2px);
+  background: var(--blue);
+  color: white;
+}
+.reservation-slot.confirmed {
+  background: var(--green2);
+  border-left-color: var(--green);
+}
+.reservation-slot.pending {
+  background: var(--amber2);
+  border-left-color: var(--amber);
+}
+.reservation-slot.cancelled {
+  background: var(--red2);
+  border-left-color: var(--red);
+  text-decoration: line-through;
+}
+.reservation-time {
+  font-family: monospace;
+  font-size: 9px;
+  margin-right: 4px;
+}
+.date-cell {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: var(--bg2);
+  border-radius: 12px;
+  width: 550px;
+  max-width: 90vw;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h3 { margin: 0; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text2);
+}
+.modal-body { padding: 20px; max-height: 400px; overflow-y: auto; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-info { background: var(--blue3); color: var(--blue2); border: 1px solid rgba(31,111,235,0.3); }
+.btn-info:hover { background: rgba(31,111,235,0.2); }
+</style>
+
+<!-- KPIs -->
+<div class="kpi-grid">
+  <div class="kpi k-blue"><div class="kpi-header"><div class="kpi-label">Total</div></div><div class="kpi-value">{{ total|default:0 }}</div></div>
+  <div class="kpi k-green"><div class="kpi-header"><div class="kpi-label">Confirmées</div></div><div class="kpi-value">{{ confirmees|default:0 }}</div></div>
+  <div class="kpi k-amber"><div class="kpi-header"><div class="kpi-label">En attente</div></div><div class="kpi-value">{{ en_attente|default:0 }}</div></div>
+  <div class="kpi k-purple"><div class="kpi-header"><div class="kpi-label">À venir</div></div><div class="kpi-value">{{ a_venir|default:0 }}</div></div>
+  <div class="kpi k-red"><div class="kpi-header"><div class="kpi-label">Annulées</div></div><div class="kpi-value">{{ annulees|default:0 }}</div></div>
+  <div class="kpi k-cyan"><div class="kpi-header"><div class="kpi-label">Occupation</div></div><div class="kpi-value">{{ taux_occupation|default:0 }}%</div></div>
 </div>
 
-<!-- Onglets rapides -->
-<div style="display:flex; gap:4px; background:var(--bg3); padding:4px; border-radius:10px; margin-bottom:20px">
-  <button class="tab-btn active" onclick="quickFilter('all', this)">📋 Toutes</button>
-  <button class="tab-btn" onclick="quickFilter('en_attente', this)">⏳ En attente <span class="badge" style="background:var(--amber); color:black">{{ en_attente }}</span></button>
-  <button class="tab-btn" onclick="quickFilter('confirmee', this)">✅ Confirmées</button>
-  <button class="tab-btn" onclick="quickFilter('annulee', this)">❌ Annulées</button>
+<!-- Filtres ressources -->
+<div class="resource-tabs" id="resourceTabs">
+  <button class="resource-tab active" data-resource="all">📋 Toutes les ressources</button>
+  {% for bureau in bureaux %}
+  <button class="resource-tab" data-resource="{{ bureau.id }}">🚪 {{ bureau.nom }}</button>
+  {% endfor %}
 </div>
 
-<!-- Vue Calendrier (toggle) -->
-<div id="calendar-view" class="card" style="display:none; margin-bottom:20px">
-  <div class="card-head">
-    <span>📅</span>
-    <span class="card-title">Calendrier des réservations</span>
-    <span class="card-sub">Vue mensuelle</span>
+<!-- Vue calendrier mensuel -->
+<div id="calendarView">
+  <div class="month-nav">
+    <button id="prevMonthBtn">‹ Mois précédent</button>
+    <span id="monthYear"></span>
+    <button id="nextMonthBtn">Mois suivant ›</button>
+    <button id="todayMonthBtn">📅 Aujourd'hui</button>
   </div>
-  <div class="card-body">
-    <div id="full-calendar"></div>
-  </div>
+  <div class="calendar-container" id="calendarContainer"></div>
 </div>
 
-<!-- Filtres avancés -->
-<div class="card" style="margin-bottom:20px">
-  <div class="card-head">
-    <span>🔍</span>
-    <span class="card-title">Filtres avancés</span>
-  </div>
-  <div class="card-body">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:16px">
-      <div>
-        <label class="form-label" style="font-size:10px">Recherche</label>
-        <input class="form-input" id="searchInput" placeholder="Titre, salle, employé..." oninput="filterTable()">
-      </div>
-      <div>
-        <label class="form-label" style="font-size:10px">Période</label>
-        <select class="form-select" id="periodFilter" onchange="filterTable()">
-          <option value="all">Toutes</option>
-          <option value="today">Aujourd'hui</option>
-          <option value="week">Cette semaine</option>
-          <option value="month">Ce mois</option>
-          <option value="future">À venir</option>
-        </select>
-      </div>
-      <div>
-        <label class="form-label" style="font-size:10px">Statut</label>
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <button class="filter-tab active" onclick="filterStatut('all',this)">Tous</button>
-          <button class="filter-tab" onclick="filterStatut('confirmee',this)">Confirmées</button>
-          <button class="filter-tab" onclick="filterStatut('en_attente',this)">En attente</button>
-          <button class="filter-tab" onclick="filterStatut('annulee',this)">Annulées</button>
-        </div>
-      </div>
+<!-- Vue tableau -->
+<div id="tableView" style="display:none">
+  <div class="card">
+    <div class="card-head">
+      <span>📋</span>
+      <span class="card-title">Liste des réservations</span>
+      <input type="text" id="searchInput" class="search-inp" style="width:200px; margin-left:auto" placeholder="🔍 Rechercher..." oninput="filterTable()">
     </div>
-  </div>
-</div>
-
-<!-- Tableau des réservations -->
-<div class="card">
-  <div class="card-head">
-    <span>📋</span>
-    <span class="card-title">Liste des réservations</span>
-    <span class="card-sub" id="reservationCount">{{ total }} réservation(s)</span>
-  </div>
-  <div style="overflow-x:auto; max-height:600px; overflow-y:auto">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Titre</th>
-          <th>Salle</th>
-          <th>Employé / Badge</th>
-          <th>Début</th>
-          <th>Fin</th>
-          <th>Participants</th>
-          <th>Statut</th>
-          <th>QR Code</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="reservations-table-body">
-        {% for r in reservations %}
-        <tr class="resa-row" 
-            data-id="{{ r.id }}"
-            data-titre="{{ r.titre|lower }}" 
-            data-bureau="{{ r.bureau_nom|lower }}" 
-            data-emp="{{ r.employe_nom|lower }}" 
-            data-statut="{{ r.statut }}"
-            data-date="{{ r.date_debut|date:'Y-m-d' }}">
-          
-          <td style="min-width:180px">
-            <div style="font-weight:500;color:var(--text)">{{ r.titre|default:"Sans titre" }}</div>
-            {% if r.description %}
-            <div style="font-size:10.5px;color:var(--text3);margin-top:2px">{{ r.description|truncatechars:50 }}</div>
-            {% endif %}
-          </td>
-          <td><span class="badge b-blue">🚪 {{ r.bureau_nom }}</span></td>
-          <td>
-            <div style="display:flex;flex-direction:column">
-              <div style="display:flex;align-items:center;gap:8px">
-                <div class="emp-av" style="background:#1f6feb;width:28px;height:28px;font-size:11px">
-                  {{ r.employe_nom|slice:":1"|upper }}
-                </div>
-                <span>{{ r.employe_nom }}</span>
-              </div>
-              <div style="font-size:10px; color:var(--text3); margin-top:2px">
-                🪪 Badge: {{ r.employe_badge|default:"—" }}
-              </div>
-            </div>
-          </td>
-          <td style="font-family:var(--mono);font-size:11.5px">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
-          <td style="font-family:var(--mono);font-size:11.5px">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
-          <td style="text-align:center">👥 {{ r.nb_participants|default:"1" }}</td>
-          <td>
-            {% if r.statut == 'confirmee' %}
-              <span class="badge b-green">✅ Confirmée</span>
-            {% elif r.statut == 'en_attente' %}
-              <span class="badge b-amber">⏳ En attente</span>
-            {% elif r.statut == 'annulee' %}
-              <span class="badge b-red">❌ Annulée</span>
-            {% else %}
-              <span class="badge b-gray">{{ r.statut }}</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if r.statut == 'confirmee' and r.qr_code %}
-              <button class="btn btn-sm btn-info" onclick="showQRCodeAdmin('{{ r.id }}', '{{ r.titre|escapejs }}')" 
-                      style="background:var(--blue3);color:var(--blue2)" title="Voir QR Code">
-                📱 QR
-              </button>
-            {% elif r.statut == 'en_attente' %}
-              <span class="badge b-amber">En attente</span>
-            {% else %}
-              <span class="badge b-gray">—</span>
-            {% endif %}
-          </td>
-          <td>
-            <div style="display:flex;gap:4px; flex-wrap:wrap">
-              <a href="{% url 'reservation_modifier' r.id %}" class="btn btn-edit btn-sm" title="Modifier">✏️</a>
-              <button class="btn btn-info btn-sm" onclick="showReservationDetails('{{ r.id }}')" title="Détails" style="background:var(--blue3);color:var(--blue2)">👁️</button>
-              
-              {% if r.statut == 'en_attente' %}
-                <a href="{% url 'reservation_confirmer' r.id %}" class="btn btn-primary btn-sm" title="Confirmer et générer QR">✅ Confirmer</a>
-                <button class="btn btn-del btn-sm" onclick="showRefuseModal('{{ r.id }}', '{{ r.titre|escapejs }}')" title="Refuser">❌ Refuser</button>
-              {% endif %}
-              
-              {% if r.statut != 'annulee' and r.statut != 'terminee' and r.statut != 'en_attente' %}
-              <form method="post" action="{% url 'reservation_annuler' r.id %}" style="display:inline" onsubmit="return confirm('Annuler cette réservation ?')">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-del btn-sm" title="Annuler">🗑️</button>
-              </form>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Titre</th><th>Salle</th><th>Employé</th><th>Début</th><th>Fin</th><th>Participants</th><th>Statut</th><th>QR</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          {% for r in reservations %}
+          <tr data-id="{{ r.id }}" data-titre="{{ r.titre|lower|escape }}" data-salle="{{ r.bureau_nom|lower|escape }}">
+            <td><strong>{{ r.titre|default:"Sans titre" }}</strong>{% if r.description %}<div style="font-size:10px;color:var(--text3)">{{ r.description|truncatechars:40 }}</div>{% endif %}</div>
+            <td><span class="badge b-blue">{{ r.bureau_nom }}</span></div>
+            <td>{{ r.employe_nom }}<div style="font-size:10px;color:var(--text3)">Badge: {{ r.employe_badge|default:"—" }}</div></div>
+            <td class="date-cell">{{ r.date_debut|date:"d/m/Y H:i" }}</div>
+            <td class="date-cell">{{ r.date_fin|date:"d/m/Y H:i" }}</div>
+            <td class="center">👥 {{ r.nb_participants|default:1 }}</div>
+            <td>
+              {% if r.statut == 'confirmee' %}
+                <span class="badge b-green">✅ Confirmée</span>
+              {% elif r.statut == 'en_attente' %}
+                <span class="badge b-amber">⏳ En attente</span>
+              {% else %}
+                <span class="badge b-red">❌ Annulée</span>
               {% endif %}
             </div>
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="9" style="text-align:center;padding:60px;color:var(--text3)">
-            Aucune réservation enregistrée
-            <br><br>
-            <a href="{% url 'reservation_ajouter' %}" class="btn btn-primary btn-sm">+ Créer la première réservation</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  
-  <!-- Pagination -->
-  <div class="card-body" style="border-top:1px solid var(--border); padding:12px 16px">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
-      <div>
-        <span style="font-size:12px; color:var(--text2)">Afficher</span>
-        <select id="rowsPerPage" class="form-select" style="width:70px; display:inline-block; margin:0 8px" onchange="changeRowsPerPage()">
-          <option value="10">10</option>
-          <option value="20" selected>20</option>
-          <option value="50">50</option>
-        </select>
-        <span style="font-size:12px; color:var(--text2)">lignes</span>
-      </div>
-      <div id="paginationControls" style="display:flex; gap:8px; align-items:center"></div>
+            <td>
+              {% if r.statut == 'confirmee' %}
+                <button class="btn btn-sm btn-info" onclick="showQRCode('{{ r.id }}', '{{ r.titre|escapejs }}')">📱 QR</button>
+              {% else %}
+                <span class="badge b-gray">—</span>
+              {% endif %}
+            </div>
+            <td>
+              <div class="btn-group">
+                <a href="{% url 'reservation_modifier' r.id %}" class="btn btn-edit btn-sm" title="Modifier">✏️</a>
+                <button class="btn btn-info btn-sm" onclick="showDetails('{{ r.id }}')" title="Détails">👁️</button>
+                {% if r.statut == 'en_attente' %}
+                  <a href="{% url 'reservation_confirmer' r.id %}" class="btn btn-primary btn-sm" title="Confirmer">✅</a>
+                  <button class="btn btn-del btn-sm" onclick="showRefuseModal('{{ r.id }}', '{{ r.titre|escapejs }}')" title="Refuser">❌</button>
+                {% endif %}
+                {% if r.statut != 'annulee' and r.statut != 'terminee' %}
+                  <form method="post" action="{% url 'reservation_annuler' r.id %}" style="display:inline" onsubmit="return confirm('Annuler cette réservation ?')">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-del btn-sm" title="Annuler">🗑️</button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
 
 <!-- Modal Détails -->
-<div class="modal-overlay" id="detailsModal" style="display:none" onclick="if(event.target===this)closeDetailsModal()">
-  <div class="modal" style="width:550px; max-width:95vw">
-    <div class="modal-title">📋 Détails de la réservation</div>
-    <div id="details-content"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeDetailsModal()">Fermer</button>
+<div id="detailsModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>📋 Détails réservation</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalDetailsContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal()">Fermer</button>
     </div>
   </div>
 </div>
 
 <!-- Modal Refus -->
-<div class="modal-overlay" id="refuseModal" style="display:none" onclick="if(event.target===this)closeRefuseModal()">
-  <div class="modal" style="width:450px; max-width:95vw">
-    <div class="modal-title">❌ Refuser la réservation</div>
-    <div class="modal-sub" id="refuse-title"></div>
+<div id="refuseModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeRefuseModal()">
+  <div class="modal" style="width:450px">
+    <div class="modal-header">
+      <h3>❌ Refuser la réservation</h3>
+      <button class="modal-close" onclick="closeRefuseModal()">✕</button>
+    </div>
     <form method="post" id="refuseForm">
       {% csrf_token %}
-      <div class="form-row">
-        <label class="form-label">Motif du refus</label>
-        <textarea class="form-input" name="motif" rows="3" placeholder="Raison du refus (sera communiqué à l'employé)..." required></textarea>
+      <div class="modal-body">
+        <div class="form-row">
+          <label class="form-label">Motif du refus</label>
+          <textarea class="form-input" name="motif" rows="3" placeholder="Raison du refus..." required></textarea>
+        </div>
       </div>
-      <div class="modal-actions">
+      <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeRefuseModal()">Annuler</button>
         <button type="submit" class="btn btn-del">❌ Confirmer le refus</button>
       </div>
@@ -268,310 +334,226 @@
   </div>
 </div>
 
-<!-- Modal QR Code Admin -->
-<div class="modal-overlay" id="qrModalAdmin" style="display:none" onclick="if(event.target===this)closeQRModalAdmin()">
+<!-- Modal QR Code -->
+<div id="qrModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQRModal()">
   <div class="modal" style="width:450px; text-align:center">
-    <div class="modal-title" id="qr-title-admin">QR Code d'accès</div>
-    <div class="modal-sub" id="qr-subtitle-admin"></div>
-    <div id="qr-image-admin" style="margin:20px auto; padding:20px; background:white; border-radius:10px; display:inline-block"></div>
-    <div class="modal-actions">
-      <button class="btn btn-primary btn-sm" id="downloadQRAdminBtn">⬇️ Télécharger</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeQRModalAdmin()">Fermer</button>
+    <div class="modal-header">
+      <h3>📱 QR Code d'accès</h3>
+      <button class="modal-close" onclick="closeQRModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="qrImageContainer" style="background:white; padding:20px; border-radius:10px; display:inline-block"></div>
+      <div id="qrInfo" style="margin-top:12px; font-size:12px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="downloadQR()">⬇️ Télécharger</button>
+      <button class="btn btn-ghost" onclick="closeQRModal()">Fermer</button>
     </div>
   </div>
 </div>
 
-<style>
-.filter-tab {
-  padding: 5px 12px;
-  border-radius: 20px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  font-size: 11px;
-  transition: all .15s;
-}
-.filter-tab.active {
-  background: var(--blue);
-  color: white;
-  border-color: var(--blue);
-}
-.tab-btn {
-  padding: 8px 20px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text2);
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-}
-.tab-btn.active {
-  background: var(--blue);
-  color: white;
-}
-.tab-btn:hover:not(.active) {
-  background: var(--bg4);
-  color: var(--text);
-}
-.btn-info {
-  background: var(--blue3);
-  color: var(--blue2);
-  border: 1px solid rgba(31,111,235,0.3);
-}
-.btn-info:hover {
-  background: rgba(31,111,235,0.2);
-  transform: translateY(-1px);
-}
-.kpi.k-cyan::after {
-  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
-}
-</style>
-
 <script>
-let currentStatutFilter = 'all';
-let currentPage = 1;
-let rowsPerPage = 20;
-let allRows = [];
-let currentQRDataAdmin = null;
-let currentRefuseId = null;
+// Données
+var reservationsData = {{ reservations_json|safe }};
+var currentYear = new Date().getFullYear();
+var currentMonth = new Date().getMonth();
+var currentResourceFilter = 'all';
+var currentQRCode = null;
+var currentRefuseId = null;
 
-document.addEventListener('DOMContentLoaded', function() {
-  allRows = Array.from(document.querySelectorAll('.resa-row'));
-  updateReservationCount();
-  setupPagination();
-});
+console.log("📊 Données chargées:", reservationsData ? reservationsData.length : 0, "réservations");
 
-function quickFilter(statut, el) {
-  currentStatutFilter = statut;
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  if (el) el.classList.add('active');
-  
-  // Mettre à jour le filtre statut
-  document.querySelectorAll('.filter-tab').forEach(btn => btn.classList.remove('active'));
-  filterTable();
+// Fonction pour obtenir les jours du mois
+function getDaysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
 }
 
-function filterTable() {
-  const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
-  const periodVal = document.getElementById('periodFilter').value;
-  const today = new Date();
-  today.setHours(0,0,0,0);
+// Fonction pour obtenir le premier jour du mois (0 = dimanche, 1 = lundi...)
+function getFirstDayOfMonth(year, month) {
+  return new Date(year, month, 1).getDay();
+}
+
+// Afficher le calendrier mensuel
+function renderCalendar() {
+  var daysInMonth = getDaysInMonth(currentYear, currentMonth);
+  var firstDay = getFirstDayOfMonth(currentYear, currentMonth);
+  var today = new Date();
   
-  let visibleCount = 0;
+  // Ajuster pour que la semaine commence lundi (0 = dimanche -> 6 = dimanche)
+  var startOffset = firstDay === 0 ? 6 : firstDay - 1;
   
-  allRows.forEach(row => {
-    const titre = row.dataset.titre || "";
-    const bureau = row.dataset.bureau || "";
-    const emp = row.dataset.emp || "";
-    const statut = row.dataset.statut || "";
-    const dateStr = row.dataset.date || "";
-    const rowDate = new Date(dateStr);
+  var monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  document.getElementById('monthYear').textContent = monthNames[currentMonth] + ' ' + currentYear;
+  
+  var weekDays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  
+  var html = '<table class="calendar-table"><thead><tr>';
+  for (var i = 0; i < weekDays.length; i++) {
+    html += '<th>' + weekDays[i] + '</th>';
+  }
+  html += '</tr></thead><tbody><tr>';
+  
+  // Jours vides au début
+  for (var i = 0; i < startOffset; i++) {
+    html += '<td class="calendar-day" style="background:var(--bg3); opacity:0.5"></td>';
+  }
+  
+  // Jours du mois
+  for (var day = 1; day <= daysInMonth; day++) {
+    var dayDate = new Date(currentYear, currentMonth, day);
+    var isToday = (currentYear === today.getFullYear() && currentMonth === today.getMonth() && day === today.getDate());
     
-    const matchesSearch = !searchVal || titre.includes(searchVal) || bureau.includes(searchVal) || emp.includes(searchVal);
-    const matchesStatut = currentStatutFilter === 'all' || statut === currentStatutFilter;
-    
-    let matchesPeriod = true;
-    if (periodVal === 'today') {
-      matchesPeriod = dateStr === today.toISOString().slice(0,10);
-    } else if (periodVal === 'week') {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      matchesPeriod = rowDate >= weekAgo;
-    } else if (periodVal === 'month') {
-      const monthAgo = new Date();
-      monthAgo.setDate(monthAgo.getDate() - 30);
-      matchesPeriod = rowDate >= monthAgo;
-    } else if (periodVal === 'future') {
-      matchesPeriod = rowDate >= today;
+    // Récupérer les réservations de ce jour
+    var dayReservations = [];
+    if (reservationsData) {
+      for (var r = 0; r < reservationsData.length; r++) {
+        var res = reservationsData[r];
+        if (!res.date_debut) continue;
+        var resDate = new Date(res.date_debut);
+        if (resDate.getFullYear() === currentYear && resDate.getMonth() === currentMonth && resDate.getDate() === day) {
+          var matchResource = (currentResourceFilter === 'all' || res.bureau_id === currentResourceFilter);
+          if (matchResource) {
+            dayReservations.push(res);
+          }
+        }
+      }
     }
     
-    const visible = matchesSearch && matchesStatut && matchesPeriod;
-    row.style.display = visible ? '' : 'none';
-    if (visible) visibleCount++;
-  });
+    html += '<td style="vertical-align:top; height:100px">';
+    html += '<div class="calendar-day-number' + (isToday ? ' today' : '') + '">' + day + '</div>';
+    
+    // Trier les réservations par heure
+    dayReservations.sort(function(a, b) {
+      return new Date(a.date_debut) - new Date(b.date_debut);
+    });
+    
+    for (var s = 0; s < dayReservations.length && s < 3; s++) {
+      var r = dayReservations[s];
+      var statusClass = (r.statut === 'confirmee') ? 'confirmed' : ((r.statut === 'en_attente') ? 'pending' : 'cancelled');
+      var startTime = new Date(r.date_debut).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      html += '<div class="reservation-slot ' + statusClass + '" onclick="showDetails(\'' + r.id + '\')" title="' + (r.titre || 'Sans titre') + ' - ' + startTime + '">';
+      html += '<span class="reservation-time">' + startTime + '</span> ';
+      html += (r.titre || 'Sans titre');
+      html += '</div>';
+    }
+    
+    if (dayReservations.length > 3) {
+      html += '<div style="font-size:9px; color:var(--text3); margin-top:2px">+' + (dayReservations.length - 3) + ' autre(s)</div>';
+    }
+    
+    html += '</td>';
+    
+    // Nouvelle ligne après dimanche
+    if ((startOffset + day) % 7 === 0) {
+      html += '</tr><tr>';
+    }
+  }
   
-  updateReservationCount(visibleCount);
-  currentPage = 1;
-  setupPagination();
-}
-
-function filterStatut(val, el) {
-  currentStatutFilter = val;
-  document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
-  if (el) el.classList.add("active");
-  filterTable();
-}
-
-function updateReservationCount(count = null) {
-  const visibleRows = count !== null ? count : document.querySelectorAll('.resa-row:not([style*="display: none"])').length;
-  document.getElementById('reservationCount').textContent = visibleRows + ' réservation(s)';
-}
-
-function setupPagination() {
-  const visibleRows = Array.from(document.querySelectorAll('.resa-row')).filter(row => row.style.display !== 'none');
-  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
-  const start = (currentPage - 1) * rowsPerPage;
-  const end = start + rowsPerPage;
+  // Compléter la dernière ligne
+  var totalCells = startOffset + daysInMonth;
+  var remainingCells = 7 - (totalCells % 7);
+  if (remainingCells < 7) {
+    for (var i = 0; i < remainingCells; i++) {
+      html += '<td class="calendar-day" style="background:var(--bg3); opacity:0.5"></td>';
+    }
+  }
   
-  document.querySelectorAll('.resa-row').forEach(row => row.style.display = 'none');
-  visibleRows.slice(start, end).forEach(row => row.style.display = '');
-  
-  const controls = document.getElementById('paginationControls');
-  controls.innerHTML = `
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
-    <span style="font-size:12px; color:var(--text2)">Page ${currentPage} / ${totalPages || 1}</span>
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>›</button>
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(${totalPages})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>»</button>
-  `;
+  html += '</tr></tbody></table>';
+  document.getElementById('calendarContainer').innerHTML = html;
 }
 
-function goToPage(page) {
-  const visibleRows = Array.from(document.querySelectorAll('.resa-row')).filter(row => row.style.display !== 'none');
-  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
-  if (page < 1 || page > totalPages) return;
-  currentPage = page;
-  setupPagination();
+function prevMonth() {
+  currentMonth--;
+  if (currentMonth < 0) {
+    currentMonth = 11;
+    currentYear--;
+  }
+  renderCalendar();
 }
 
-function changeRowsPerPage() {
-  rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
-  currentPage = 1;
-  setupPagination();
+function nextMonth() {
+  currentMonth++;
+  if (currentMonth > 11) {
+    currentMonth = 0;
+    currentYear++;
+  }
+  renderCalendar();
 }
 
-function toggleCalendarView() {
-  const calendarView = document.getElementById('calendar-view');
+function goToTodayMonth() {
+  currentYear = new Date().getFullYear();
+  currentMonth = new Date().getMonth();
+  renderCalendar();
+}
+
+function filterResource(resourceId, element) {
+  currentResourceFilter = resourceId;
+  var tabs = document.querySelectorAll('.resource-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.remove('active');
+  }
+  if (element) element.classList.add('active');
+  renderCalendar();
+}
+
+function toggleView() {
+  var calendarView = document.getElementById('calendarView');
+  var tableView = document.getElementById('tableView');
   if (calendarView.style.display === 'none') {
     calendarView.style.display = 'block';
-    loadFullCalendar();
+    tableView.style.display = 'none';
+    renderCalendar();
   } else {
     calendarView.style.display = 'none';
+    tableView.style.display = 'block';
   }
 }
 
-function loadFullCalendar() {
-  fetch("/api/reservations/calendrier/")
-    .then(r => r.json())
-    .then(data => {
-      const container = document.getElementById('full-calendar');
-      let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">';
-      const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-      days.forEach(d => html += `<div style="text-align:center;font-size:11px;color:var(--text3);padding:6px">${d}</div>`);
-      
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      
-      for (let i = 0; i < startDay; i++) html += '<div style="padding:6px;opacity:0.3"></div>';
-      
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dayEvents = data.events.filter(ev => new Date(ev.start).getDate() === d);
-        html += `<div style="padding:6px;border-radius:6px;background:var(--bg3);cursor:pointer" onclick="filterByDate('${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}')">
-          <div style="font-weight:600;margin-bottom:4px">${d}</div>`;
-        dayEvents.slice(0,2).forEach(ev => {
-          html += `<div style="font-size:9px;color:${ev.color};background:${ev.color}20;border-radius:3px;padding:2px 4px;margin-bottom:2px">${ev.title}</div>`;
-        });
-        if (dayEvents.length > 2) html += `<div style="font-size:8px;color:var(--text3)">+${dayEvents.length-2}</div>`;
-        html += `</div>`;
+function showDetails(id) {
+  fetch('/api/reservations/' + id + '/details/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var debut = data.date_debut ? new Date(data.date_debut).toLocaleString('fr-FR') : '—';
+      var fin = data.date_fin ? new Date(data.date_fin).toLocaleString('fr-FR') : '—';
+      var statusText = '';
+      var statusClass = '';
+      if (data.statut === 'confirmee') {
+        statusText = '✅ Confirmée';
+        statusClass = 'b-green';
+      } else if (data.statut === 'annulee') {
+        statusText = '❌ Annulée';
+        statusClass = 'b-red';
+      } else {
+        statusText = '⏳ En attente';
+        statusClass = 'b-amber';
       }
+      
+      var html = '<div class="field-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px">';
+      html += '<div class="field-box"><div class="field-lbl">📋 Titre</div><div class="field-val">' + (data.titre || '—') + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">🚪 Salle</div><div class="field-val">' + (data.bureau_nom || '—') + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">👤 Réservé par</div><div class="field-val">' + (data.employe_nom || '—') + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">👥 Participants</div><div class="field-val">' + (data.nb_participants || 1) + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">📅 Début</div><div class="field-val">' + debut + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">⏰ Fin</div><div class="field-val">' + fin + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">📊 Statut</div><div class="field-val"><span class="badge ' + statusClass + '">' + statusText + '</span></div></div>';
       html += '</div>';
-      container.innerHTML = html;
+      if (data.description) html += '<div class="field-box" style="margin-top:12px"><div class="field-lbl">📝 Description</div><div class="field-val">' + data.description + '</div></div>';
+      
+      document.getElementById('modalDetailsContent').innerHTML = html;
+      document.getElementById('detailsModal').style.display = 'flex';
+    })
+    .catch(function(err) {
+      document.getElementById('modalDetailsContent').innerHTML = '<div style="color:var(--red)">❌ Erreur: ' + err.message + '</div>';
+      document.getElementById('detailsModal').style.display = 'flex';
     });
 }
 
-function filterByDate(date) {
-  document.getElementById('periodFilter').value = 'all';
-  document.getElementById('searchInput').value = '';
-  filterTable();
-}
-
-function showReservationDetails(id) {
-    fetch(`/api/reservations/${id}/details/`)
-        .then(r => r.json())
-        .then(data => {
-            let debutFormate = 'Non définie';
-            let finFormate = 'Non définie';
-            
-            if (data.date_debut) {
-                const debut = new Date(data.date_debut);
-                if (!isNaN(debut.getTime())) {
-                    debutFormate = debut.toLocaleString('fr-FR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                    });
-                }
-            }
-            
-            if (data.date_fin) {
-                const fin = new Date(data.date_fin);
-                if (!isNaN(fin.getTime())) {
-                    finFormate = fin.toLocaleString('fr-FR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                    });
-                }
-            }
-            
-            const content = document.getElementById('details-content');
-            content.innerHTML = `
-                <div style="margin:20px 0">
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>📋 Titre:</strong> ${data.titre || '—'}
-                    </div>
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>🚪 Salle:</strong> ${data.bureau_nom || '—'}
-                    </div>
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>👤 Réservé par:</strong> ${data.employe_nom || '—'}
-                    </div>
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>📅 Début:</strong> ${debutFormate}
-                    </div>
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>⏰ Fin:</strong> ${finFormate}
-                    </div>
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>👥 Participants:</strong> ${data.nb_participants || 1}
-                    </div>
-                    <div style="margin-bottom:12px; padding:8px; background:var(--bg3); border-radius:8px">
-                        <strong>📊 Statut:</strong> 
-                        <span class="badge ${data.statut === 'confirmee' ? 'b-green' : (data.statut === 'annulee' ? 'b-red' : 'b-amber')}">
-                            ${data.statut === 'confirmee' ? '✅ Confirmée' : (data.statut === 'annulee' ? '❌ Annulée' : '⏳ En attente')}
-                        </span>
-                    </div>
-                    ${data.description ? `
-                    <div style="margin-top:12px; padding:12px; background:var(--bg3); border-radius:8px">
-                        <strong>📝 Description:</strong><br>
-                        <div style="margin-top:8px; color:var(--text2)">${data.description}</div>
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-            document.getElementById('detailsModal').style.display = 'flex';
-        })
-        .catch(error => {
-            console.error('Erreur:', error);
-            const content = document.getElementById('details-content');
-            content.innerHTML = `
-                <div style="margin:20px 0; text-align:center; color:var(--red)">
-                    ❌ Erreur lors du chargement des détails<br>
-                    <small>${error.message}</small>
-                </div>
-            `;
-            document.getElementById('detailsModal').style.display = 'flex';
-        });
-}
-
-function closeDetailsModal() {
+function closeModal() {
   document.getElementById('detailsModal').style.display = 'none';
 }
 
 function showRefuseModal(id, titre) {
   currentRefuseId = id;
-  document.getElementById('refuse-title').textContent = titre;
   document.getElementById('refuseModal').style.display = 'flex';
 }
 
@@ -583,90 +565,128 @@ function closeRefuseModal() {
 // Soumettre le refus
 document.getElementById('refuseForm')?.addEventListener('submit', function(e) {
   e.preventDefault();
-  const motif = document.querySelector('#refuseForm textarea[name="motif"]').value;
+  var motif = document.querySelector('#refuseForm textarea[name="motif"]').value;
   
-  fetch(`/reservations/${currentRefuseId}/refuser/`, {
+  fetch('/reservations/' + currentRefuseId + '/refuser/', {
     method: 'POST',
     headers: {
       'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: `motif=${encodeURIComponent(motif)}`
+    body: 'motif=' + encodeURIComponent(motif)
   })
-  .then(() => {
+  .then(function() {
     closeRefuseModal();
     location.reload();
   });
 });
 
-function showQRCodeAdmin(reservationId, titre) {
-  fetch(`/api/reservations/${reservationId}/qr/`)
-    .then(r => r.json())
-    .then(data => {
+function showQRCode(id, titre) {
+  fetch('/api/reservations/' + id + '/qr/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
       if (data.qr_code) {
-        currentQRDataAdmin = data.qr_code;
-        document.getElementById('qr-title-admin').textContent = `QR Code - ${titre}`;
-        document.getElementById('qr-subtitle-admin').textContent = `Réservation du ${new Date(data.date_debut).toLocaleDateString('fr-FR')}`;
-        document.getElementById('qr-image-admin').innerHTML = `<img src="data:image/png;base64,${data.qr_code}" style="max-width:250px; border-radius:8px">`;
-        document.getElementById('qrModalAdmin').style.display = 'flex';
+        document.getElementById('qrImageContainer').innerHTML = '<img src="data:image/png;base64,' + data.qr_code + '" style="max-width:200px; border-radius:8px">';
+        document.getElementById('qrInfo').innerHTML = '<strong>' + titre + '</strong><br>Réservation du ' + new Date(data.date_debut).toLocaleDateString('fr-FR');
+        document.getElementById('qrModal').style.display = 'flex';
       } else {
         alert('QR code non disponible');
       }
     });
 }
 
-function closeQRModalAdmin() {
-  document.getElementById('qrModalAdmin').style.display = 'none';
-  currentQRDataAdmin = null;
+function closeQRModal() {
+  document.getElementById('qrModal').style.display = 'none';
 }
 
-document.getElementById('downloadQRAdminBtn')?.addEventListener('click', function() {
-  if (currentQRDataAdmin) {
-    const link = document.createElement('a');
-    link.href = `data:image/png;base64,${currentQRDataAdmin}`;
-    link.download = `qr_reservation_${Date.now()}.png`;
+function downloadQR() {
+  var img = document.querySelector('#qrImageContainer img');
+  if (img) {
+    var link = document.createElement('a');
+    link.download = 'qrcode_reservation.png';
+    link.href = img.src;
     link.click();
   }
-});
-
-function copyReservation(id) {
-  fetch(`/api/reservations/${id}/duplicate/`, {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === 'success') {
-        window.location.href = `/reservations/${data.id}/modifier/`;
-      }
-    });
 }
 
-function suggestAlternative() {
-  alert('🤖 Suggestions de créneaux alternatifs :\n\n' +
-        '• Mercredi 14h-16h : Salle Atelier disponible\n' +
-        '• Jeudi 10h-12h : Salle Réunion A libre\n' +
-        '• Vendredi 15h-17h : Espace collaboratif accessible');
+function filterTable() {
+  var search = document.getElementById('searchInput').value.toLowerCase();
+  var rows = document.querySelectorAll('#tableBody tr');
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var titre = row.getAttribute('data-titre') || '';
+    var salle = row.getAttribute('data-salle') || '';
+    if (titre.indexOf(search) !== -1 || salle.indexOf(search) !== -1) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  }
 }
 
 function exportReservations() {
-  let csv = "Titre,Salle,Réservé par,Badge,Début,Fin,Participants,Statut\n";
-  const rows = document.querySelectorAll('.resa-row');
-  rows.forEach(row => {
+  var csv = "Titre,Salle,Employé,Badge,Début,Fin,Participants,Statut\n";
+  var rows = document.querySelectorAll('#tableBody tr');
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
     if (row.style.display !== 'none') {
-      const cells = row.querySelectorAll('td');
-      csv += `"${cells[0].querySelector('div:first-child')?.textContent.trim() || ''}",`;
-      csv += `"${cells[1].textContent.trim()}",`;
-      csv += `"${cells[2].querySelector('span:last-child')?.textContent.trim() || ''}",`;
-      csv += `"${cells[2].querySelector('div:last-child')?.textContent.replace('🪪 Badge:', '').trim() || ''}",`;
-      csv += `"${cells[3].textContent.trim()}",`;
-      csv += `"${cells[4].textContent.trim()}",`;
-      csv += `"${cells[5].textContent.trim()}",`;
-      csv += `"${cells[6].textContent.trim()}"\n`;
+      var cells = row.querySelectorAll('td');
+      if (cells.length >= 8) {
+        csv += '"' + (cells[0].innerText.split('\n')[0].replace(/"/g, '""')) + '",';
+        csv += '"' + (cells[1].innerText.replace(/"/g, '""')) + '",';
+        csv += '"' + (cells[2].innerText.split('\n')[0].replace(/"/g, '""')) + '",';
+        csv += '"' + ((cells[2].querySelector('div')?.innerText || '').replace('Badge:', '').trim()) + '",';
+        csv += '"' + cells[3].innerText + '",';
+        csv += '"' + cells[4].innerText + '",';
+        csv += '"' + cells[5].innerText + '",';
+        csv += '"' + cells[6].innerText + '"\n';
+      }
     }
-  });
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
-  const link = document.createElement('a');
+  }
+  var blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  var link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `reservations_${new Date().toISOString().slice(0,10)}.csv`;
+  link.download = 'reservations_' + new Date().toISOString().slice(0,10) + '.csv';
   link.click();
 }
+
+// Attacher les événements
+document.addEventListener('DOMContentLoaded', function() {
+  console.log("🚀 Initialisation du calendrier mensuel...");
+  
+  document.getElementById('prevMonthBtn').addEventListener('click', function() { prevMonth(); });
+  document.getElementById('nextMonthBtn').addEventListener('click', function() { nextMonth(); });
+  document.getElementById('todayMonthBtn').addEventListener('click', function() { goToTodayMonth(); });
+  
+  var tabs = document.querySelectorAll('.resource-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function(e) {
+      var resourceId = this.getAttribute('data-resource');
+      filterResource(resourceId, this);
+    });
+  }
+  
+  renderCalendar();
+});
+function closeModal() {
+  var modal = document.getElementById('detailsModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+// Fermeture des modaux
+window.closeModal = function() {
+  document.getElementById('detailsModal').style.display = 'none';
+};
+
+window.closeRefuseModal = function() {
+  document.getElementById('refuseModal').style.display = 'none';
+  currentRefuseId = null;
+};
+
+window.closeQRModal = function() {
+  document.getElementById('qrModal').style.display = 'none';
+};
 </script>
+
 {% endblock %}

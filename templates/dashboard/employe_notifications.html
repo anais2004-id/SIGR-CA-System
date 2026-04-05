@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Mes Notifications - SIGR-CA{% endblock %}
+{% block page_title %}Centre de notifications{% endblock %}
+{% block page_sub %}Restez informé de vos réservations et alertes{% endblock %}
+{% block nav_emp_notifications %}active{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="markAllAsRead()">✓ Tout marquer comme lu</button>
+<button class="btn btn-ghost btn-sm" onclick="refreshNotifications()">↻ Actualiser</button>
+{% endblock %}
+
+{% block content %}
+
+<style>
+.notification-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.filter-btn:hover, .filter-btn.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+.notification-item {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.notification-item:hover {
+  transform: translateX(4px);
+  border-color: var(--blue);
+}
+.notification-item.unread {
+  background: var(--blue3);
+  border-left: 3px solid var(--blue);
+}
+.notification-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.notification-icon {
+  font-size: 24px;
+}
+.notification-title {
+  font-weight: 600;
+  flex: 1;
+}
+.notification-date {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: monospace;
+}
+.notification-message {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 12px;
+  padding-left: 36px;
+}
+.notification-actions {
+  display: flex;
+  gap: 12px;
+  padding-left: 36px;
+}
+.empty-state {
+  text-align: center;
+  padding: 60px;
+  color: var(--text3);
+}
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+</style>
+
+<!-- Filtres -->
+<div class="notification-filters">
+  <button class="filter-btn active" onclick="filterNotifications('all')">📋 Toutes</button>
+  <button class="filter-btn" onclick="filterNotifications('reservation')">📅 Réservations</button>
+  <button class="filter-btn" onclick="filterNotifications('rappel')">⏰ Rappels</button>
+  <button class="filter-btn" onclick="filterNotifications('alerte')">⚠️ Alertes</button>
+  <button class="filter-btn" onclick="filterNotifications('info')">ℹ️ Informations</button>
+</div>
+
+<!-- Liste des notifications -->
+<div id="notifications-container">
+  {% if notifications %}
+    {% for notif in notifications %}
+    <div class="notification-item {% if not notif.lu %}unread{% endif %}" 
+         data-type="{{ notif.categorie }}"
+         data-id="{{ notif.id }}"
+         onclick="markAsRead('{{ notif.id }}')">
+      <div class="notification-header">
+        <div class="notification-icon">{{ notif.icon|default:'🔔' }}</div>
+        <div class="notification-title">{{ notif.titre }}</div>
+        <div class="notification-date">{{ notif.created_at|date:"d/m/Y H:i" }}</div>
+      </div>
+      <div class="notification-message">{{ notif.message }}</div>
+      {% if notif.action_url %}
+      <div class="notification-actions">
+        <a href="{{ notif.action_url }}" class="btn btn-sm btn-primary">Voir détails →</a>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🔔</div>
+      <div>Aucune notification</div>
+      <div style="font-size: 12px; margin-top: 8px;">Les notifications apparaîtront ici</div>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+function filterNotifications(type) {
+  const items = document.querySelectorAll('.notification-item');
+  items.forEach(item => {
+    if (type === 'all' || item.dataset.type === type) {
+      item.style.display = '';
+    } else {
+      item.style.display = 'none';
+    }
+  });
+  
+  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function markAsRead(notificationId) {
+  fetch('/employe/notifications/mark-read/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': '{{ csrf_token }}'
+    },
+    body: `notification_id=${notificationId}`
+  }).then(() => {
+    const item = document.querySelector(`.notification-item[data-id="${notificationId}"]`);
+    if (item) {
+      item.classList.remove('unread');
+    }
+  });
+}
+
+function markAllAsRead() {
+  fetch('/employe/notifications/mark-all-read/', {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': '{{ csrf_token }}'
+    }
+  }).then(() => {
+    document.querySelectorAll('.notification-item').forEach(item => {
+      item.classList.remove('unread');
+    });
+  });
+}
+
+function refreshNotifications() {
+  location.reload();
+}
+</script>
+
+{% endblock %}

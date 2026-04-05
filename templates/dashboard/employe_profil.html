@@ -2,41 +2,22 @@
 
 {% block title %}Mon Profil - SIGR-CA{% endblock %}
 {% block page_title %}Mon Profil{% endblock %}
-{% block page_sub %}Modifier mes informations personnelles{% endblock %}
-{% block nav_emp_home %}active{% endblock %}
+{% block page_sub %}Gérer mes informations personnelles{% endblock %}
+{% block nav_emp_profil %}active{% endblock %}
 
 {% block content %}
-
-<div class="profile-hdr">
-  <div class="profile-av">
-    {{ employe.prenom|slice:":1"|upper }}{{ employe.nom|slice:":1"|upper }}
-  </div>
-  <div>
-    <h2 style="margin:0 0 4px 0;">
-      {{ employe.prenom|default:user.first_name }} {{ employe.nom|default:user.last_name }}
-    </h2>
-    <p style="margin:0; color:var(--text2);">
-      {{ employe.poste|default:"Employé" }} • {{ employe.departement|default:"—" }}
-    </p>
-    <p style="margin:8px 0 0 0; font-size:13px;">
-      🪪 {{ employe.badge_id|default:"—" }} ● <span class="b-green">Actif</span>
-    </p>
-  </div>
-</div>
 
 <!-- Messages -->
 {% if messages %}
   {% for message in messages %}
     <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-      <span class="alert-ico">{{ message.tags|slice:":1"|upper }}</span>
-      <div>
-        <div class="alert-text">{{ message }}</div>
-      </div>
+      <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+      <div class="alert-text">{{ message }}</div>
     </div>
   {% endfor %}
 {% endif %}
 
-<div class="g3-2">
+<div class="g2">
   <!-- Colonne gauche : Informations personnelles -->
   <div class="card">
     <div class="card-head">
@@ -58,7 +39,7 @@
 
         <div class="form-row">
           <label class="form-label">Email professionnel</label>
-          <input type="email" class="form-input" name="email" value="{{ employe.email|default:user.email }}" readonly>
+          <input type="email" class="form-input" name="email" value="{{ employe.email|default:user.email }}">
         </div>
 
         <div class="form-row">
@@ -68,7 +49,7 @@
 
         <div class="form-row">
           <label class="form-label">Poste / Fonction</label>
-          <input type="text" class="form-input" name="poste" value="{{ employe.poste }}">
+          <input type="text" class="form-input" name="poste" value="{{ employe.poste|default:'' }}">
         </div>
 
         <div class="form-row">
@@ -77,7 +58,10 @@
             <option value="">— Sélectionner —</option>
             <option value="Informatique" {% if employe.departement == "Informatique" %}selected{% endif %}>Informatique</option>
             <option value="Ressources Humaines" {% if employe.departement == "Ressources Humaines" %}selected{% endif %}>Ressources Humaines</option>
-            <!-- Ajoute les autres options -->
+            <option value="Commercial" {% if employe.departement == "Commercial" %}selected{% endif %}>Commercial</option>
+            <option value="Production" {% if employe.departement == "Production" %}selected{% endif %}>Production</option>
+            <option value="Logistique" {% if employe.departement == "Logistique" %}selected{% endif %}>Logistique</option>
+            <option value="Direction" {% if employe.departement == "Direction" %}selected{% endif %}>Direction</option>
           </select>
         </div>
 
@@ -88,48 +72,56 @@
         </div>
 
         <div class="modal-actions">
-          <button type="button" class="btn btn-ghost">Annuler</button>
           <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Colonne droite : Préférences + Changer mot de passe -->
+  <!-- Colonne droite -->
   <div>
+    <!-- Préférences -->
     <div class="card">
       <div class="card-head">
         <div class="card-title">📧 Préférences de notification</div>
       </div>
       <div class="card-body">
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">Recevoir les rappels par email</div>
-            <div class="toggle-desc">30 minutes avant chaque réservation</div>
+        <form method="post">
+          {% csrf_token %}
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">Recevoir les rappels par email</div>
+              <div class="toggle-desc">30 minutes avant chaque réservation</div>
+            </div>
+            <div class="toggle-right">
+              <label class="tswitch">
+                <input type="checkbox" name="notif_email" {% if preferences.email %}checked{% endif %}>
+                <span class="tslider"></span>
+              </label>
+            </div>
           </div>
-          <div class="toggle-right">
-            <label class="tswitch">
-              <input type="checkbox" checked>
-              <span class="tslider"></span>
-            </label>
-          </div>
-        </div>
 
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">Recevoir les rappels par SMS</div>
-            <div class="toggle-desc">Notification par SMS pour les réservations</div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">Recevoir les rappels avant réservation</div>
+              <div class="toggle-desc">Notification pour les rappels</div>
+            </div>
+            <div class="toggle-right">
+              <label class="tswitch">
+                <input type="checkbox" name="notif_rappel" {% if preferences.rappel %}checked{% endif %}>
+                <span class="tslider"></span>
+              </label>
+            </div>
           </div>
-          <div class="toggle-right">
-            <label class="tswitch">
-              <input type="checkbox">
-              <span class="tslider"></span>
-            </label>
+          
+          <div class="modal-actions" style="margin-top: 16px;">
+            <button type="submit" name="update_preferences" value="1" class="btn btn-primary">💾 Sauvegarder préférences</button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
 
+    <!-- Changement mot de passe -->
     <div class="card" style="margin-top:16px;">
       <div class="card-head">
         <div class="card-title">🔑 Changer mon mot de passe</div>
@@ -139,18 +131,58 @@
           {% csrf_token %}
           <div class="form-row">
             <label class="form-label">Mot de passe actuel</label>
-            <input type="password" class="form-input" name="old_password">
+            <input type="password" class="form-input" name="old_password" required>
           </div>
           <div class="form-row">
             <label class="form-label">Nouveau mot de passe</label>
-            <input type="password" class="form-input" name="new_password1">
+            <input type="password" class="form-input" name="new_password1" required>
+            <small style="color:var(--text3); font-size:10px;">Minimum 6 caractères</small>
           </div>
           <div class="form-row">
             <label class="form-label">Confirmer le nouveau mot de passe</label>
-            <input type="password" class="form-input" name="new_password2">
+            <input type="password" class="form-input" name="new_password2" required>
           </div>
-          <button type="submit" class="btn btn-primary">🔒 Changer le mot de passe</button>
+          <button type="submit" name="change_password" value="1" class="btn btn-primary">🔒 Changer le mot de passe</button>
         </form>
+      </div>
+    </div>
+
+    <!-- Sessions actives -->
+    <div class="card" style="margin-top:16px;">
+      <div class="card-head">
+        <div class="card-title">🖥️ Mes sessions actives</div>
+      </div>
+      <div class="card-body">
+        {% if active_sessions %}
+          {% for session in active_sessions %}
+          <div class="session-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border2);">
+            <div>
+              <div style="font-weight: 500;">
+                {% if session.device_type == 'desktop' %}💻 Ordinateur
+                {% elif session.device_type == 'mobile' %}📱 Mobile
+                {% else %}🖥️ Appareil{% endif %}
+              </div>
+              <div style="font-size: 11px; color: var(--text3);">
+                IP: {{ session.ip_address }} • Connecté: {{ session.login_time }}
+              </div>
+            </div>
+            <div>
+              {% if session.is_current %}
+                <span class="badge b-green">Session actuelle</span>
+              {% else %}
+                <form method="post" action="{% url 'terminate_session' session.id %}" style="display: inline;" onsubmit="return confirm('Terminer cette session ?')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-del btn-sm">🔒 Terminer</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="text-align: center; padding: 20px; color: var(--text3);">
+            Aucune session active
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -162,26 +194,104 @@
     <div class="card-title">📊 Mes statistiques</div>
   </div>
   <div class="card-body">
-    <div class="g2">
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px;">
       <div class="kpi k-blue">
         <div class="kpi-header">
-          <div>
-            <div class="kpi-label">Total des accès</div>
-            <div class="kpi-value">{{ total_acces|default:0 }}</div>
-          </div>
+          <div class="kpi-label">Total des accès</div>
+          <div class="kpi-value">{{ total_acces|default:0 }}</div>
         </div>
       </div>
       <div class="kpi k-green">
         <div class="kpi-header">
-          <div>
-            <div class="kpi-label">Taux de succès</div>
-            <div class="kpi-value">{{ taux_succes|default:0 }}<span style="font-size:18px;">%</span></div>
-          </div>
+          <div class="kpi-label">Taux de succès</div>
+          <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
         </div>
       </div>
-      <!-- Ajoute les autres KPI de la même façon -->
+      <div class="kpi k-purple">
+        <div class="kpi-header">
+          <div class="kpi-label">Réservations</div>
+          <div class="kpi-value">{{ reservations_count|default:0 }}</div>
+        </div>
+      </div>
+      <div class="kpi k-amber">
+        <div class="kpi-header">
+          <div class="kpi-label">Jours actifs</div>
+          <div class="kpi-value">{{ jours_actifs|default:0 }}</div>
+        </div>
+      </div>
+    </div>
+    
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-top: 16px;">
+      <div class="stat-item" style="background: var(--bg3); border-radius: 8px; padding: 12px;">
+        <div style="font-size: 11px; color: var(--text3);">Accès ce mois</div>
+        <div style="font-size: 24px; font-weight: 600;">{{ acces_mois|default:0 }}</div>
+      </div>
+      <div class="stat-item" style="background: var(--bg3); border-radius: 8px; padding: 12px;">
+        <div style="font-size: 11px; color: var(--text3);">Dernier accès</div>
+        <div style="font-size: 14px; font-weight: 600;">{{ dernier_acces|date:"d/m/Y H:i"|default:"Jamais" }}</div>
+      </div>
     </div>
   </div>
 </div>
+
+<style>
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.toggle-info {
+  flex: 1;
+}
+.toggle-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.toggle-desc {
+  font-size: 11px;
+  color: var(--text3);
+}
+.tswitch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+.tswitch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.tslider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg4);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+.tslider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+input:checked + .tslider {
+  background-color: #1f6feb;
+}
+input:checked + .tslider:before {
+  transform: translateX(26px);
+}
+</style>
 
 {% endblock %}

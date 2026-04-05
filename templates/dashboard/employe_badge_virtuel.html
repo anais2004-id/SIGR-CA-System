@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}Mon Badge Virtuel - SIGR-CA{% endblock %}
+{% block page_title %}Badge virtuel{% endblock %}
+{% block page_sub %}Votre identifiant d'accès sécurisé{% endblock %}
+{% block nav_emp_badge %}active{% endblock %}
+
+{% block content %}
+
+<style>
+.badge-container {
+  max-width: 500px;
+  margin: 0 auto;
+}
+.badge-card {
+  background: linear-gradient(135deg, var(--bg2), var(--bg3));
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 32px;
+  text-align: center;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.badge-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+}
+.badge-qr {
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  display: inline-block;
+  margin-bottom: 20px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.badge-qr:hover {
+  transform: scale(1.02);
+}
+.badge-info {
+  margin-top: 16px;
+}
+.badge-name {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.badge-id {
+  font-family: monospace;
+  font-size: 18px;
+  letter-spacing: 2px;
+  background: var(--bg4);
+  padding: 8px 16px;
+  border-radius: 12px;
+  display: inline-block;
+  margin: 8px 0;
+}
+.badge-company {
+  font-size: 12px;
+  color: var(--text3);
+}
+.badge-status {
+  margin-top: 16px;
+  padding: 8px;
+  background: rgba(45,186,111,0.12);
+  border-radius: 12px;
+  color: #2dba6f;
+  font-size: 12px;
+}
+.zones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.zone-tag {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.zone-tag.active {
+  border-color: var(--green);
+  background: rgba(45,186,111,0.12);
+}
+.horaire-table {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+}
+.horaire-table td {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.horaire-table td:first-child {
+  font-weight: 500;
+}
+.horaire-table td:last-child {
+  text-align: right;
+  font-family: monospace;
+}
+.nfc-simulator {
+  background: var(--bg3);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  margin-top: 16px;
+}
+.nfc-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+</style>
+
+<div class="badge-container">
+  <!-- Carte badge -->
+  <div class="badge-card">
+    <div class="badge-qr" onclick="showFullQR()">
+      <canvas id="badge-qr-canvas" width="180" height="180"></canvas>
+    </div>
+    <div class="badge-info">
+      <div class="badge-name">{{ employe.prenom }} {{ employe.nom }}</div>
+      <div class="badge-id">{{ employe.badge_id|default:"En attente" }}</div>
+      <div class="badge-company">SIGR-CA - Contrôle d'accès</div>
+    </div>
+    <div class="badge-status">
+      🟢 Badge actif - Valide pour les accès
+    </div>
+  </div>
+
+  <div class="g2">
+    <!-- Zones accessibles -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">🚪 Zones accessibles</div>
+      </div>
+      <div class="card-body">
+        <div class="zones-grid">
+          {% for zone in zones_accessibles %}
+          <div class="zone-tag {% if zone.niveau_securite == 'public' %}active{% endif %}">
+            <span>🚪</span>
+            <span>{{ zone.nom }}</span>
+            {% if zone.niveau_securite == 'critique' %}
+            <span class="badge b-red" style="margin-left: auto;">Restreint</span>
+            {% elif zone.niveau_securite == 'standard' %}
+            <span class="badge b-blue" style="margin-left: auto;">Standard</span>
+            {% else %}
+            <span class="badge b-green" style="margin-left: auto;">Public</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Horaires d'accès -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">⏰ Horaires d'accès</div>
+      </div>
+      <div class="card-body">
+        <table class="horaire-table">
+          {% for jour, horaire in horaires_acces.items %}
+          <tr>
+            <td>{{ jour|capfirst }}</td>
+            <td>
+              {% if horaire.debut == 'Fermé' %}
+              <span class="badge b-red">Fermé</span>
+              {% else %}
+              {{ horaire.debut }} → {{ horaire.fin }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulation NFC -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">📱 NFC Virtuel</div>
+    </div>
+    <div class="card-body">
+      <div class="nfc-simulator" onclick="simulateNFC()">
+        <div class="nfc-icon">📱</div>
+        <div style="font-weight: 500;">Tapez pour simuler un badge NFC</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">Présentez votre téléphone près du lecteur</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal QR Code -->
+<div id="qrModal" class="modal" style="display:none" onclick="if(event.target===this)closeQRModal()">
+  <div class="modal-content" style="width: 400px; text-align: center;">
+    <div class="modal-header">
+      <h3>📱 Mon QR Code d'accès</h3>
+      <button class="modal-close" onclick="closeQRModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="full-qr-container" style="display: flex; justify-content: center;"></div>
+      <p style="margin-top: 16px;">Présentez ce code au lecteur</p>
+      <p class="badge-id" style="font-family: monospace;">{{ employe.badge_id }}</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="downloadQR()">⬇️ Télécharger</button>
+      <button class="btn-secondary" onclick="printQR()">🖨️ Imprimer</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+let qrCode = null;
+let fullQR = null;
+
+// QR Code
+const badgeData = JSON.stringify({
+  badge_id: "{{ employe.badge_id }}",
+  nom: "{{ employe.prenom }} {{ employe.nom }}",
+  entreprise: "SIGR-CA",
+  niveau: "{{ employe.niveau|default:'employe' }}",
+  timestamp: new Date().toISOString()
+});
+
+qrCode = new QRCode(document.getElementById("badge-qr-canvas"), {
+  text: badgeData,
+  width: 180,
+  height: 180,
+  colorDark: "#000000",
+  colorLight: "#ffffff",
+  correctLevel: QRCode.CorrectLevel.H
+});
+
+function showFullQR() {
+  const modal = document.getElementById('qrModal');
+  modal.style.display = 'flex';
+  
+  const container = document.getElementById('full-qr-container');
+  container.innerHTML = '';
+  fullQR = new QRCode(container, {
+    text: badgeData,
+    width: 250,
+    height: 250,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.H
+  });
+}
+
+function closeQRModal() {
+  document.getElementById('qrModal').style.display = 'none';
+}
+
+function downloadQR() {
+  const canvas = document.querySelector('#full-qr-container canvas');
+  const link = document.createElement('a');
+  link.download = 'badge_qr.png';
+  link.href = canvas.toDataURL();
+  link.click();
+}
+
+function printQR() {
+  const canvas = document.querySelector('#full-qr-container canvas');
+  const win = window.open();
+  win.document.write(`
+    <html>
+      <head><title>Badge QR</title></head>
+      <body style="display:flex; justify-content:center; align-items:center; height:100vh;">
+        <div style="text-align:center">
+          <img src="${canvas.toDataURL()}" style="width:250px; height:250px">
+          <p><strong>{{ employe.prenom }} {{ employe.nom }}</strong></p>
+          <p>{{ employe.badge_id }}</p>
+        </div>
+      </body>
+    </html>
+  `);
+  win.print();
+}
+
+function simulateNFC() {
+  alert(`📱 Simulation NFC\n\nBadge: ${"{{ employe.badge_id }}"}\nNom: {{ employe.prenom }} {{ employe.nom }}\n\nEn environnement réel, approchez votre téléphone du lecteur.`);
+}
+</script>
+
+{% endblock %}

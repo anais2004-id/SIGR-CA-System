@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Centre d'aide - SIGR-CA{% endblock %}
+{% block page_title %}Centre d'information et d'aide{% endblock %}
+{% block page_sub %}Trouvez des réponses à vos questions{% endblock %}
+{% block nav_emp_aide %}active{% endblock %}
+
+{% block content %}
+
+<style>
+.help-search {
+  background: linear-gradient(135deg, var(--blue3), var(--purple2));
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  margin-bottom: 32px;
+}
+.help-search h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+}
+.search-bar {
+  max-width: 500px;
+  margin: 20px auto 0;
+  display: flex;
+  gap: 12px;
+}
+.search-input-large {
+  flex: 1;
+  padding: 12px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+.faq-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.faq-question {
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.faq-question:hover {
+  background: var(--bg3);
+}
+.faq-answer {
+  padding: 0 16px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  color: var(--text2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.faq-answer.open {
+  padding: 0 16px 16px;
+  max-height: 200px;
+}
+.faq-icon {
+  transition: transform 0.2s;
+}
+.faq-icon.open {
+  transform: rotate(180deg);
+}
+.contact-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+}
+.contact-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+.quick-links {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.quick-link {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  color: var(--text);
+}
+.quick-link:hover {
+  transform: translateY(-4px);
+  border-color: var(--blue);
+}
+.quick-link-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+</style>
+
+<!-- Barre de recherche -->
+<div class="help-search">
+  <h2>👋 Comment pouvons-nous vous aider ?</h2>
+  <p>Recherchez une réponse ou parcourez les FAQ</p>
+  <div class="search-bar">
+    <input type="text" class="search-input-large" id="faqSearch" placeholder="Rechercher..." onkeyup="searchFAQ()">
+  </div>
+</div>
+
+<!-- Liens rapides -->
+<div class="quick-links">
+  <a href="{% url 'employe_mes_reservations' %}" class="quick-link">
+    <div class="quick-link-icon">📅</div>
+    <div>Réservations</div>
+    <div style="font-size: 11px; color: var(--text3);">Gérer mes créneaux</div>
+  </a>
+  <a href="{% url 'employe_badge_virtuel' %}" class="quick-link">
+    <div class="quick-link-icon">📱</div>
+    <div>Badge virtuel</div>
+    <div style="font-size: 11px; color: var(--text3);">Mon QR code d'accès</div>
+  </a>
+  <a href="{% url 'employe_profil' %}" class="quick-link">
+    <div class="quick-link-icon">👤</div>
+    <div>Mon profil</div>
+    <div style="font-size: 11px; color: var(--text3);">Modifier mes infos</div>
+  </a>
+  <a href="{% url 'employe_plan_zones' %}" class="quick-link">
+    <div class="quick-link-icon">🗺️</div>
+    <div>Plan des zones</div>
+    <div style="font-size: 11px; color: var(--text3);">Voir les salles</div>
+  </a>
+</div>
+
+<div class="g2">
+  <!-- FAQ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">❓ Foire aux questions</div>
+    </div>
+    <div class="card-body" id="faq-container">
+      {% for faq in faqs %}
+      <div class="faq-item" data-question="{{ faq.question|lower }}">
+        <div class="faq-question" onclick="toggleFAQ(this)">
+          <span>{{ faq.question }}</span>
+          <span class="faq-icon">▼</span>
+        </div>
+        <div class="faq-answer">
+          {{ faq.reponse }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Contact support -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">📞 Contacter le support</div>
+    </div>
+    <div class="card-body">
+      <div class="contact-card">
+        <div class="contact-icon">📧</div>
+        <div style="font-weight: 500; margin-bottom: 4px;">Email</div>
+        <div style="font-family: monospace;">{{ contacts.email }}</div>
+      </div>
+      <div class="contact-card" style="margin-top: 16px;">
+        <div class="contact-icon">📞</div>
+        <div style="font-weight: 500; margin-bottom: 4px;">Téléphone</div>
+        <div style="font-family: monospace;">{{ contacts.telephone }}</div>
+      </div>
+      <div class="contact-card" style="margin-top: 16px;">
+        <div class="contact-icon">⏰</div>
+        <div style="font-weight: 500; margin-bottom: 4px;">Horaires</div>
+        <div>{{ contacts.horaires }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tutoriels vidéo -->
+<div class="card">
+  <div class="card-head">
+    <div class="card-title">📺 Tutoriels vidéo</div>
+  </div>
+  <div class="card-body">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+      <div class="contact-card" style="cursor: pointer;" onclick="showTutorial('reservation')">
+        <div style="font-size: 32px; margin-bottom: 8px;">📅</div>
+        <div style="font-weight: 500;">Comment réserver une salle</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 4px;">Vidéo 2:34</div>
+      </div>
+      <div class="contact-card" style="cursor: pointer;" onclick="showTutorial('badge')">
+        <div style="font-size: 32px; margin-bottom: 8px;">📱</div>
+        <div style="font-weight: 500;">Utiliser son badge virtuel</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 4px;">Vidéo 1:45</div>
+      </div>
+      <div class="contact-card" style="cursor: pointer;" onclick="showTutorial('acces')">
+        <div style="font-size: 32px; margin-bottom: 8px;">🚪</div>
+        <div style="font-weight: 500;">Accéder aux zones</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 4px;">Vidéo 1:20</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleFAQ(element) {
+  const answer = element.nextElementSibling;
+  const icon = element.querySelector('.faq-icon');
+  answer.classList.toggle('open');
+  icon.classList.toggle('open');
+}
+
+function searchFAQ() {
+  const searchTerm = document.getElementById('faqSearch').value.toLowerCase();
+  const faqs = document.querySelectorAll('.faq-item');
+  
+  faqs.forEach(faq => {
+    const question = faq.dataset.question;
+    if (question.includes(searchTerm) || searchTerm === '') {
+      faq.style.display = '';
+    } else {
+      faq.style.display = 'none';
+    }
+  });
+}
+
+function showTutorial(type) {
+  const titles = {
+    'reservation': 'Comment réserver une salle',
+    'badge': 'Utiliser son badge virtuel',
+    'acces': 'Accéder aux zones'
+  };
+  alert(`📺 Tutoriel: ${titles[type]}\n\nCette fonctionnalité sera disponible prochainement.`);
+}
+</script>
+
+{% endblock %}

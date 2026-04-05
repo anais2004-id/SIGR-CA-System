@@ -1,87 +1,506 @@
 {% extends "base.html" %}
-
-{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} une ressource - SIGR-CA{% endblock %}
-{% block nav_ressources %}active{% endblock %}
-{% block page_title %}{% if is_edit %}Modifier la ressource{% else %}Ajouter une ressource{% endif %}{% endblock %}
-{% block page_sub %}{% if is_edit %}{{ resource.nom }}{% else %}Créer une nouvelle ressource{% endif %}{% endblock %}
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} réservation - SIGR-CA{% endblock %}
+{% block nav_reservations %}active{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier la réservation{% else %}Nouvelle réservation{% endif %}{% endblock %}
+{% block page_sub %}{% if is_edit %}{{ reservation.titre }}{% else %}Réserver une salle ou ressource{% endif %}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{% url 'ressources' %}" class="btn btn-ghost btn-sm">← Retour</a>
+<a href="{% url 'reservation_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+<button class="btn btn-ghost btn-sm" onclick="showSuggestions()">🤖 Suggestions IA</button>
+<button class="btn btn-ghost btn-sm" onclick="showQuickPick()">⚡ Choix rapide</button>
 {% endblock %}
 
 {% block content %}
-<div style="max-width:800px;margin:0 auto">
+
+<style>
+.form-step {
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border2);
+  padding-bottom: 20px;
+}
+.step-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.step-number {
+  width: 24px;
+  height: 24px;
+  background: var(--blue);
+  color: white;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+.quick-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.quick-pick-item {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.quick-pick-item:hover {
+  border-color: var(--blue);
+  transform: translateY(-2px);
+}
+.quick-pick-item .duration {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--blue);
+}
+.quick-pick-item .label {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 4px;
+}
+.equipment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.equipment-badge.selected {
+  background: var(--blue3);
+  border-color: var(--blue);
+  color: var(--blue2);
+}
+.time-suggestion {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.time-suggestion:hover {
+  background: var(--blue3);
+  transform: translateX(4px);
+}
+.time-suggestion .time {
+  font-weight: 600;
+  font-family: monospace;
+}
+.time-suggestion .availability {
+  font-size: 11px;
+  color: var(--green);
+}
+</style>
+
+<div style="max-width:900px;margin:0 auto">
+
+  {% if messages %}
+  {% for message in messages %}
+  <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}" style="margin-bottom:16px">
+    <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+    <div><div class="alert-text">{{ message }}</div></div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
   <div class="card">
     <div class="card-head">
       <span>{% if is_edit %}✏️{% else %}➕{% endif %}</span>
-      <span class="card-title">{% if is_edit %}Modifier la ressource{% else %}Nouvelle ressource{% endif %}</span>
+      <span class="card-title">{% if is_edit %}Modifier la réservation{% else %}Créer une réservation{% endif %}</span>
+      <span class="card-sub">Contrôle d'accès intégré</span>
     </div>
-    <div class="card-body">
-      <form method="post" enctype="multipart/form-data">
+    <div class="card-body" style="padding:28px 32px">
+      <form method="post" id="reservationForm">
         {% csrf_token %}
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Nom <span style="color:var(--red)">*</span></label>
-            <input class="form-input" name="nom" value="{{ resource.nom|default:'' }}" required>
+
+        <!-- Étape 1: Informations générales -->
+        <div class="form-step">
+          <div class="step-title">
+            <span class="step-number">1</span>
+            <span>Informations générales</span>
           </div>
+
           <div class="form-row">
-            <label class="form-label">Catégorie</label>
-            <select class="form-select" name="categorie">
-              <option value="salle" {% if resource.categorie == 'salle' %}selected{% endif %}>Salle</option>
-              <option value="materiel" {% if resource.categorie == 'materiel' %}selected{% endif %}>Matériel</option>
-              <option value="equipement" {% if resource.categorie == 'equipement' %}selected{% endif %}>Équipement</option>
-              <option value="vehicule" {% if resource.categorie == 'vehicule' %}selected{% endif %}>Véhicule</option>
-              <option value="laboratoire" {% if resource.categorie == 'laboratoire' %}selected{% endif %}>Laboratoire</option>
-              <option value="autre" {% if resource.categorie == 'autre' %}selected{% endif %}>Autre</option>
+            <label class="form-label">Titre de la réservation <span style="color:var(--red)">*</span></label>
+            <input class="form-input" name="titre" id="titreInput" value="{{ reservation.titre|default:'' }}"
+                   placeholder="ex: Réunion direction, Formation équipe..." required>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-row">
+              <label class="form-label">Salle / Ressource <span style="color:var(--red)">*</span></label>
+              <select class="form-select" name="bureau_id" id="bureauSelect" onchange="checkDispo(); loadBureauSchedule(); loadSuggestions()" required>
+                <option value="">— Choisir une salle —</option>
+                {% for b in bureaux %}
+                <option value="{{ b.id }}"
+                  {% if reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}
+                  data-capacite="{{ b.capacite_max|default:0 }}">
+                  {{ b.nom }} {% if b.capacite_max %}(Cap. {{ b.capacite_max }}){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="form-label">Réservé par <span style="color:var(--red)">*</span></label>
+              <select class="form-select" name="employe_id" required>
+                <option value="">— Choisir un employé —</option>
+                {% for e in employes %}
+                <option value="{{ e.id }}"
+                  {% if reservation.employe_id|stringformat:"s" == e.id %}selected{% endif %}>
+                  {{ e.nom }} {{ e.prenom }} — {{ e.departement }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Étape 2: Date et heure -->
+        <div class="form-step">
+          <div class="step-title">
+            <span class="step-number">2</span>
+            <span>Date et horaire</span>
+          </div>
+
+          <!-- Choix rapide des durées -->
+          <div class="quick-pick-grid">
+            <div class="quick-pick-item" onclick="setDuration(30)">
+              <div class="duration">30min</div>
+              <div class="label">Courte réunion</div>
+            </div>
+            <div class="quick-pick-item" onclick="setDuration(60)">
+              <div class="duration">1h</div>
+              <div class="label">Réunion standard</div>
+            </div>
+            <div class="quick-pick-item" onclick="setDuration(120)">
+              <div class="duration">2h</div>
+              <div class="label">Réunion longue</div>
+            </div>
+            <div class="quick-pick-item" onclick="setDuration(180)">
+              <div class="duration">3h</div>
+              <div class="label">Atelier / Formation</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-row">
+              <label class="form-label">Date et heure de début <span style="color:var(--red)">*</span></label>
+              <input class="form-input" name="date_debut" type="datetime-local" id="dateDebut"
+                     value="{{ reservation.date_debut_str|default:'' }}"
+                     onchange="checkDispo(); loadBureauSchedule()" required>
+            </div>
+            <div class="form-row">
+              <label class="form-label">Date et heure de fin <span style="color:var(--red)">*</span></label>
+              <input class="form-input" name="date_fin" type="datetime-local" id="dateFin"
+                     value="{{ reservation.date_fin_str|default:'' }}"
+                     onchange="checkDispo()" required>
+            </div>
+          </div>
+
+          <!-- Suggestions d'horaires -->
+          <div id="timeSuggestions" style="margin-top:12px; display:none">
+            <div style="font-size:11px; color:var(--text2); margin-bottom:8px">⏰ Horaires recommandés:</div>
+            <div id="suggestionsList"></div>
+          </div>
+
+          <div id="dispo-indicator" style="display:none;padding:10px 14px;border-radius:var(--radius);margin-top:12px;font-size:12.5px;font-weight:500"></div>
+        </div>
+
+        <!-- Étape 3: Détails supplémentaires -->
+        <div class="form-step">
+          <div class="step-title">
+            <span class="step-number">3</span>
+            <span>Détails supplémentaires</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-row">
+              <label class="form-label">Nombre de participants</label>
+              <input class="form-input" name="nb_participants" type="number" min="1" max="100" id="nbParticipants"
+                     value="{{ reservation.nb_participants|default:'1' }}" onchange="checkCapacity()">
+            </div>
+            {% if is_edit %}
+            <div class="form-row">
+              <label class="form-label">Statut</label>
+              <select class="form-select" name="statut">
+                <option value="confirmee" {% if reservation.statut == 'confirmee' %}selected{% endif %}>✅ Confirmée</option>
+                <option value="en_attente" {% if reservation.statut == 'en_attente' %}selected{% endif %}>⏳ En attente</option>
+                <option value="annulee" {% if reservation.statut == 'annulee' %}selected{% endif %}>❌ Annulée</option>
+              </select>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Équipements requis -->
+          <div class="form-row">
+            <label class="form-label">Équipements requis</label>
+            <div style="display:flex; gap:10px; flex-wrap:wrap" id="equipmentsList">
+              <div class="equipment-badge" data-equip="videoprojecteur" onclick="toggleEquipment(this)">📽️ Vidéoprojecteur</div>
+              <div class="equipment-badge" data-equip="ecran" onclick="toggleEquipment(this)">🖥️ Écran</div>
+              <div class="equipment-badge" data-equip="tableau" onclick="toggleEquipment(this)">✍️ Tableau blanc</div>
+              <div class="equipment-badge" data-equip="visio" onclick="toggleEquipment(this)">🎥 Visioconférence</div>
+              <div class="equipment-badge" data-equip="imprimante" onclick="toggleEquipment(this)">🖨️ Imprimante</div>
+              <div class="equipment-badge" data-equip="climatisation" onclick="toggleEquipment(this)">❄️ Climatisation</div>
+            </div>
+            <input type="hidden" name="equipements" id="equipementsInput">
+          </div>
+
+          <!-- Récurrence -->
+          <div class="form-row">
+            <label class="form-label">Récurrence</label>
+            <select class="form-select" id="recurrenceSelect" onchange="toggleRecurrence()">
+              <option value="none">🔁 Aucune</option>
+              <option value="daily">📅 Quotidienne</option>
+              <option value="weekly">📆 Hebdomadaire</option>
+              <option value="monthly">📅 Mensuelle</option>
             </select>
           </div>
-        </div>
-        
-        <div class="form-row">
-          <label class="form-label">Description</label>
-          <textarea class="form-input" name="description" rows="3">{{ resource.description|default:'' }}</textarea>
-        </div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Localisation</label>
-            <input class="form-input" name="localisation" value="{{ resource.localisation|default:'' }}">
+
+          <div id="recurrenceOptions" style="display:none; margin-top:12px; padding:12px; background:var(--bg3); border-radius:8px">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+              <div class="form-row">
+                <label class="form-label">Jusqu'au</label>
+                <input type="date" id="recurrenceEnd" class="form-input">
+              </div>
+              <div class="form-row">
+                <label class="form-label">Occurrences max</label>
+                <input type="number" id="recurrenceCount" class="form-input" value="10" min="1" max="100">
+              </div>
+            </div>
           </div>
+
           <div class="form-row">
-            <label class="form-label">Bureau associé</label>
-            <select class="form-select" name="bureau_associe">
-              <option value="">— Aucun —</option>
-              {% for b in bureaux %}
-              <option value="{{ b.id }}" {% if resource.bureau_associe == b.id %}selected{% endif %}>{{ b.nom }}</option>
-              {% endfor %}
-            </select>
+            <label class="form-label">Description / Objet</label>
+            <textarea class="form-input" name="description" rows="3" id="descriptionInput"
+                      placeholder="Détails de la réunion, ordre du jour, matériel supplémentaire...">{{ reservation.description|default:'' }}</textarea>
           </div>
         </div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Capacité</label>
-            <input class="form-input" name="capacite" type="number" value="{{ resource.capacite|default:1 }}" min="1">
-          </div>
-          <div class="form-row">
-            <label class="form-label">Statut</label>
-            <select class="form-select" name="statut">
-              <option value="disponible" {% if resource.statut == 'disponible' %}selected{% endif %}>Disponible</option>
-              <option value="maintenance" {% if resource.statut == 'maintenance' %}selected{% endif %}>En maintenance</option>
-              <option value="reserve" {% if resource.statut == 'reserve' %}selected{% endif %}>Réservé</option>
-            </select>
-          </div>
+
+        <!-- Créneaux déjà réservés -->
+        <div id="creneaux-card" style="display:none; margin-top:16px; padding:12px; background:var(--bg3); border-radius:8px">
+          <div style="font-weight:600; margin-bottom:8px">🕐 Créneaux déjà réservés</div>
+          <div id="creneaux-body"></div>
         </div>
-        
-        <div class="modal-actions" style="margin-top:24px">
-          <a href="{% url 'ressources' %}" class="btn btn-ghost">Annuler</a>
-          <button type="submit" class="btn btn-primary">
-            {% if is_edit %}💾 Enregistrer{% else %}➕ Créer la ressource{% endif %}
+
+        <!-- Boutons -->
+        <div style="display:flex;gap:12px;justify-content:flex-end;padding-top:24px;border-top:1px solid var(--border);margin-top:16px">
+          <a href="{% url 'reservation_list' %}" class="btn btn-ghost">Annuler</a>
+          <button type="submit" class="btn btn-primary" id="submitBtn">
+            {% if is_edit %}💾 Enregistrer{% else %}📆 Confirmer la réservation{% endif %}
           </button>
         </div>
       </form>
     </div>
   </div>
+
+  <!-- Suggestions IA -->
+  <div class="card" style="margin-top:16px" id="suggestionsCard" style="display:none">
+    <div class="card-head"><span>🤖</span><span class="card-title">Suggestions intelligentes</span><span class="card-sub">Basées sur vos habitudes</span></div>
+    <div class="card-body" id="suggestions-container"></div>
+  </div>
 </div>
+
+<script>
+var dispoTimer = null;
+var selectedEquipments = [];
+
+function toggleEquipment(element) {
+  var equip = element.dataset.equip;
+  if (selectedEquipments.includes(equip)) {
+    selectedEquipments = selectedEquipments.filter(e => e !== equip);
+    element.classList.remove('selected');
+  } else {
+    selectedEquipments.push(equip);
+    element.classList.add('selected');
+  }
+  document.getElementById('equipementsInput').value = selectedEquipments.join(',');
+}
+
+function setDuration(minutes) {
+  var debutField = document.getElementById('dateDebut');
+  var finField = document.getElementById('dateFin');
+  if (debutField.value) {
+    var debut = new Date(debutField.value);
+    var fin = new Date(debut.getTime() + minutes * 60000);
+    finField.value = fin.toISOString().slice(0, 16);
+    checkDispo();
+  }
+}
+
+function checkCapacity() {
+  var selectedOption = document.getElementById('bureauSelect').options[document.getElementById('bureauSelect').selectedIndex];
+  var capacite = parseInt(selectedOption?.getAttribute('data-capacite') || 0);
+  var nbParticipants = parseInt(document.getElementById('nbParticipants')?.value || 1);
+  var indicator = document.getElementById('dispo-indicator');
+  var submitBtn = document.getElementById('submitBtn');
+  
+  if (capacite > 0 && nbParticipants > capacite) {
+    indicator.style.display = 'block';
+    indicator.style.background = 'var(--red2)';
+    indicator.style.color = 'var(--red)';
+    indicator.innerHTML = `⚠️ Cette salle ne peut accueillir que ${capacite} participants maximum.`;
+    submitBtn.disabled = true;
+    return false;
+  }
+  return true;
+}
+
+function checkDispo() {
+  var bureauId = document.getElementById("bureauSelect").value;
+  var debut = document.getElementById("dateDebut").value;
+  var fin = document.getElementById("dateFin").value;
+  var indicator = document.getElementById("dispo-indicator");
+
+  if (!bureauId || !debut || !fin) {
+    indicator.style.display = "none";
+    return;
+  }
+
+  if (new Date(fin) <= new Date(debut)) {
+    indicator.style.display = "block";
+    indicator.style.background = "var(--red2)";
+    indicator.style.color = "var(--red)";
+    indicator.innerHTML = "⚠️ La date de fin doit être après la date de début.";
+    document.getElementById("submitBtn").disabled = true;
+    return;
+  }
+
+  if (!checkCapacity()) return;
+
+  clearTimeout(dispoTimer);
+  dispoTimer = setTimeout(function() {
+    indicator.style.display = "block";
+    indicator.style.background = "var(--blue3)";
+    indicator.innerHTML = "⏳ Vérification de la disponibilité...";
+
+    fetch(`/api/bureaux/${bureauId}/disponibilite/?debut=${encodeURIComponent(debut)}&fin=${encodeURIComponent(fin)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.disponible) {
+          indicator.style.background = "var(--green2)";
+          indicator.style.color = "var(--green)";
+          indicator.innerHTML = "✅ Salle disponible sur ce créneau !";
+          document.getElementById("submitBtn").disabled = false;
+        } else {
+          indicator.style.background = "var(--red2)";
+          indicator.style.color = "var(--red)";
+          indicator.innerHTML = "❌ Cette salle est déjà réservée sur ce créneau.";
+          document.getElementById("submitBtn").disabled = true;
+        }
+      });
+  }, 600);
+}
+
+function loadBureauSchedule() {
+  var bureauId = document.getElementById("bureauSelect").value;
+  var dateField = document.getElementById("dateDebut");
+  if (!bureauId || !dateField.value) return;
+  
+  var date = dateField.value.split('T')[0];
+  var card = document.getElementById("creneaux-card");
+  
+  fetch(`/api/bureaux/${bureauId}/schedule/?date=${date}`)
+    .then(r => r.json())
+    .then(data => {
+      card.style.display = "block";
+      var body = document.getElementById("creneaux-body");
+      if (data.creneaux && data.creneaux.length > 0) {
+        body.innerHTML = data.creneaux.map(c => `
+          <div style="display:flex; justify-content:space-between; padding:8px; background:var(--bg4); border-radius:6px; margin-bottom:4px">
+            <span>🕐 ${c.debut} → ${c.fin}</span>
+            <span>📋 ${c.titre}</span>
+            <span>👤 ${c.employe}</span>
+          </div>
+        `).join('');
+      } else {
+        body.innerHTML = `<div style="color:var(--green); padding:12px; text-align:center">✅ Aucune réservation pour cette date</div>`;
+      }
+    });
+}
+
+function loadSuggestions() {
+  var bureauId = document.getElementById("bureauSelect").value;
+  if (!bureauId) return;
+  
+  fetch(`/api/bureaux/${bureauId}/suggestions/`)
+    .then(r => r.json())
+    .then(data => {
+      var container = document.getElementById('suggestions-container');
+      var card = document.getElementById('suggestionsCard');
+      if (data.suggestions && data.suggestions.length > 0) {
+        card.style.display = 'block';
+        container.innerHTML = data.suggestions.map(s => `
+          <div class="time-suggestion" onclick="applySuggestion('${s.debut}', '${s.fin}')">
+            <div>
+              <span class="time">${s.debut} → ${s.fin}</span>
+              <div style="font-size:11px; color:var(--text3)">${s.date}</div>
+            </div>
+            <div class="availability">📊 ${s.taux}% occupé · ${s.disponibilite}</div>
+          </div>
+        `).join('');
+      }
+    });
+}
+
+function showSuggestions() {
+  loadSuggestions();
+  document.getElementById('suggestionsCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+function showQuickPick() {
+  document.querySelector('.quick-pick-grid').scrollIntoView({ behavior: 'smooth' });
+}
+
+function applySuggestion(debut, fin) {
+  var dateField = document.getElementById("dateDebut");
+  var finField = document.getElementById("dateFin");
+  var date = dateField.value.split('T')[0];
+  if (date && date !== 'Invalid Date') {
+    dateField.value = `${date}T${debut}`;
+    finField.value = `${date}T${fin}`;
+    checkDispo();
+  }
+}
+
+function toggleRecurrence() {
+  var recurrence = document.getElementById("recurrenceSelect").value;
+  var options = document.getElementById("recurrenceOptions");
+  options.style.display = recurrence !== "none" ? "block" : "none";
+}
+
+window.onload = function() {
+  var debField = document.getElementById("dateDebut");
+  var finField = document.getElementById("dateFin");
+  if (debField && !debField.value) {
+    var now = new Date();
+    now.setMinutes(0, 0, 0);
+    now.setHours(now.getHours() + 1);
+    var fin = new Date(now.getTime() + 60 * 60000);
+    var fmt = function(d) {
+      return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" +
+             String(d.getDate()).padStart(2,"0") + "T" + String(d.getHours()).padStart(2,"0") + ":00";
+    };
+    debField.value = fmt(now);
+    finField.value = fmt(fin);
+  }
+};
+</script>
+
 {% endblock %}

@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Plan des zones - SIGR-CA{% endblock %}
+{% block page_title %}Plan interactif des zones{% endblock %}
+{% block page_sub %}Visualisez l'occupation en temps réel{% endblock %}
+{% block nav_emp_plan %}active{% endblock %}
+
+{% block topbar_actions %}
+<select class="form-select" id="etageFilter" style="width: 130px;" onchange="filterByEtage()">
+  <option value="all">Tous les étages</option>
+  {% for etage in etages %}
+  <option value="{{ etage }}">Étage {{ etage }}</option>
+  {% endfor %}
+</select>
+<button class="btn btn-ghost btn-sm" onclick="refreshOccupation()">↻ Actualiser</button>
+{% endblock %}
+
+{% block content %}
+
+<style>
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.zone-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.zone-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  border-color: var(--blue);
+}
+.zone-header {
+  padding: 16px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.zone-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.zone-etage {
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--bg4);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.zone-body {
+  padding: 16px;
+}
+.zone-capacity {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.zone-occupation-bar {
+  background: var(--bg4);
+  border-radius: 8px;
+  height: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.zone-occupation-fill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s;
+}
+.zone-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border2);
+}
+.zone-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.zone-badge.disponible {
+  background: rgba(45,186,111,0.12);
+  color: #2dba6f;
+}
+.zone-badge.occupe {
+  background: rgba(227,179,65,0.12);
+  color: #e3b341;
+}
+.zone-badge.plein {
+  background: rgba(248,81,73,0.12);
+  color: #f85149;
+}
+.zone-footer {
+  padding: 12px 16px;
+  background: var(--bg3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+}
+.btn-reserver {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  background: var(--blue);
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+}
+.btn-itineraire {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  background: var(--bg4);
+  color: var(--text2);
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 12px;
+}
+.legend {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg2);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.legend-color.low { background: #2dba6f; }
+.legend-color.mid { background: #e3b341; }
+.legend-color.high { background: #f85149; }
+</style>
+
+<!-- Légende -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-color low"></div><span>Peu fréquenté (&lt;30%)</span></div>
+  <div class="legend-item"><div class="legend-color mid"></div><span>Affluence modérée (30-70%)</span></div>
+  <div class="legend-item"><div class="legend-color high"></div><span>Très fréquenté (&gt;70%)</span></div>
+  <div class="legend-item"><span>🟢</span><span>Disponible</span></div>
+  <div class="legend-item"><span>🟡</span><span>Occupé</span></div>
+  <div class="legend-item"><span>🔴</span><span>Plein</span></div>
+</div>
+
+<!-- Grille des zones -->
+<div class="plan-grid" id="plan-grid">
+  {% for bureau in bureaux %}
+  <div class="zone-card" data-etage="{{ bureau.etage|default:0 }}" data-occupation="{{ bureau.taux_occupation }}">
+    <div class="zone-header">
+      <span class="zone-name">{{ bureau.nom }}</span>
+      <span class="zone-etage">Étage {{ bureau.etage|default:"RDC" }}</span>
+    </div>
+    <div class="zone-body">
+      <div class="zone-capacity">
+        <span>👥 Capacité</span>
+        <span><strong>{{ bureau.capacite_max }}</strong> personnes</span>
+      </div>
+      <div class="zone-occupation-bar">
+        <div class="zone-occupation-fill" style="width: {{ bureau.taux_occupation }}%; background: {% if bureau.taux_occupation >= 70 %}#f85149{% elif bureau.taux_occupation >= 30 %}#e3b341{% else %}#2dba6f{% endif %};"></div>
+      </div>
+      <div class="zone-status">
+        <span>📊 Occupation: <strong>{{ bureau.taux_occupation }}%</strong></span>
+        <span class="zone-badge {% if bureau.taux_occupation >= 70 %}plein{% elif bureau.taux_occupation >= 30 %}occupe{% else %}disponible{% endif %}">
+          {% if bureau.taux_occupation >= 70 %}🔴 Plein
+          {% elif bureau.taux_occupation >= 30 %}🟡 Occupé
+          {% else %}🟢 Disponible{% endif %}
+        </span>
+      </div>
+      <div class="zone-capacity" style="margin-top: 8px;">
+        <span>🚪 Code: {{ bureau.code_bureau|default:bureau.nom|slice:":3"|upper }}</span>
+        <span>🔒 {{ bureau.niveau_securite|default:"standard"|title }}</span>
+      </div>
+    </div>
+    <div class="zone-footer">
+      <a href="{% url 'employe_mes_reservations' %}?bureau={{ bureau.id }}" class="btn-reserver">📅 Réserver</a>
+      <button class="btn-itineraire" onclick="showItineraire('{{ bureau.nom }}')">🗺️ Itinéraire</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Modal Itinéraire -->
+<div id="itineraireModal" class="modal" style="display:none" onclick="if(event.target===this)closeItineraireModal()">
+  <div class="modal-content" style="width: 400px;">
+    <div class="modal-header">
+      <h3>🗺️ Itinéraire</h3>
+      <button class="modal-close" onclick="closeItineraireModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="itineraire-content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function filterByEtage() {
+  const etage = document.getElementById('etageFilter').value;
+  const cards = document.querySelectorAll('.zone-card');
+  cards.forEach(card => {
+    if (etage === 'all' || card.dataset.etage == etage) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+
+function refreshOccupation() {
+  fetch('/api/occupation/')
+    .then(r => r.json())
+    .then(data => {
+      data.bureaux.forEach(b => {
+        const card = document.querySelector(`.zone-card[data-etage]:has(.zone-name:contains('${b.nom}'))`);
+        if (card) {
+          const fill = card.querySelector('.zone-occupation-fill');
+          const taux = card.querySelector('.zone-status strong');
+          const badge = card.querySelector('.zone-badge');
+          if (fill) {
+            fill.style.width = b.taux + '%';
+            fill.style.background = b.taux >= 70 ? '#f85149' : (b.taux >= 30 ? '#e3b341' : '#2dba6f');
+          }
+          if (taux) taux.textContent = b.taux + '%';
+          if (badge) {
+            if (b.taux >= 70) {
+              badge.className = 'zone-badge plein';
+              badge.innerHTML = '🔴 Plein';
+            } else if (b.taux >= 30) {
+              badge.className = 'zone-badge occupe';
+              badge.innerHTML = '🟡 Occupé';
+            } else {
+              badge.className = 'zone-badge disponible';
+              badge.innerHTML = '🟢 Disponible';
+            }
+          }
+        }
+      });
+    });
+}
+
+function showItineraire(zoneName) {
+  const modal = document.getElementById('itineraireModal');
+  const content = document.getElementById('itineraire-content');
+  
+  content.innerHTML = `
+    <div style="text-align: center;">
+      <div style="font-size: 48px; margin-bottom: 16px;">🗺️</div>
+      <div style="font-weight: 600; margin-bottom: 8px;">${zoneName}</div>
+      <div style="color: var(--text3); font-size: 13px; margin-bottom: 16px;">
+        Localisation: RDC, Aile ${zoneName.slice(0, 3).toUpperCase()}
+      </div>
+      <div style="background: var(--bg3); border-radius: 8px; padding: 12px; margin-top: 16px;">
+        <div style="font-weight: 500; margin-bottom: 8px;">📋 Instructions</div>
+        <div style="font-size: 12px; color: var(--text2); text-align: left;">
+          1. Prenez l'ascenseur principal<br>
+          2. Dirigez-vous vers l'aile ${zoneName.slice(0, 3).toUpperCase()}<br>
+          3. La salle se trouve au fond du couloir à droite
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+function closeItineraireModal() {
+  document.getElementById('itineraireModal').style.display = 'none';
+}
+
+setInterval(refreshOccupation, 30000);
+</script>
+
+{% endblock %}

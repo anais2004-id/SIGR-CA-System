@@ -2,388 +2,513 @@
 
 {% block title %}Mes Réservations - SIGR-CA{% endblock %}
 {% block page_title %}Mes Réservations{% endblock %}
-{% block page_sub %}Gestion de mes créneaux{% endblock %}
+{% block page_sub %}Gestion de mes créneaux et QR codes{% endblock %}
 {% block nav_emp_resa %}active{% endblock %}
 
 {% block content %}
 
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-        <div class="alert-text">{{ message }}</div>
-      </div>
-    {% endfor %}
-  {% endif %}
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+      <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+      <div class="alert-text">{{ message }}</div>
+    </div>
+  {% endfor %}
+{% endif %}
 
-  <!-- KPIs — 4 colonnes -->
-  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
-    <div class="kpi k-blue">
-      <div class="kpi-header"><div class="kpi-label">Total Réservations</div><div class="kpi-icon">📆</div></div>
-      <div class="kpi-value">{{ total|default:0 }}</div>
-      <div class="kpi-delta">Toutes périodes</div>
-    </div>
-    <div class="kpi k-green">
-      <div class="kpi-header"><div class="kpi-label">Confirmées</div><div class="kpi-icon">✅</div></div>
-      <div class="kpi-value">{{ actives|default:0 }}</div>
-      <div class="kpi-delta">En cours + à venir</div>
-    </div>
-    <div class="kpi k-purple">
-      <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏰</div></div>
-      <div class="kpi-value">{{ a_venir|default:0 }}</div>
-      <div class="kpi-delta">Prochaines réservations</div>
-    </div>
-    <div class="kpi k-amber">
-      <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏳</div></div>
-      <div class="kpi-value">{{ en_attente|default:0 }}</div>
-      <div class="kpi-delta">À modérer</div>
+<!-- KPIs 4 colonnes -->
+<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+  <div class="kpi k-blue">
+    <div class="kpi-header"><div class="kpi-label">Total</div><div class="kpi-icon">📆</div></div>
+    <div class="kpi-value">{{ total|default:0 }}</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-header"><div class="kpi-label">Confirmées</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-value">{{ actives|default:0 }}</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏰</div></div>
+    <div class="kpi-value">{{ a_venir|default:0 }}</div>
+  </div>
+  <div class="kpi k-amber">
+    <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏳</div></div>
+    <div class="kpi-value">{{ en_attente|default:0 }}</div>
+  </div>
+</div>
+
+<!-- Calendrier hebdomadaire -->
+<div style="background:var(--bg2); border:1px solid var(--border); border-radius:12px; overflow:visible; box-shadow:0 1px 4px rgba(0,0,0,.2);">
+  <div class="card-head">
+    <span>📅</span>
+    <span class="card-title">Calendrier des réservations</span>
+    <div style="margin-left:auto;">
+      <button class="btn btn-primary btn-sm" id="openResaBtn">+ Nouvelle réservation</button>
     </div>
   </div>
-
-  <!-- Calendrier du mois -->
-  <div class="card">
-    <div class="card-head">
-      <span>📅</span>
-      <span class="card-title">Calendrier du mois</span>
-      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-        <button class="btn btn-ghost btn-sm" onclick="prevMonth()">‹ Mois précédent</button>
-        <span id="current-month" style="font-weight:600; min-width:140px; text-align:center;"></span>
-        <button class="btn btn-ghost btn-sm" onclick="nextMonth()">Mois suivant ›</button>
-        <button class="btn btn-ghost btn-sm" onclick="gotoToday()">📅 Aujourd'hui</button>
+  <div style="padding:16px 18px;">
+    <!-- Navigation semaine -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+      <button class="btn btn-ghost btn-sm" id="prevWeekBtn">‹ Semaine précédente</button>
+      <span id="weekRange" style="font-size:15px; font-weight:600;"></span>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="nextWeekBtn">Semaine suivante ›</button>
+        <button class="btn btn-ghost btn-sm" id="todayWeekBtn">📅 Aujourd'hui</button>
       </div>
     </div>
-    <div class="card-body">
-      <div id="calendar-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:8px;"></div>
+    <!-- Grille calendrier -->
+    <div style="overflow-x:auto;">
+      <div id="weekCalendar"></div>
     </div>
   </div>
+</div>
 
-  <!-- Liste des réservations -->
-  <div class="card">
-    <div class="card-head">
-      <span>📋</span>
-      <span class="card-title">Liste de mes réservations</span>
-      <span class="card-sub" id="reservation-count">{{ total|default:0 }} réservation(s)</span>
-      <button class="btn btn-primary btn-sm" id="openResaBtn" style="margin-left:auto">+ Nouvelle réservation</button>
-    </div>
-    <div style="overflow-x:auto; max-height:500px; overflow-y:auto;">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th>Titre</th>
-            <th>Salle</th>
-            <th>Début</th>
-            <th>Fin</th>
-            <th>Participants</th>
-            <th>Statut</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="reservations-table-body">
-          {% for r in reservations %}
-          <tr class="resa-row" data-id="{{ r.id }}" data-statut="{{ r.statut }}">
-            <td>
-              <div style="font-weight:500;">{{ r.titre|default:"Sans titre" }}</div>
-              {% if r.description %}
-              <div style="font-size:10.5px; color:var(--text3); margin-top:4px;">{{ r.description|truncatechars:60 }}</div>
-              {% endif %}
-            </td>
-            <td><span class="badge b-blue">🚪 {{ r.bureau_nom|default:"—" }}</span></td>
-            <td style="font-family:var(--mono); font-size:12px;">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
-            <td style="font-family:var(--mono); font-size:12px;">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
-            <td style="text-align:center;">👥 {{ r.nb_participants|default:1 }}</td>
-            <td>
-              {% if r.statut == 'confirmee' %}
-                <span class="badge b-green">✅ Confirmée</span>
-              {% elif r.statut == 'en_attente' %}
-                <span class="badge b-amber">⏳ En attente</span>
-              {% elif r.statut == 'annulee' %}
-                <span class="badge b-red">❌ Annulée</span>
-              {% else %}
-                <span class="badge b-gray">{{ r.statut }}</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if r.statut != 'annulee' and r.statut != 'terminee' %}
-              <form method="post" action="{% url 'employe_annuler_reservation' r.id %}"
-                    onsubmit="return confirm('Voulez-vous vraiment annuler cette réservation ?')" style="display:inline;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-del btn-sm">🗑️ Annuler</button>
-              </form>
-              {% else %}
-              <span style="color:var(--text3); font-size:11px;">—</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="7" style="text-align:center; padding:80px; color:var(--text3);">
-              <div style="font-size:48px; margin-bottom:16px;">📆</div>
-              <div style="margin-bottom:16px;">Vous n'avez aucune réservation pour le moment.</div>
-              <button class="btn btn-primary" id="emptyResaBtn">+ Créer ma première réservation</button>
-            </td>
-          </tr>
+<!-- Liste COMPLÈTE des réservations — PAS de max-height pour tout afficher -->
+<div style="background:var(--bg2); border:1px solid var(--border); border-radius:12px; overflow:visible; box-shadow:0 1px 4px rgba(0,0,0,.2);">
+  <div class="card-head">
+    <span>📋</span>
+    <span class="card-title">Mes réservations</span>
+    <span class="card-sub">{{ reservations|length }} réservation(s)</span>
+    <button class="btn btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Titre</th>
+          <th>Salle</th>
+          <th>Début</th>
+          <th>Fin</th>
+          <th>Participants</th>
+          <th>Statut</th>
+          <th>QR</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reservations %}
+        <tr>
+          <td>
+            <strong>{{ r.titre|default:"Sans titre" }}</strong>
+            {% if r.description %}<div style="font-size:10.5px; color:var(--text3); margin-top:3px;">{{ r.description|truncatechars:50 }}</div>{% endif %}
+          </td>
+          <td><span class="badge b-blue">🚪 {{ r.bureau_nom|default:"—" }}</span></td>
+          <td style="font-family:var(--mono); font-size:12px;">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
+          <td style="font-family:var(--mono); font-size:12px;">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
+          <td style="text-align:center;">👥 {{ r.nb_participants|default:1 }}</td>
+          <td>
+            {% if r.statut == 'confirmee' %}<span class="badge b-green">✅ Confirmée</span>
+            {% elif r.statut == 'en_attente' %}<span class="badge b-amber">⏳ En attente</span>
+            {% elif r.statut == 'annulee' %}<span class="badge b-red">❌ Annulée</span>
+            {% else %}<span class="badge b-gray">{{ r.statut }}</span>{% endif %}
+          </td>
+          <td>
+            {% if r.statut == 'confirmee' %}
+              <button class="btn btn-sm btn-primary" onclick="showQRCode('{{ r.id }}','{{ r.titre|escapejs }}')">📱 QR</button>
+            {% elif r.statut == 'en_attente' %}
+              <span class="badge b-amber">Attente</span>
+            {% else %}<span style="color:var(--text3);">—</span>{% endif %}
+          </td>
+          <td>
+            {% if r.statut != 'annulee' and r.statut != 'terminee' %}
+            <form method="post" action="{% url 'employe_annuler_reservation' r.id %}"
+                  onsubmit="return confirm('Annuler cette réservation ?')" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-del btn-sm">🗑️</button>
+            </form>
+            {% else %}<span style="color:var(--text3);">—</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" style="text-align:center; padding:60px; color:var(--text3);">
+            <div style="font-size:48px; margin-bottom:16px;">📆</div>
+            Aucune réservation pour le moment
+            <br><br>
+            <button class="btn btn-primary" id="emptyResaBtn">+ Créer ma première réservation</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal Réservation -->
+<div id="resaModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeResaModal()">
+  <div class="modal" style="width:550px; max-width:95vw;">
+    <div class="modal-title">📆 Nouvelle Réservation</div>
+    <div class="modal-sub">Réservez une salle pour votre activité</div>
+    <form method="post" action="{% url 'employe_mes_reservations' %}">
+      {% csrf_token %}
+      <div class="form-row">
+        <label class="form-label">Titre *</label>
+        <input type="text" class="form-input" name="titre" placeholder="Ex : Réunion d'équipe..." required>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Salle *</label>
+        <select class="form-select" name="bureau_id" id="selBureau" required>
+          <option value="">— Choisir une salle —</option>
+          {% for b in bureaux %}
+          <option value="{{ b.id }}">{{ b.nom }}{% if b.capacite_max %} (Cap. {{ b.capacite_max }}){% endif %}</option>
           {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Suggestions IA -->
-  <div class="card">
-    <div class="card-head">
-      <span>🤖</span>
-      <span class="card-title">Suggestions intelligentes</span>
-      <span class="card-sub">Basées sur vos habitudes</span>
-    </div>
-    <div class="card-body">
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:16px;">
-        <div class="alert-box info">
-          <div class="alert-ico">💡</div>
-          <div>
-            <div class="alert-text">Les créneaux du mardi après-midi sont les moins occupés</div>
-            <div class="alert-meta">Taux d'occupation moyen : 35%</div>
-          </div>
+        </select>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <div class="form-row">
+          <label class="form-label">Début *</label>
+          <input type="datetime-local" class="form-input" name="date_debut" id="dateDebut" required>
         </div>
-        <div class="alert-box info">
-          <div class="alert-ico">🚪</div>
-          <div>
-            <div class="alert-text">La salle "Atelier Production" est souvent disponible après 16h</div>
-            <div class="alert-meta">Taux de disponibilité : 78%</div>
-          </div>
-        </div>
-        <div class="alert-box info">
-          <div class="alert-ico">⏰</div>
-          <div>
-            <div class="alert-text">Les réservations du matin (9h-12h) sont les plus demandées</div>
-            <div class="alert-meta">Pensez à réserver à l'avance</div>
-          </div>
+        <div class="form-row">
+          <label class="form-label">Fin *</label>
+          <input type="datetime-local" class="form-input" name="date_fin" id="dateFin" required>
         </div>
       </div>
-    </div>
+      <div class="form-row">
+        <label class="form-label">Participants</label>
+        <input type="number" class="form-input" name="nb_participants" value="1" min="1" max="100">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Description (optionnel)</label>
+        <textarea class="form-input" name="description" rows="2" placeholder="Détails..."></textarea>
+      </div>
+      <div id="dispoMsg" style="display:none; padding:10px; border-radius:6px; margin-top:10px; font-size:13px;"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeResaModal()">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="submitBtn">✅ Confirmer</button>
+      </div>
+    </form>
   </div>
+</div>
 
-  <!-- MODAL NOUVELLE RÉSERVATION -->
-  <div id="resaModal" class="modal-overlay" style="display:none;">
-    <div class="modal" style="width:550px; max-width:95vw;">
-      <div class="modal-title">📆 Nouvelle Réservation</div>
-      <div class="modal-sub">Réservez une salle pour votre activité</div>
-      <form method="post" action="{% url 'employe_mes_reservations' %}" id="resaForm">
-        {% csrf_token %}
-        <div class="form-row">
-          <label class="form-label">Titre / Objet <span style="color:var(--red)">*</span></label>
-          <input type="text" class="form-input" name="titre" placeholder="ex: Réunion d'équipe, Formation..." required>
-        </div>
-        <div class="form-row">
-          <label class="form-label">Salle / Ressource <span style="color:var(--red)">*</span></label>
-          <select class="form-select" name="bureau_id" id="sel-bureau" required>
-            <option value="">— Choisir une salle —</option>
-            {% for b in bureaux %}
-            <option value="{{ b.id }}">{{ b.nom }} {% if b.capacite_max %}(Cap. {{ b.capacite_max }}){% endif %}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-          <div class="form-row">
-            <label class="form-label">Début <span style="color:var(--red)">*</span></label>
-            <input type="datetime-local" class="form-input" name="date_debut" id="d-debut" required>
-          </div>
-          <div class="form-row">
-            <label class="form-label">Fin <span style="color:var(--red)">*</span></label>
-            <input type="datetime-local" class="form-input" name="date_fin" id="d-fin" required>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label">Nombre de participants</label>
-          <input type="number" class="form-input" name="nb_participants" value="1" min="1" max="100">
-        </div>
-        <div class="form-row">
-          <label class="form-label">Description (optionnel)</label>
-          <textarea class="form-input" name="description" rows="2" placeholder="Détails supplémentaires, matériel requis..."></textarea>
-        </div>
-        <div id="dispo-ind" style="display:none; padding:12px; border-radius:8px; margin:12px 0; font-size:13px;"></div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onclick="closeResaModal()">Annuler</button>
-          <button type="submit" class="btn btn-primary" id="btn-submit">✅ Confirmer la réservation</button>
-        </div>
-      </form>
+<!-- Modal QR Code -->
+<div id="qrModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeQRModal()">
+  <div class="modal" style="text-align:center; width:360px;">
+    <div class="modal-title" style="margin-bottom:4px;">📱 QR Code d'accès</div>
+    <div class="modal-sub" id="qrTitle">—</div>
+    <div style="background:white; padding:20px; border-radius:12px; display:inline-block; margin:16px 0;">
+      <div id="qrContainer"></div>
+    </div>
+    <div id="qrInfo" style="font-size:12px; color:var(--text2); margin-bottom:16px;"></div>
+    <div style="display:flex; gap:8px; justify-content:center;">
+      <button class="btn btn-primary btn-sm" onclick="downloadQR()">⬇️ Télécharger</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeQRModal()">Fermer</button>
     </div>
   </div>
+</div>
 
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
-.cal-day {
-  background: var(--bg3);
-  border-radius: 10px;
-  padding: 12px 4px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-  min-height: 80px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border2);
-}
-.cal-day:hover { background: var(--blue3); transform: translateY(-3px); border-color: var(--blue); }
-.cal-day.today { border: 2px solid var(--blue); background: var(--blue3); }
-.cal-day.has-resa { background: var(--green2); border-color: var(--green); }
-.cal-day-num { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
-.cal-day-resa { font-size: 11px; color: var(--green); background: rgba(45,186,111,0.2); padding: 2px 6px; border-radius: 12px; display: inline-block; }
-.cal-dh { background: var(--bg4); border-radius: 8px; padding: 10px 4px; text-align: center; font-weight: 600; font-size: 12px; color: var(--text2); }
+.week-table { width:100%; border-collapse:collapse; min-width:750px; font-size:12px; }
+.week-table th { background:var(--bg3); padding:10px 6px; text-align:center; font-weight:600; border-bottom:1px solid var(--border); font-size:11px; }
+.week-table th.today-col { background:var(--blue3); color:var(--blue2); }
+.week-table td { border:1px solid var(--border2); vertical-align:top; padding:4px; height:44px; width:13%; }
+.week-table td.time-col { background:var(--bg3); font-weight:600; text-align:center; width:60px; font-family:var(--mono); font-size:11px; color:var(--text2); }
+.resa-block { background:var(--green2); border-left:3px solid var(--green); border-radius:4px; padding:3px 6px; font-size:10px; cursor:pointer; margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:all .15s; }
+.resa-block:hover { background:var(--green); color:white; }
+.resa-block.pending { background:var(--amber2); border-left-color:var(--amber); }
+.resa-block.cancelled { background:var(--red2); border-left-color:var(--red); opacity:.7; text-decoration:line-through; }
+.slot-empty { background:var(--bg3); border:1px dashed var(--border); border-radius:4px; padding:3px 6px; font-size:10px; text-align:center; cursor:pointer; color:var(--text3); transition:all .15s; }
+.slot-empty:hover { background:var(--blue3); border-color:var(--blue); color:var(--blue2); }
 </style>
 
 <script>
-let currentYear = new Date().getFullYear();
-let currentMonth = new Date().getMonth();
-let reservations = {{ reservations_json|default:"[]"|safe }};
-const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-const weekDays = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+// ═══════════════════════════════════════════
+// DONNÉES DJANGO → JS
+// Problème corrigé : on s'assure que les dates sont bien parsées
+// ═══════════════════════════════════════════
+var reservationsRaw = {{ reservations_json|safe|default:'[]' }};
+var currentWeekOffset = 0;
+var currentQRId = null;
+var currentQRObj = null;
 
-function renderCalendar() {
-  const firstDay = new Date(currentYear, currentMonth, 1);
-  const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const today = new Date();
+// Normaliser les données pour le calendrier
+var reservationsData = reservationsRaw.map(function(r) {
+  return {
+    id: r.id,
+    titre: r.titre || 'Sans titre',
+    bureau_nom: r.bureau_nom || '—',
+    statut: r.statut || '',
+    date_debut: r.date_debut || null,
+    date_fin: r.date_fin || null,
+    nb_participants: r.nb_participants || 1
+  };
+});
 
-  const monthEl = document.getElementById('current-month');
-  if (monthEl) monthEl.textContent = monthNames[currentMonth] + ' ' + currentYear;
+console.log("📊 Réservations chargées:", reservationsData.length);
+reservationsData.forEach(function(r) {
+  console.log("  →", r.titre, r.date_debut, r.statut);
+});
 
-  const grid = document.getElementById('calendar-grid');
-  if (!grid) return;
-  grid.innerHTML = '';
+// ═══════════════════════════════════════════
+// CALENDRIER HEBDOMADAIRE
+// ═══════════════════════════════════════════
+var HOURS = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+             '12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30',
+             '16:00','16:30','17:00','17:30','18:00'];
 
-  weekDays.forEach(day => {
-    const el = document.createElement('div');
-    el.className = 'cal-dh';
-    el.textContent = day;
-    grid.appendChild(el);
+var DAYS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+var MONTHS_FR = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+
+function getMondayOfWeek(offset) {
+  var today = new Date();
+  var dayOfWeek = today.getDay(); // 0=dim, 1=lun...
+  var diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  var monday = new Date(today);
+  monday.setDate(today.getDate() + diffToMonday + offset * 7);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function getWeekDays(offset) {
+  var monday = getMondayOfWeek(offset);
+  var days = [];
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
+function toDateKey(dateObj) {
+  // Retourne "YYYY-MM-DD"
+  return dateObj.getFullYear() + '-' +
+         String(dateObj.getMonth() + 1).padStart(2, '0') + '-' +
+         String(dateObj.getDate()).padStart(2, '0');
+}
+
+function renderWeekCalendar() {
+  var days = getWeekDays(currentWeekOffset);
+  var today = new Date();
+  today.setHours(0,0,0,0);
+
+  // Titre de la semaine
+  var startLabel = days[0].getDate() + '/' + (days[0].getMonth()+1) + '/' + days[0].getFullYear();
+  var endLabel   = days[6].getDate() + '/' + (days[6].getMonth()+1) + '/' + days[6].getFullYear();
+  document.getElementById('weekRange').textContent = startLabel + ' - ' + endLabel;
+
+  // Construire un index : "YYYY-MM-DD_HH:MM" → [réservations]
+  var index = {};
+  reservationsData.forEach(function(r) {
+    if (!r.date_debut) return;
+    // Essayer de parser la date
+    var dt = new Date(r.date_debut);
+    if (isNaN(dt.getTime())) return;
+    var dayKey  = toDateKey(dt);
+    var hh      = String(dt.getHours()).padStart(2, '0');
+    var mm      = String(dt.getMinutes()).padStart(2, '0');
+    // Arrondir à la demi-heure la plus proche pour matcher les créneaux
+    var roundMM = dt.getMinutes() < 15 ? '00' : (dt.getMinutes() < 45 ? '30' : '00');
+    var roundHH = (dt.getMinutes() >= 45 ? String(dt.getHours() + 1).padStart(2,'0') : hh);
+    var slotKey = dayKey + '_' + roundHH + ':' + roundMM;
+    if (!index[slotKey]) index[slotKey] = [];
+    index[slotKey].push(r);
   });
 
-  for (let i = 0; i < startDay; i++) {
-    const el = document.createElement('div');
-    el.className = 'cal-day';
-    el.style.opacity = '0.2';
-    el.innerHTML = '<div class="cal-day-num"></div>';
-    grid.appendChild(el);
-  }
+  console.log("📅 Index calendrier:", Object.keys(index));
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const el = document.createElement('div');
-    el.className = 'cal-day';
-    if (currentYear === today.getFullYear() && currentMonth === today.getMonth() && day === today.getDate()) {
-      el.classList.add('today');
-    }
-    const hasResa = reservations.some(r => {
-      if (!r.date_debut) return false;
-      const d = new Date(r.date_debut);
-      return d.getFullYear() === currentYear && d.getMonth() === currentMonth && d.getDate() === day;
+  // Construire le HTML
+  var html = '<table class="week-table"><thead><tr><th style="width:60px;">Heure</th>';
+  days.forEach(function(day) {
+    var isToday = day.getTime() === today.getTime();
+    var dayName = DAYS_FR[day.getDay()];
+    html += '<th' + (isToday ? ' class="today-col"' : '') + '>' + dayName + '<br>' + day.getDate() + '/' + (day.getMonth()+1) + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  HOURS.forEach(function(hour) {
+    html += '<tr><td class="time-col">' + hour + '</td>';
+    days.forEach(function(day) {
+      var dayKey  = toDateKey(day);
+      var slotKey = dayKey + '_' + hour;
+      var slotResAs = index[slotKey] || [];
+
+      html += '<td>';
+      if (slotResAs.length > 0) {
+        slotResAs.forEach(function(r) {
+          var cls = 'resa-block';
+          if (r.statut === 'en_attente') cls += ' pending';
+          if (r.statut === 'annulee')    cls += ' cancelled';
+          var label = (r.titre || 'Réservation') + ' — ' + (r.bureau_nom || '');
+          html += '<div class="' + cls + '" onclick="showResaDetails(\'' + r.id + '\')" title="' + label + '">';
+          html += '🗓 ' + label;
+          html += '</div>';
+        });
+      } else {
+        var dateStr = dayKey;
+        html += '<div class="slot-empty" onclick="quickBook(\'' + dateStr + '\',\'' + hour + '\')">+ Réserver</div>';
+      }
+      html += '</td>';
     });
-    if (hasResa) el.classList.add('has-resa');
-    el.innerHTML = `<div class="cal-day-num">${day}</div>`;
-    if (hasResa) el.innerHTML += `<div class="cal-day-resa">📆 Réservé</div>`;
-    el.onclick = () => {
-      const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      const debutField = document.getElementById('d-debut');
-      const finField = document.getElementById('d-fin');
-      if (debutField) debutField.value = `${dateStr}T09:00`;
-      if (finField) finField.value = `${dateStr}T10:00`;
-      openResaModal();
-    };
-    grid.appendChild(el);
-  }
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('weekCalendar').innerHTML = html;
 }
 
-function prevMonth() {
-  currentMonth--;
-  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
-  renderCalendar();
-}
-function nextMonth() {
-  currentMonth++;
-  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-  renderCalendar();
-}
-function gotoToday() {
-  const today = new Date();
-  currentYear = today.getFullYear();
-  currentMonth = today.getMonth();
-  renderCalendar();
-}
+// ═══════════════════════════════════════════
+// NAVIGATION SEMAINE
+// ═══════════════════════════════════════════
+function changeWeek(delta) { currentWeekOffset += delta; renderWeekCalendar(); }
+function goToToday()       { currentWeekOffset = 0;      renderWeekCalendar(); }
 
+// ═══════════════════════════════════════════
+// MODAL RÉSERVATION
+// ═══════════════════════════════════════════
 function openResaModal() {
-  const modal = document.getElementById('resaModal');
-  if (!modal) return;
-  modal.style.display = 'flex';
-  const now = new Date();
+  document.getElementById('resaModal').style.display = 'flex';
+  var now = new Date();
   now.setMinutes(0, 0, 0);
   now.setHours(now.getHours() + 1);
-  const fin = new Date(now.getTime() + 3600000);
-  const fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
-                   String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':00';
-  const debutField = document.getElementById('d-debut');
-  const finField = document.getElementById('d-fin');
-  if (debutField && !debutField.value) debutField.value = fmt(now);
-  if (finField && !finField.value) finField.value = fmt(fin);
+  var later = new Date(now.getTime() + 3600000);
+  var fmt = function(d) {
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+           String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':00';
+  };
+  var dd = document.getElementById('dateDebut');
+  var df = document.getElementById('dateFin');
+  if (dd && !dd.value) dd.value = fmt(now);
+  if (df && !df.value) df.value = fmt(later);
 }
 
 function closeResaModal() {
-  const modal = document.getElementById('resaModal');
-  if (modal) modal.style.display = 'none';
-  const dispoInd = document.getElementById('dispo-ind');
-  if (dispoInd) dispoInd.style.display = 'none';
+  document.getElementById('resaModal').style.display = 'none';
+  var msg = document.getElementById('dispoMsg');
+  if (msg) msg.style.display = 'none';
 }
 
-let checkTimer = null;
-function checkDisponibilite() {
-  const bureauId = document.getElementById('sel-bureau').value;
-  const debut = document.getElementById('d-debut').value;
-  const fin = document.getElementById('d-fin').value;
-  const indicator = document.getElementById('dispo-ind');
-  const submitBtn = document.getElementById('btn-submit');
-  if (!bureauId || !debut || !fin) { if (indicator) indicator.style.display = 'none'; return; }
-  if (new Date(fin) <= new Date(debut)) {
-    if (indicator) { indicator.style.display = 'block'; indicator.style.background = 'var(--red2)'; indicator.style.color = 'var(--red)'; indicator.innerHTML = '⚠️ La date de fin doit être après la date de début.'; }
-    if (submitBtn) submitBtn.disabled = true;
+function quickBook(date, hour) {
+  openResaModal();
+  var dd = document.getElementById('dateDebut');
+  var df = document.getElementById('dateFin');
+  if (dd) dd.value = date + 'T' + hour;
+  if (df) {
+    var end = new Date(date + 'T' + hour);
+    end.setMinutes(end.getMinutes() + 30);
+    df.value = date + 'T' + String(end.getHours()).padStart(2,'0') + ':' + String(end.getMinutes()).padStart(2,'0');
+  }
+  checkDispo();
+}
+
+// ═══════════════════════════════════════════
+// VÉRIFICATION DISPONIBILITÉ
+// ═══════════════════════════════════════════
+var checkTimer = null;
+function checkDispo() {
+  var bureau  = document.getElementById('selBureau');
+  var debut   = document.getElementById('dateDebut');
+  var fin     = document.getElementById('dateFin');
+  var msg     = document.getElementById('dispoMsg');
+  var btn     = document.getElementById('submitBtn');
+  if (!bureau || !debut || !fin || !bureau.value || !debut.value || !fin.value) {
+    if (msg) msg.style.display = 'none';
+    return;
+  }
+  if (new Date(fin.value) <= new Date(debut.value)) {
+    if (msg) { msg.style.display='block'; msg.style.background='var(--red2)'; msg.style.color='var(--red)'; msg.textContent='⚠️ La date de fin doit être après la date de début'; }
+    if (btn) btn.disabled = true;
     return;
   }
   clearTimeout(checkTimer);
-  checkTimer = setTimeout(() => {
-    if (indicator) { indicator.style.display = 'block'; indicator.style.background = 'var(--blue3)'; indicator.style.color = 'var(--blue2)'; indicator.innerHTML = '⏳ Vérification...'; }
-    fetch(`/api/bureaux/${bureauId}/disponibilite/?debut=${encodeURIComponent(debut)}&fin=${encodeURIComponent(fin)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.disponible !== undefined) {
-          if (data.disponible) {
-            if (indicator) { indicator.style.background = 'var(--green2)'; indicator.style.color = 'var(--green)'; indicator.innerHTML = '✅ Salle disponible sur ce créneau !'; }
-            if (submitBtn) submitBtn.disabled = false;
-          } else {
-            if (indicator) { indicator.style.background = 'var(--red2)'; indicator.style.color = 'var(--red)'; indicator.innerHTML = '❌ Salle déjà réservée sur ce créneau.'; }
-            if (submitBtn) submitBtn.disabled = true;
-          }
+  checkTimer = setTimeout(function() {
+    if (msg) { msg.style.display='block'; msg.style.background='var(--blue3)'; msg.style.color='var(--blue2)'; msg.textContent='⏳ Vérification...'; }
+    fetch('/api/bureaux/' + bureau.value + '/disponibilite/?debut=' + encodeURIComponent(debut.value) + '&fin=' + encodeURIComponent(fin.value))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.disponible) {
+          if (msg) { msg.style.background='var(--green2)'; msg.style.color='var(--green)'; msg.textContent='✅ Salle disponible !'; }
+          if (btn) btn.disabled = false;
+        } else {
+          if (msg) { msg.style.background='var(--red2)'; msg.style.color='var(--red)'; msg.textContent='❌ Salle déjà réservée sur ce créneau'; }
+          if (btn) btn.disabled = true;
         }
       })
-      .catch(() => { if (submitBtn) submitBtn.disabled = false; });
-  }, 600);
+      .catch(function() { if (btn) btn.disabled = false; });
+  }, 500);
 }
 
+// ═══════════════════════════════════════════
+// DÉTAILS D'UNE RÉSERVATION
+// ═══════════════════════════════════════════
+function showResaDetails(id) {
+  var r = reservationsData.find(function(x) { return String(x.id) === String(id); });
+  if (!r) { alert('Réservation introuvable'); return; }
+  var debut = r.date_debut ? new Date(r.date_debut).toLocaleString('fr-FR') : '—';
+  var fin   = r.date_fin   ? new Date(r.date_fin).toLocaleString('fr-FR')   : '—';
+  alert('📋 DÉTAILS\n\n📌 ' + r.titre + '\n🚪 ' + r.bureau_nom + '\n👥 ' + r.nb_participants + ' participant(s)\n📅 ' + debut + ' → ' + fin + '\n📊 ' + r.statut);
+}
+
+// ═══════════════════════════════════════════
+// QR CODE
+// ═══════════════════════════════════════════
+function showQRCode(id, titre) {
+  currentQRId = id;
+  document.getElementById('qrModal').style.display = 'flex';
+  document.getElementById('qrTitle').textContent = titre;
+  document.getElementById('qrContainer').innerHTML = '';
+  document.getElementById('qrInfo').textContent = 'Génération du QR Code...';
+
+  var r = reservationsData.find(function(x) { return String(x.id) === String(id); });
+  var qrText = JSON.stringify({ id: id, titre: titre, salle: r ? r.bureau_nom : '—', debut: r ? r.date_debut : '' });
+
+  currentQRObj = new QRCode(document.getElementById('qrContainer'), {
+    text: qrText,
+    width: 200, height: 200,
+    colorDark: '#000000', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H
+  });
+
+  if (r) {
+    var debut = r.date_debut ? new Date(r.date_debut).toLocaleString('fr-FR') : '—';
+    document.getElementById('qrInfo').innerHTML = '🚪 ' + r.bureau_nom + '<br>📅 ' + debut;
+  }
+}
+
+function closeQRModal() { document.getElementById('qrModal').style.display = 'none'; }
+
+function downloadQR() {
+  var canvas = document.querySelector('#qrContainer canvas');
+  var img    = document.querySelector('#qrContainer img');
+  if (canvas) {
+    var a = document.createElement('a');
+    a.download = 'qrcode_' + currentQRId + '.png';
+    a.href = canvas.toDataURL();
+    a.click();
+  } else if (img) {
+    var a = document.createElement('a');
+    a.download = 'qrcode_' + currentQRId + '.png';
+    a.href = img.src;
+    a.click();
+  }
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function() {
-  renderCalendar();
-  const openBtn = document.getElementById('openResaBtn');
-  if (openBtn) openBtn.onclick = openResaModal;
-  const emptyBtn = document.getElementById('emptyResaBtn');
+  renderWeekCalendar();
+
+  document.getElementById('prevWeekBtn').onclick  = function() { changeWeek(-1); };
+  document.getElementById('nextWeekBtn').onclick  = function() { changeWeek(1); };
+  document.getElementById('todayWeekBtn').onclick = function() { goToToday(); };
+  document.getElementById('openResaBtn').onclick  = openResaModal;
+
+  var btn2 = document.getElementById('openResaBtn2');
+  if (btn2) btn2.onclick = openResaModal;
+
+  var emptyBtn = document.getElementById('emptyResaBtn');
   if (emptyBtn) emptyBtn.onclick = openResaModal;
-  const bureauSelect = document.getElementById('sel-bureau');
-  const debutField = document.getElementById('d-debut');
-  const finField = document.getElementById('d-fin');
-  if (bureauSelect) bureauSelect.addEventListener('change', checkDisponibilite);
-  if (debutField) debutField.addEventListener('change', checkDisponibilite);
-  if (finField) finField.addEventListener('change', checkDisponibilite);
-  const modal = document.getElementById('resaModal');
-  if (modal) modal.addEventListener('click', function(e) { if (e.target === this) closeResaModal(); });
+
+  var selBureau = document.getElementById('selBureau');
+  var dateDebut = document.getElementById('dateDebut');
+  var dateFin   = document.getElementById('dateFin');
+  if (selBureau) selBureau.addEventListener('change', checkDispo);
+  if (dateDebut) dateDebut.addEventListener('change', checkDispo);
+  if (dateFin)   dateFin.addEventListener('change', checkDispo);
 });
 </script>
 {% endblock %}

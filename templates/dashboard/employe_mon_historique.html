@@ -3,147 +3,487 @@
 {% block title %}Mon Historique d'Accès - SIGR-CA{% endblock %}
 {% block page_title %}Mon Historique d'Accès{% endblock %}
 {% block page_sub %}Traçabilité complète de vos accès{% endblock %}
-
 {% block nav_emp_hist %}active{% endblock %}
+
+{% block topbar_actions %}
+<div style="display:flex; gap:8px">
+  <button class="btn btn-ghost btn-sm" onclick="refreshData()">↻ Actualiser</button>
+  <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇️ Exporter CSV</button>
+  <button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 Exporter PDF</button>
+</div>
+{% endblock %}
 
 {% block content %}
 
-<div class="content">
-
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-        <div class="alert-text">{{ message }}</div>
-      </div>
-    {% endfor %}
-  {% endif %}
-
-  <!-- KPIs -->
-  <div class="g2">
-    <div class="kpi k-blue">
-      <div class="kpi-header">
-        <div class="kpi-label">Total Accès</div>
-        <div class="kpi-icon">🔑</div>
-      </div>
-      <div class="kpi-value">{{ total_acces|default:0 }}</div>
-      <div class="kpi-delta">Tous temps</div>
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+      <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+      <div class="alert-text">{{ message }}</div>
     </div>
+  {% endfor %}
+{% endif %}
 
-    <div class="kpi k-green">
-      <div class="kpi-header">
-        <div class="kpi-label">Accès Autorisés</div>
-        <div class="kpi-icon">✅</div>
-      </div>
-      <div class="kpi-value">{{ acces_autorises|default:0 }}</div>
+<!-- KPIs améliorés -->
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-header">
+      <span class="stat-label">Total Accès</span>
+      <span class="stat-icon">🔑</span>
     </div>
-
-    <div class="kpi k-red">
-      <div class="kpi-header">
-        <div class="kpi-label">Accès Refusés</div>
-        <div class="kpi-icon">🚫</div>
-      </div>
-      <div class="kpi-value">{{ acces_refuses|default:0 }}</div>
-    </div>
-
-    <div class="kpi k-purple">
-      <div class="kpi-header">
-        <div class="kpi-label">Taux de Succès</div>
-        <div class="kpi-icon">📊</div>
-      </div>
-      <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
-      <div class="kpi-delta">Performance globale</div>
-    </div>
+    <div class="stat-value">{{ total_acces|default:0 }}</div>
+    <div class="stat-footer">Tous temps</div>
   </div>
-
-  <!-- Statistiques par zone -->
-  <div class="card">
-    <div class="card-head">
-      <span>📊</span>
-      <span class="card-title">Fréquentation par zone</span>
+  <div class="stat-card green">
+    <div class="stat-header">
+      <span class="stat-label">Accès Autorisés</span>
+      <span class="stat-icon">✅</span>
     </div>
-    <div class="card-body" id="zone-stats">
-      <!-- Rempli dynamiquement par JavaScript -->
-    </div>
+    <div class="stat-value">{{ acces_autorises|default:0 }}</div>
+    <div class="stat-footer">Succès</div>
   </div>
-
-  <!-- Filtres -->
-  <div class="filter-tabs" style="margin-bottom:16px">
-    <button class="filter-tab active" onclick="filterLogs('all')">Tous</button>
-    <button class="filter-tab" onclick="filterLogs('autorise')">Autorisés</button>
-    <button class="filter-tab" onclick="filterLogs('refuse')">Refusés</button>
-    <button class="filter-tab" onclick="filterLogs('week')">7 derniers jours</button>
-    <button class="filter-tab" onclick="filterLogs('month')">30 derniers jours</button>
-  </div>
-
-  <!-- Tableau des logs -->
-  <div class="card">
-    <div class="card-head">
-      <span>📋</span>
-      <span class="card-title">Historique détaillé</span>
-      <span class="card-sub" id="log-count">{{ total_acces|default:0 }} entrées</span>
-      <button class="btn btn-ghost btn-sm" onclick="exportCSV()" style="margin-left:auto">
-        ⬇️ Exporter CSV
-      </button>
+  <div class="stat-card red">
+    <div class="stat-header">
+      <span class="stat-label">Accès Refusés</span>
+      <span class="stat-icon">🚫</span>
     </div>
-    <div style="overflow-x:auto; max-height:520px; overflow-y:auto">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th>Date & Heure</th>
-            <th>Zone / Bureau</th>
-            <th>Méthode</th>
-            <th>Résultat</th>
-            <th>Détails</th>
-          </tr>
-        </thead>
-        <tbody id="logs-table-body">
-          {% for a in acces %}
-          <tr class="log-row" 
-              data-resultat="{{ a.resultat|lower }}" 
-              data-timestamp="{{ a.timestamp|date:'Y-m-d' }}">
-            <td style="font-family:var(--mono); font-size:12.5px">
-              {{ a.timestamp|date:"d/m/Y H:i:s" }}
-            </td>
-            <td>
-              <strong>{{ a.bureau_nom|default:"—" }}</strong><br>
-              <small style="color:var(--text3)">{{ a.type_acces|default:"RFID" }}</small>
-            </td>
-            <td><span class="badge b-blue">{{ a.type_acces|default:"RFID" }}</span></td>
-            <td>
-              {% if a.resultat == 'AUTORISE' %}
-                <span class="badge b-green">✅ AUTORISÉ</span>
-              {% else %}
-                <span class="badge b-red">❌ REFUSÉ</span>
-              {% endif %}
-            </td>
-            <td style="font-size:11.5px; color:var(--text3)">
-              {% if a.resultat == 'AUTORISE' %}
-                Accès validé avec succès
-              {% else %}
-                Tentative d'accès non autorisé
-              {% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="5" style="text-align:center; padding:80px; color:var(--text3)">
-              Aucun historique d'accès disponible pour le moment
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    <div class="stat-value">{{ acces_refuses|default:0 }}</div>
+    <div class="stat-footer">Échecs</div>
   </div>
-
+  <div class="stat-card purple">
+    <div class="stat-header">
+      <span class="stat-label">Taux de Succès</span>
+      <span class="stat-icon">📊</span>
+    </div>
+    <div class="stat-value">{{ taux_succes|default:0 }}%</div>
+    <div class="stat-footer">Performance</div>
+  </div>
 </div>
 
-{% endblock %}
+<!-- Graphique d'activité -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-icon">📈</span>
+    <span class="card-title">Activité mensuelle</span>
+    <div class="card-actions">
+      <button class="btn-small" onclick="changeChartPeriod('week')">Semaine</button>
+      <button class="btn-small active" onclick="changeChartPeriod('month')">Mois</button>
+      <button class="btn-small" onclick="changeChartPeriod('year')">Année</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <canvas id="activity-chart" height="200" style="width:100%; max-height:250px"></canvas>
+  </div>
+</div>
 
-{% block extra_js %}
+<div class="stats-row">
+  <!-- Statistiques par zone -->
+  <div class="card half">
+    <div class="card-header">
+      <span class="card-icon">🚪</span>
+      <span class="card-title">Fréquentation par zone</span>
+    </div>
+    <div class="card-body">
+      <div id="zone-stats"></div>
+    </div>
+  </div>
+
+  <!-- Statistiques par jour -->
+  <div class="card half">
+    <div class="card-header">
+      <span class="card-icon">📅</span>
+      <span class="card-title">Activité par jour</span>
+    </div>
+    <div class="card-body">
+      <div id="day-stats"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Filtres avancés -->
+<div class="filters-bar">
+  <div class="filter-group">
+    <button class="filter-btn active" onclick="filterLogs('all')">📋 Tous</button>
+    <button class="filter-btn" onclick="filterLogs('autorise')">✅ Autorisés</button>
+    <button class="filter-btn" onclick="filterLogs('refuse')">❌ Refusés</button>
+  </div>
+  <div class="filter-group">
+    <button class="filter-btn" onclick="filterLogs('today')">📅 Aujourd'hui</button>
+    <button class="filter-btn" onclick="filterLogs('week')">📆 7 jours</button>
+    <button class="filter-btn" onclick="filterLogs('month')">📅 30 jours</button>
+    <button class="filter-btn" onclick="filterLogs('custom')">📅 Personnalisé</button>
+  </div>
+  <div class="search-box">
+    <input type="text" id="searchInput" class="search-input" placeholder="🔍 Rechercher une zone..." onkeyup="searchLogs()">
+  </div>
+</div>
+
+<!-- Date picker personnalisé -->
+<div id="dateRangePicker" class="date-range" style="display:none">
+  <input type="date" id="dateStart" class="date-input">
+  <span>→</span>
+  <input type="date" id="dateEnd" class="date-input">
+  <button class="btn-small" onclick="applyCustomDate()">Appliquer</button>
+  <button class="btn-small" onclick="closeDatePicker()">Annuler</button>
+</div>
+
+<!-- Tableau des logs -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-icon">📋</span>
+    <span class="card-title">Historique détaillé</span>
+    <span class="badge-count" id="log-count">{{ total_acces|default:0 }} entrées</span>
+  </div>
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Date & Heure</th>
+          <th>Zone / Bureau</th>
+          <th>Méthode</th>
+          <th>Résultat</th>
+          <th>Détails</th>
+        </tr>
+      </thead>
+      <tbody id="logs-table-body">
+        {% for a in acces %}
+        <tr class="log-row" 
+            data-resultat="{{ a.resultat|lower }}" 
+            data-timestamp="{{ a.timestamp|date:'Y-m-d' }}"
+            data-datetime="{{ a.timestamp|date:'Y-m-d H:i:s' }}">
+          <td class="date-cell">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td>
+            <strong>{{ a.bureau_nom|default:"—" }}</strong>
+            <div class="method-badge">{{ a.type_acces|default:"RFID" }}</div>
+          </td>
+          <td><span class="badge badge-blue">{{ a.type_acces|default:"RFID" }}</span></td>
+          <td>
+            {% if a.resultat == 'AUTORISE' %}
+              <span class="badge badge-green">✅ AUTORISÉ</span>
+            {% else %}
+              <span class="badge badge-red">❌ REFUSÉ</span>
+            {% endif %}
+          </td>
+          <td class="details-cell">
+            {% if a.resultat == 'AUTORISE' %}
+              Accès validé avec succès
+            {% else %}
+              Tentative d'accès non autorisé
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr class="empty-row">
+          <td colspan="5">
+            <div class="empty-state">
+              <div class="empty-icon">🔍</div>
+              <div>Aucun historique d'accès disponible</div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <!-- Pagination -->
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<style>
+/* Layout */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.stat-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+}
+.stat-icon {
+  font-size: 20px;
+}
+.stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text);
+}
+.stat-footer {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 8px;
+}
+.blue .stat-value { color: #1f6feb; }
+.green .stat-value { color: #2dba6f; }
+.red .stat-value { color: #f85149; }
+.purple .stat-value { color: #a371f7; }
+
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.card-icon { font-size: 18px; }
+.card-title { font-size: 14px; font-weight: 600; flex: 1; }
+.card-actions { display: flex; gap: 8px; }
+.card-body { padding: 18px; }
+.half { margin-bottom: 0; }
+
+/* Filters */
+.filters-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  background: var(--bg2);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.filter-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.filter-btn:hover {
+  background: var(--bg4);
+  border-color: var(--blue);
+}
+.filter-btn.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+.search-box {
+  display: flex;
+  align-items: center;
+}
+.search-input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 12px;
+  width: 200px;
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+/* Date Range */
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  background: var(--bg2);
+  padding: 12px;
+  border-radius: 8px;
+}
+.date-input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+}
+
+/* Table */
+.table-wrapper {
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th {
+  text-align: left;
+  padding: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg2);
+}
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border2);
+}
+.data-table .date-cell {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.data-table .details-cell {
+  font-size: 11.5px;
+  color: var(--text3);
+}
+.method-badge {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+.empty-row td {
+  text-align: center;
+  padding: 60px;
+}
+.empty-state {
+  color: var(--text3);
+}
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.badge-green { background: rgba(45,186,111,0.12); color: #2dba6f; border: 1px solid rgba(45,186,111,0.25); }
+.badge-red { background: rgba(248,81,73,0.12); color: #f85149; border: 1px solid rgba(248,81,73,0.25); }
+.badge-blue { background: rgba(31,111,235,0.12); color: #1f6feb; border: 1px solid rgba(31,111,235,0.25); }
+.badge-count {
+  font-size: 11px;
+  color: var(--text3);
+  margin-left: auto;
+}
+
+/* Progress bar */
+.progress-bar {
+  background: var(--bg4);
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.stat-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.day-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.day-name {
+  font-weight: 500;
+}
+.day-bar {
+  flex: 1;
+  margin: 0 12px;
+}
+.day-value {
+  font-family: monospace;
+  font-size: 11px;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Buttons */
+.btn-small {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.btn-small.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+.page-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.page-btn.active {
+  background: var(--blue);
+  color: white;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// === Statistiques par zone (calculées côté client) ===
+let activityChart = null;
+let currentChartPeriod = 'month';
+let currentPage = 1;
+let rowsPerPage = 15;
+let allRows = [];
+
+// === Zone Stats ===
 const zoneStats = {};
 {% for a in acces %}
   {% if a.bureau_nom %}
@@ -159,110 +499,278 @@ const zoneStats = {};
 
 function renderZoneStats() {
   const container = document.getElementById('zone-stats');
-  const zones = Object.keys(zoneStats).sort((a, b) => 
-    zoneStats[b].total - zoneStats[a].total
-  );
-
+  const zones = Object.keys(zoneStats).sort((a, b) => zoneStats[b].total - zoneStats[a].total);
+  
+  if (zones.length === 0) {
+    container.innerHTML = '<div class="empty-state">Aucune donnée</div>';
+    return;
+  }
+  
   let html = '';
-  zones.forEach(zone => {
+  zones.slice(0, 5).forEach(zone => {
     const data = zoneStats[zone];
     const pct = data.total > 0 ? Math.round((data.autorises / data.total) * 100) : 0;
-    
     html += `
-      <div class="stat-bar" style="margin-bottom:16px">
+      <div class="stat-bar">
         <div class="stat-bar-label">
           <span>🚪 ${zone}</span>
           <span>${data.autorises}/${data.total} (${pct}%)</span>
         </div>
         <div class="progress-bar">
-          <div class="progress-fill" style="width: ${pct}%"></div>
+          <div class="progress-fill" style="width: ${pct}%; background: var(--green)"></div>
         </div>
       </div>
     `;
   });
-
-  container.innerHTML = html || `
-    <div style="text-align:center; padding:40px; color:var(--text3)">
-      Aucune donnée de fréquentation disponible
-    </div>`;
+  container.innerHTML = html;
 }
 
-// === Filtres des logs ===
+// === Day Stats ===
+function renderDayStats() {
+  const dayCounts = { Lun: 0, Mar: 0, Mer: 0, Jeu: 0, Ven: 0, Sam: 0, Dim: 0 };
+  const rows = document.querySelectorAll('.log-row');
+  rows.forEach(row => {
+    const dateStr = row.dataset.datetime;
+    if (dateStr) {
+      const date = new Date(dateStr);
+      const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+      const dayName = days[date.getDay()];
+      if (dayCounts[dayName] !== undefined) dayCounts[dayName]++;
+    }
+  });
+  
+  const maxCount = Math.max(...Object.values(dayCounts));
+  let html = '';
+  for (const [day, count] of Object.entries(dayCounts)) {
+    const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+    html += `
+      <div class="day-stat">
+        <span class="day-name">${day}</span>
+        <div class="day-bar">
+          <div class="progress-bar"><div class="progress-fill" style="width: ${pct}%; background: var(--blue)"></div></div>
+        </div>
+        <span class="day-value">${count} accès</span>
+      </div>
+    `;
+  }
+  document.getElementById('day-stats').innerHTML = html;
+}
+
+// === Graphique d'activité ===
+function initChart() {
+  const ctx = document.getElementById('activity-chart').getContext('2d');
+  const labels = [];
+  const data = [];
+  
+  {% for a in acces|slice:":30" %}
+    labels.push('{{ a.timestamp|date:"d/m" }}');
+    data.push(1);
+  {% endfor %}
+  
+  if (activityChart) activityChart.destroy();
+  activityChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.reverse(),
+      datasets: [{
+        label: 'Accès',
+        data: data.reverse(),
+        borderColor: '#1f6feb',
+        backgroundColor: 'rgba(31,111,235,0.1)',
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'accès' } } }
+    }
+  });
+}
+
+function changeChartPeriod(period) {
+  currentChartPeriod = period;
+  document.querySelectorAll('#activity-chart').forEach(el => el.parentElement?.parentElement?.querySelectorAll('.btn-small').forEach(btn => btn.classList.remove('active')));
+  event.target.classList.add('active');
+  // Recharger les données
+  fetch(`/api/employee/stats/?period=${period}`)
+    .then(r => r.json())
+    .then(data => {
+      if (activityChart) {
+        activityChart.data.labels = data.labels;
+        activityChart.data.datasets[0].data = data.values;
+        activityChart.update();
+      }
+    });
+}
+
+// === Filtres ===
 let currentFilter = 'all';
+let customDateStart = null;
+let customDateEnd = null;
 
 function filterLogs(filter) {
   currentFilter = filter;
+  if (filter === 'custom') {
+    document.getElementById('dateRangePicker').style.display = 'flex';
+    return;
+  }
+  document.getElementById('dateRangePicker').style.display = 'none';
+  applyFilter();
+}
+
+function applyCustomDate() {
+  customDateStart = document.getElementById('dateStart').value;
+  customDateEnd = document.getElementById('dateEnd').value;
+  document.getElementById('dateRangePicker').style.display = 'none';
+  applyFilter();
+}
+
+function closeDatePicker() {
+  document.getElementById('dateRangePicker').style.display = 'none';
+}
+
+function applyFilter() {
   const rows = document.querySelectorAll('.log-row');
   const now = new Date();
   let visibleCount = 0;
-
+  
   rows.forEach(row => {
     let show = true;
     const resultat = row.dataset.resultat;
     const timestampStr = row.dataset.timestamp;
-
-    if (filter === 'autorise') show = resultat === 'autorise';
-    else if (filter === 'refuse') show = resultat === 'refuse';
-    else if (filter === 'week') {
-      const logDate = new Date(timestampStr);
+    const logDate = new Date(timestampStr);
+    
+    if (currentFilter === 'autorise') show = resultat === 'autorise';
+    else if (currentFilter === 'refuse') show = resultat === 'refuse';
+    else if (currentFilter === 'today') {
+      const today = new Date();
+      show = logDate.toDateString() === today.toDateString();
+    }
+    else if (currentFilter === 'week') {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       show = logDate >= weekAgo;
     }
-    else if (filter === 'month') {
-      const logDate = new Date(timestampStr);
+    else if (currentFilter === 'month') {
       const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       show = logDate >= monthAgo;
     }
-
+    else if (currentFilter === 'custom' && customDateStart && customDateEnd) {
+      const start = new Date(customDateStart);
+      const end = new Date(customDateEnd);
+      show = logDate >= start && logDate <= end;
+    }
+    
     row.style.display = show ? '' : 'none';
     if (show) visibleCount++;
   });
-
+  
   document.getElementById('log-count').textContent = `${visibleCount} entrées`;
+  updatePagination();
+  updateFilterButtons();
+}
 
-  // Mise à jour visuelle des onglets
-  document.querySelectorAll('.filter-tab').forEach(tab => {
-    tab.classList.remove('active');
-    if ((filter === 'all' && tab.textContent === 'Tous') ||
-        (filter === 'autorise' && tab.textContent === 'Autorisés') ||
-        (filter === 'refuse' && tab.textContent === 'Refusés') ||
-        (filter === 'week' && tab.textContent === '7 derniers jours') ||
-        (filter === 'month' && tab.textContent === '30 derniers jours')) {
-      tab.classList.add('active');
+function searchLogs() {
+  const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+  const rows = document.querySelectorAll('.log-row');
+  let visibleCount = 0;
+  
+  rows.forEach(row => {
+    const zone = row.querySelector('td:nth-child(2) strong')?.textContent.toLowerCase() || '';
+    const show = zone.includes(searchTerm);
+    if (row.style.display !== 'none') {
+      row.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
+    }
+  });
+  
+  document.getElementById('log-count').textContent = `${visibleCount} entrées`;
+  updatePagination();
+}
+
+function updateFilterButtons() {
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+    if ((currentFilter === 'all' && btn.textContent.includes('Tous')) ||
+        (currentFilter === 'autorise' && btn.textContent.includes('Autorisés')) ||
+        (currentFilter === 'refuse' && btn.textContent.includes('Refusés')) ||
+        (currentFilter === 'today' && btn.textContent.includes('Aujourd\'hui')) ||
+        (currentFilter === 'week' && btn.textContent.includes('7 jours')) ||
+        (currentFilter === 'month' && btn.textContent.includes('30 jours'))) {
+      btn.classList.add('active');
     }
   });
 }
 
-// === Export CSV ===
+// === Pagination ===
+function updatePagination() {
+  allRows = Array.from(document.querySelectorAll('.log-row')).filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(allRows.length / rowsPerPage);
+  const start = (currentPage - 1) * rowsPerPage;
+  const end = start + rowsPerPage;
+  
+  allRows.forEach(row => row.style.display = 'none');
+  allRows.slice(start, end).forEach(row => row.style.display = '');
+  
+  const paginationDiv = document.getElementById('pagination');
+  if (paginationDiv && totalPages > 1) {
+    let html = '';
+    for (let i = 1; i <= Math.min(totalPages, 10); i++) {
+      html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+    }
+    paginationDiv.innerHTML = html;
+  } else if (paginationDiv) {
+    paginationDiv.innerHTML = '';
+  }
+}
+
+function goToPage(page) {
+  currentPage = page;
+  updatePagination();
+}
+
+// === Export ===
 function exportCSV() {
   let csv = "Date & Heure;Zone;Méthode;Résultat;Détails\n";
   const visibleRows = document.querySelectorAll('.log-row[style=""]');
-
+  
   visibleRows.forEach(row => {
     const cells = row.querySelectorAll('td');
     if (cells.length >= 5) {
-      const date = cells[0].textContent.trim().replace(/;/g, ',');
-      const zone = cells[1].textContent.trim().replace(/;/g, ',').replace(/\n/g, ' ');
+      const date = cells[0].textContent.trim();
+      const zone = cells[1].querySelector('strong')?.textContent.trim() || '';
       const methode = cells[2].textContent.trim();
       const resultat = cells[3].textContent.trim();
-      const details = cells[4].textContent.trim().replace(/;/g, ',');
-
+      const details = cells[4].textContent.trim();
       csv += `"${date}";"${zone}";"${methode}";"${resultat}";"${details}"\n`;
     }
   });
-
+  
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `historique_acces_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
-  URL.revokeObjectURL(link.href);
 }
 
-// Initialisation
-window.onload = function() {
+function exportPDF() {
+  window.print();
+}
+
+function refreshData() {
+  location.reload();
+}
+
+// === Initialisation ===
+document.addEventListener('DOMContentLoaded', function() {
   renderZoneStats();
-  filterLogs('all');   // Afficher tout au chargement
-};
+  renderDayStats();
+  initChart();
+  filterLogs('all');
+  updatePagination();
+});
 </script>
+
 {% endblock %}

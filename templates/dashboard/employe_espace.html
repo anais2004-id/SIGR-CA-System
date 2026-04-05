@@ -5,243 +5,563 @@
 {% block page_sub %}Bonjour {{ employe.prenom }} 👋{% endblock %}
 {% block nav_emp_home %}active{% endblock %}
 
-{% block content %}
-
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-        <div class="alert-text">{{ message }}</div>
-      </div>
-    {% endfor %}
-  {% endif %}
-
-  <!-- Profil Hero -->
-  <div class="card">
-    <div class="card-body">
-      <div class="profile-hdr">
-        <div class="profile-av" style="background:linear-gradient(135deg,var(--blue),var(--cyan))">
-          {{ employe.prenom|slice:":1"|upper }}{{ employe.nom|slice:":1"|upper }}
-        </div>
-        <div style="flex:1">
-          <div style="font-size:22px; font-weight:700;">
-            {{ employe.prenom|default:user.first_name }} {{ employe.nom|default:user.last_name }}
-          </div>
-          <div style="color:var(--text2); margin-top:4px;">
-            {{ employe.poste|default:"Employé" }} • {{ employe.departement|default:"—" }}
-          </div>
-          <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
-            <span class="badge b-blue">🪪 {{ employe.badge_id|default:"—" }}</span>
-            <span class="badge b-green">● Actif</span>
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="openResaModal()">+ Nouvelle réservation</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- KPIs — 4 colonnes -->
-  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
-    <div class="kpi k-blue">
-      <div class="kpi-header"><div class="kpi-label">Total Accès</div><div class="kpi-icon">🔑</div></div>
-      <div class="kpi-value">{{ total_acces|default:0 }}</div>
-      <div class="kpi-delta">Depuis le début</div>
-    </div>
-    <div class="kpi k-green">
-      <div class="kpi-header"><div class="kpi-label">Taux de Succès</div><div class="kpi-icon">✅</div></div>
-      <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
-      <div class="kpi-delta">{{ acces_autorises|default:0 }} autorisés</div>
-    </div>
-    <div class="kpi k-purple">
-      <div class="kpi-header"><div class="kpi-label">Mes Réservations</div><div class="kpi-icon">📆</div></div>
-      <div class="kpi-value">{{ reservations|length|default:0 }}</div>
-      <div class="kpi-delta">{{ a_venir|default:0 }} à venir</div>
-    </div>
-    <div class="kpi k-amber">
-      <div class="kpi-header"><div class="kpi-label">Prochaine Réservation</div><div class="kpi-icon">⏰</div></div>
-      <div class="kpi-value">
-        {% if prochaine_resa %}{{ prochaine_resa.date_debut|date:"d/m" }}{% else %}—{% endif %}
-      </div>
-      <div class="kpi-delta neutral">Prochain créneau</div>
-    </div>
-  </div>
-
-  <!-- Prochaine réservation -->
-  {% if prochaine_resa %}
-  <div class="card">
-    <div class="card-head">
-      <span>📅</span>
-      <span class="card-title">Prochaine réservation confirmée</span>
-    </div>
-    <div class="card-body">
-      <div style="font-size:16px; font-weight:600; margin-bottom:8px;">{{ prochaine_resa.titre|default:"Réservation" }}</div>
-      <div style="color:var(--text2);">
-        🚪 {{ prochaine_resa.bureau_nom }} — {{ prochaine_resa.date_debut|date:"d/m/Y à H:i" }} → {{ prochaine_resa.date_fin|date:"H:i" }}
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Derniers accès + Réservations récentes -->
-  <div class="g2">
-    <div class="card">
-      <div class="card-head">
-        <span>📋</span>
-        <span class="card-title">Mes derniers accès</span>
-        <a href="{% url 'employe_mon_historique' %}" class="btn btn-ghost btn-sm" style="margin-left:auto">Tout voir →</a>
-      </div>
-      <div class="card-body" style="padding:0;">
-        {% for a in acces %}
-        <div class="feed-item">
-          {% if a.resultat == 'AUTORISE' %}
-            <div class="feed-av" style="background:#2dba6f">✓</div>
-          {% else %}
-            <div class="feed-av" style="background:#f85149">✗</div>
-          {% endif %}
-          <div class="feed-info">
-            <div class="feed-name">{{ a.bureau_nom }}</div>
-            <div class="feed-door">{{ a.type_acces|default:"RFID" }}</div>
-          </div>
-          <div class="feed-time">{{ a.timestamp|date:"d/m H:i" }}</div>
-          {% if a.resultat == 'AUTORISE' %}
-            <div class="feed-status fs-ok">AUTORISÉ</div>
-          {% else %}
-            <div class="feed-status fs-no">REFUSÉ</div>
-          {% endif %}
-        </div>
-        {% empty %}
-        <div style="text-align:center; padding:50px; color:var(--text3)">Aucun accès enregistré pour le moment</div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <span>📆</span>
-        <span class="card-title">Mes réservations récentes</span>
-        <a href="{% url 'employe_mes_reservations' %}" class="btn btn-ghost btn-sm" style="margin-left:auto">Tout voir →</a>
-      </div>
-      <div class="card-body" style="padding:0;">
-        {% for r in reservations|slice:":5" %}
-        <div class="feed-item">
-          <div class="feed-av" style="background:#a371f7">📆</div>
-          <div class="feed-info">
-            <div class="feed-name">{{ r.titre|default:"Réservation" }}</div>
-            <div class="feed-door">🚪 {{ r.bureau_nom }}</div>
-          </div>
-          <div class="feed-time">{{ r.date_debut|date:"d/m H:i" }}</div>
-          {% if r.statut == 'confirmee' %}
-            <span class="badge b-green">Confirmée</span>
-          {% elif r.statut == 'en_attente' %}
-            <span class="badge b-amber">En attente</span>
-          {% else %}
-            <span class="badge b-red">Annulée</span>
-          {% endif %}
-        </div>
-        {% empty %}
-        <div style="text-align:center; padding:50px; color:var(--text3)">
-          Aucune réservation récente<br><br>
-          <button class="btn btn-primary btn-sm" onclick="openResaModal()">+ Réserver maintenant</button>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Suggestions Intelligentes -->
-  <div class="card">
-    <div class="card-head">
-      <span>🤖</span>
-      <span class="card-title">Suggestions intelligentes</span>
-      <span class="card-sub">Basées sur vos habitudes</span>
-    </div>
-    <div class="card-body">
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px;">
-        <div class="alert-box info">
-          <div class="alert-ico">💡</div>
-          <div>
-            <div class="alert-text">Les mardis après-midi sont les moins chargés</div>
-            <div class="alert-meta">Taux d'occupation moyen : 32%</div>
-          </div>
-        </div>
-        <div class="alert-box info">
-          <div class="alert-ico">🚪</div>
-          <div>
-            <div class="alert-text">Salle "Atelier Production" souvent disponible en fin de journée</div>
-            <div class="alert-meta">Taux de disponibilité : 78%</div>
-          </div>
-        </div>
-        <div class="alert-box info">
-          <div class="alert-ico">⏰</div>
-          <div>
-            <div class="alert-text">Les créneaux du matin partent très vite</div>
-            <div class="alert-meta">Réservez à l'avance</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Nouvelle Réservation -->
-  <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeModal()">
-    <div class="modal" style="width:560px; max-width:95vw;">
-      <div class="modal-title">📆 Nouvelle Réservation</div>
-      <div class="modal-sub">Choisissez une salle et un créneau</div>
-      <form method="post" action="{% url 'employe_mes_reservations' %}">
-        {% csrf_token %}
-        <div class="form-row">
-          <label class="form-label">Titre / Objet *</label>
-          <input type="text" class="form-input" name="titre" placeholder="Réunion équipe, Formation..." required>
-        </div>
-        <div class="form-row">
-          <label class="form-label">Salle / Ressource *</label>
-          <select class="form-select" name="bureau_id" id="sel-bureau" required>
-            <option value="">— Sélectionnez une salle —</option>
-            {% for b in bureaux %}
-              <option value="{{ b.id }}">{{ b.nom }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-          <div class="form-row">
-            <label class="form-label">Début *</label>
-            <input type="datetime-local" class="form-input" name="date_debut" id="d-debut" required>
-          </div>
-          <div class="form-row">
-            <label class="form-label">Fin *</label>
-            <input type="datetime-local" class="form-input" name="date_fin" id="d-fin" required>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label">Nombre de participants</label>
-          <input type="number" class="form-input" name="nb_participants" value="1" min="1">
-        </div>
-        <div id="dispo-ind" style="display:none; padding:12px; border-radius:8px; margin:12px 0; font-size:13px;"></div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
-          <button type="submit" class="btn btn-primary">Confirmer la réservation</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
+{% block topbar_actions %}
+<div class="pill pill-live" style="background:var(--green2);">
+    <div class="live-dot"></div>
+    <span>Connecté</span>
+</div>
+<button class="btn btn-ghost btn-sm" onclick="refreshDashboard()">↻ Actualiser</button>
 {% endblock %}
 
-{% block extra_js %}
+{% block content %}
+
+<style>
+    .stat-card {
+        background: var(--bg3);
+        border-radius: 12px;
+        padding: 16px;
+        transition: all 0.2s;
+        border: 1px solid var(--border2);
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--blue);
+    }
+    .stat-value {
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--text);
+        font-family: var(--mono);
+    }
+    .stat-label {
+        font-size: 11px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+    }
+    .welcome-banner {
+        background: linear-gradient(135deg, var(--blue3), var(--purple2));
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+    .quick-action {
+        background: var(--bg3);
+        border: 1px solid var(--border2);
+        border-radius: 12px;
+        padding: 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .quick-action:hover {
+        transform: translateY(-2px);
+        border-color: var(--blue);
+        background: var(--blue3);
+    }
+    .trend-up { color: var(--green); }
+    .trend-down { color: var(--red); }
+</style>
+
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+        <div class="alert-text">{{ message }}</div>
+    </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Bannière de bienvenue -->
+<div class="welcome-banner">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">
+                👋 Bon retour, {{ employe.prenom }}!
+            </div>
+            <div style="color: var(--text2); font-size: 13px;">
+                {{ now|date:"l d F Y" }} — Belle journée pour être productif 💪
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <button class="btn btn-primary" onclick="openResaModal()">
+                📆 + Nouvelle réservation
+            </button>
+            <button class="btn btn-ghost" onclick="location.href='{% url 'employe_mon_historique' %}'">
+                📋 Voir historique
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs améliorés -->
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="stat-value">{{ total_acces|default:0 }}</div>
+            <div style="font-size: 28px;">🔑</div>
+        </div>
+        <div class="stat-label">Total Accès</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">
+            <span class="trend-up">↑ 12%</span> vs mois dernier
+        </div>
+    </div>
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="stat-value">{{ taux_succes|default:0 }}%</div>
+            <div style="font-size: 28px;">✅</div>
+        </div>
+        <div class="stat-label">Taux de Succès</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">
+            {{ acces_autorises|default:0 }} accès autorisés
+        </div>
+    </div>
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="stat-value">{{ reservations|length|default:0 }}</div>
+            <div style="font-size: 28px;">📆</div>
+        </div>
+        <div class="stat-label">Mes Réservations</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">
+            {{ a_venir|default:0 }} à venir
+        </div>
+    </div>
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="stat-value">{{ acces_refuses|default:0 }}</div>
+            <div style="font-size: 28px;">⚠️</div>
+        </div>
+        <div class="stat-label">Accès Refusés</div>
+        <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">
+            <span class="trend-down">↓ 8%</span> d'amélioration
+        </div>
+    </div>
+</div>
+
+<!-- Actions rapides -->
+<div style="margin-bottom: 24px;">
+    <div style="font-size: 12px; color: var(--text3); text-transform: uppercase; margin-bottom: 12px;">⚡ ACTIONS RAPIDES</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <div class="quick-action" onclick="openResaModal()">
+            <div style="font-size: 24px; margin-bottom: 8px;">📅</div>
+            <div style="font-size: 12px; font-weight: 500;">Réserver une salle</div>
+        </div>
+        <div class="quick-action" onclick="location.href='{% url 'employe_mon_historique' %}'">
+            <div style="font-size: 24px; margin-bottom: 8px;">📋</div>
+            <div style="font-size: 12px; font-weight: 500;">Voir historique</div>
+        </div>
+        <div class="quick-action" onclick="location.href='{% url 'employe_profil' %}'">
+            <div style="font-size: 24px; margin-bottom: 8px;">👤</div>
+            <div style="font-size: 12px; font-weight: 500;">Mon profil</div>
+        </div>
+        <div class="quick-action" onclick="showQRCode()">
+            <div style="font-size: 24px; margin-bottom: 8px;">📱</div>
+            <div style="font-size: 12px; font-weight: 500;">Mon QR Code</div>
+        </div>
+    </div>
+</div>
+
+<!-- Prochaine réservation -->
+{% if prochaine_resa %}
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid var(--blue);">
+    <div class="card-head">
+        <span>⏰</span>
+        <span class="card-title">Prochaine réservation</span>
+        <span class="card-sub">{{ prochaine_resa.date_debut|timeuntil }} restant</span>
+    </div>
+    <div class="card-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">{{ prochaine_resa.titre|default:"Réservation" }}</div>
+                <div style="color: var(--text2); display: flex; gap: 16px; flex-wrap: wrap;">
+                    <span>🚪 {{ prochaine_resa.bureau_nom }}</span>
+                    <span>📅 {{ prochaine_resa.date_debut|date:"d/m/Y" }}</span>
+                    <span>⏰ {{ prochaine_resa.date_debut|date:"H:i" }} → {{ prochaine_resa.date_fin|date:"H:i" }}</span>
+                    <span>👥 {{ prochaine_resa.nb_participants|default:1 }} participants</span>
+                </div>
+            </div>
+            <div>
+                <button class="btn btn-del btn-sm" onclick="annulerReservation('{{ prochaine_resa.id }}')">
+                    🗑️ Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Calendrier des réservations -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-head">
+        <span>📅</span>
+        <span class="card-title">Mes réservations à venir</span>
+        <a href="{% url 'employe_mes_reservations' %}" class="btn btn-ghost btn-sm" style="margin-left: auto;">Voir tout →</a>
+    </div>
+    <div class="card-body">
+        <div id="upcoming-reservations">
+            {% if reservations_a_venir %}
+                {% for r in reservations_a_venir %}
+                <div class="reservation-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg3); border-radius: 8px; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 500;">{{ r.titre|default:"Sans titre" }}</div>
+                        <div style="font-size: 11px; color: var(--text3);">
+                            🚪 {{ r.bureau_nom }} · {{ r.date_debut|date:"d/m/Y H:i" }} → {{ r.date_fin|date:"H:i" }}
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge b-green">Confirmée</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="text-align: center; padding: 40px; color: var(--text3);">
+                    <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
+                    <div>Aucune réservation à venir</div>
+                    <button class="btn btn-primary btn-sm" style="margin-top: 12px;" onclick="openResaModal()">
+                        + Créer une réservation
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="g2" style="gap: 24px;">
+    <!-- Derniers accès -->
+    <div class="card">
+        <div class="card-head">
+            <span>🕐</span>
+            <span class="card-title">Derniers accès</span>
+            <a href="{% url 'employe_mon_historique' %}" class="btn btn-ghost btn-sm" style="margin-left: auto;">Tout voir →</a>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            {% for a in acces|slice:":8" %}
+            <div class="feed-item">
+                {% if a.resultat == 'AUTORISE' %}
+                    <div class="feed-av" style="background: var(--green);">✓</div>
+                {% else %}
+                    <div class="feed-av" style="background: var(--red);">✗</div>
+                {% endif %}
+                <div class="feed-info">
+                    <div class="feed-name">{{ a.bureau_nom|default:"Zone inconnue" }}</div>
+                    <div class="feed-door">{{ a.type_acces|default:"RFID" }}</div>
+                </div>
+                <div class="feed-time">{{ a.timestamp|date:"d/m H:i:s" }}</div>
+                {% if a.resultat == 'AUTORISE' %}
+                    <div class="feed-status fs-ok">AUTORISÉ</div>
+                {% else %}
+                    <div class="feed-status fs-no">REFUSÉ</div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div style="text-align: center; padding: 50px; color: var(--text3);">
+                <div style="font-size: 48px; margin-bottom: 12px;">🔍</div>
+                <div>Aucun accès enregistré</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Suggestions IA personnalisées -->
+    <div class="card">
+        <div class="card-head">
+            <span>🤖</span>
+            <span class="card-title">Suggestions personnalisées</span>
+            <span class="card-sub">Basées sur vos habitudes</span>
+        </div>
+        <div class="card-body">
+            <div id="ai-suggestions">
+                <div class="alert-box info" style="margin-bottom: 12px;">
+                    <div class="alert-ico">💡</div>
+                    <div>
+                        <div class="alert-text">Vous réservez souvent le {{ frequent_day|default:"mercredi" }}</div>
+                        <div class="alert-meta">Pensez à planifier vos prochaines réunions</div>
+                    </div>
+                </div>
+                <div class="alert-box info" style="margin-bottom: 12px;">
+                    <div class="alert-ico">🚪</div>
+                    <div>
+                        <div class="alert-text">Salle recommandée: {{ recommended_room|default:"Salle de réunion" }}</div>
+                        <div class="alert-meta">Disponible cet après-midi</div>
+                    </div>
+                </div>
+                <div class="alert-box info">
+                    <div class="alert-ico">⏰</div>
+                    <div>
+                        <div class="alert-text">Meilleur créneau: {{ best_time|default:"09h00-11h00" }}</div>
+                        <div class="alert-meta">Taux d'occupation: {{ occupancy_rate|default:35 }}%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistiques personnelles -->
+<div class="card" style="margin-top: 24px;">
+    <div class="card-head">
+        <span>📊</span>
+        <span class="card-title">Mes statistiques personnelles</span>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+            <div style="text-align: center;">
+                <div style="font-size: 28px; font-weight: 700; color: var(--blue);">{{ total_acces_mois|default:0 }}</div>
+                <div style="font-size: 11px; color: var(--text3);">Accès ce mois</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 28px; font-weight: 700; color: var(--green);">{{ jours_actifs|default:0 }}</div>
+                <div style="font-size: 11px; color: var(--text3);">Jours actifs</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 28px; font-weight: 700; color: var(--purple);">{{ heures_totales|default:0 }}h</div>
+                <div style="font-size: 11px; color: var(--text3);">Heures de présence</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal QR Code -->
+<div id="qrModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQRModal()">
+    <div class="modal" style="width: 400px; text-align: center;">
+        <div class="modal-title">📱 Mon QR Code d'accès</div>
+        <div class="modal-sub">Présentez ce code au scanner</div>
+        <div style="padding: 20px;">
+            <div id="qr-code-container" style="background: white; padding: 20px; border-radius: 12px; display: inline-block;">
+                <canvas id="qr-canvas" width="200" height="200"></canvas>
+            </div>
+            <div style="margin-top: 16px;">
+                <div style="font-family: monospace; font-size: 12px; background: var(--bg3); padding: 8px; border-radius: 6px;">
+                    Badge: {{ employe.badge_id|default:"—" }}
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-primary" onclick="downloadQR()">⬇️ Télécharger</button>
+            <button class="btn btn-ghost" onclick="closeQRModal()">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Réservation -->
+<div id="resaModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeResaModal()">
+    <div class="modal" style="width: 560px; max-width: 95vw;">
+        <div class="modal-title">📆 Nouvelle Réservation</div>
+        <div class="modal-sub">Choisissez une salle et un créneau</div>
+        <form method="post" action="{% url 'employe_mes_reservations' %}" id="resaForm">
+            {% csrf_token %}
+            <div class="form-row">
+                <label class="form-label">Titre / Objet *</label>
+                <input type="text" class="form-input" name="titre" placeholder="Réunion équipe, Formation..." required>
+            </div>
+            <div class="form-row">
+                <label class="form-label">Salle / Ressource *</label>
+                <select class="form-select" name="bureau_id" id="sel-bureau" required>
+                    <option value="">— Sélectionnez une salle —</option>
+                    {% for b in bureaux %}
+                    <option value="{{ b.id }}">{{ b.nom }} (Cap. {{ b.capacite_max|default:"?" }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-row">
+                    <label class="form-label">Début *</label>
+                    <input type="datetime-local" class="form-input" name="date_debut" id="d-debut" required>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Fin *</label>
+                    <input type="datetime-local" class="form-input" name="date_fin" id="d-fin" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <label class="form-label">Nombre de participants</label>
+                <input type="number" class="form-input" name="nb_participants" value="1" min="1">
+            </div>
+            <div class="form-row">
+                <label class="form-label">Description (optionnel)</label>
+                <textarea class="form-input" name="description" rows="2"></textarea>
+            </div>
+            <div id="dispo-ind" style="display:none; padding: 12px; border-radius: 8px; margin: 12px 0; font-size: 13px;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeResaModal()">Annuler</button>
+                <button type="submit" class="btn btn-primary" id="submitBtn">✅ Confirmer</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
+let qrCode = null;
+
 function openResaModal() {
-  document.getElementById('modal-overlay').style.display = 'flex';
-  const now = new Date();
-  now.setMinutes(0, 0, 0);
-  now.setHours(now.getHours() + 1);
-  const fin = new Date(now.getTime() + 3600000);
-  const fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
-                   String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':00';
-  document.getElementById('d-debut').value = fmt(now);
-  document.getElementById('d-fin').value = fmt(fin);
+    const modal = document.getElementById('resaModal');
+    modal.style.display = 'flex';
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    now.setHours(now.getHours() + 1);
+    const fin = new Date(now.getTime() + 3600000);
+    const fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+                     String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':00';
+    document.getElementById('d-debut').value = fmt(now);
+    document.getElementById('d-fin').value = fmt(fin);
 }
-function closeModal() {
-  document.getElementById('modal-overlay').style.display = 'none';
+
+function closeResaModal() {
+    document.getElementById('resaModal').style.display = 'none';
+    document.getElementById('dispo-ind').style.display = 'none';
 }
+
+function showQRCode() {
+    const modal = document.getElementById('qrModal');
+    modal.style.display = 'flex';
+    
+    if (!qrCode) {
+        const badgeId = "{{ employe.badge_id|default:employe.id }}";
+        const qrData = JSON.stringify({
+            badge: badgeId,
+            user: "{{ employe.prenom }} {{ employe.nom }}",
+            timestamp: new Date().toISOString()
+        });
+        
+        qrCode = new QRCode(document.getElementById("qr-canvas"), {
+            text: qrData,
+            width: 200,
+            height: 200,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    }
+}
+
+function closeQRModal() {
+    document.getElementById('qrModal').style.display = 'none';
+}
+
+function downloadQR() {
+    const canvas = document.getElementById('qr-canvas');
+    const link = document.createElement('a');
+    link.download = 'qrcode_acces.png';
+    link.href = canvas.toDataURL();
+    link.click();
+}
+
+function annulerReservation(id) {
+    if (confirm('Voulez-vous vraiment annuler cette réservation ?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/employe/reservations/${id}/annuler/`;
+        const csrf = document.createElement('input');
+        csrf.type = 'hidden';
+        csrf.name = 'csrfmiddlewaretoken';
+        csrf.value = '{{ csrf_token }}';
+        form.appendChild(csrf);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function refreshDashboard() {
+    location.reload();
+}
+
+// Vérification de disponibilité
+let checkTimer = null;
+
+function checkDisponibilite() {
+    const bureauId = document.getElementById('sel-bureau').value;
+    const debut = document.getElementById('d-debut').value;
+    const fin = document.getElementById('d-fin').value;
+    const indicator = document.getElementById('dispo-ind');
+    const submitBtn = document.getElementById('submitBtn');
+
+    if (!bureauId || !debut || !fin) {
+        if (indicator) indicator.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+        return;
+    }
+
+    if (new Date(fin) <= new Date(debut)) {
+        if (indicator) {
+            indicator.style.display = 'block';
+            indicator.style.background = 'var(--red2)';
+            indicator.style.color = 'var(--red)';
+            indicator.innerHTML = '⚠️ La date de fin doit être après la date de début.';
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(() => {
+        if (indicator) {
+            indicator.style.display = 'block';
+            indicator.style.background = 'var(--blue3)';
+            indicator.innerHTML = '⏳ Vérification de la disponibilité...';
+        }
+
+        fetch(`/api/bureaux/${bureauId}/disponibilite/?debut=${encodeURIComponent(debut)}&fin=${encodeURIComponent(fin)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.disponible) {
+                    if (indicator) {
+                        indicator.style.background = 'var(--green2)';
+                        indicator.style.color = 'var(--green)';
+                        indicator.innerHTML = '✅ Salle disponible sur ce créneau !';
+                    }
+                    if (submitBtn) submitBtn.disabled = false;
+                } else {
+                    if (indicator) {
+                        indicator.style.background = 'var(--red2)';
+                        indicator.style.color = 'var(--red)';
+                        indicator.innerHTML = '❌ Cette salle est déjà réservée sur ce créneau.';
+                    }
+                    if (submitBtn) submitBtn.disabled = true;
+                }
+            })
+            .catch(() => {
+                if (submitBtn) submitBtn.disabled = false;
+            });
+    }, 600);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const bureauSelect = document.getElementById('sel-bureau');
+    const debutField = document.getElementById('d-debut');
+    const finField = document.getElementById('d-fin');
+    
+    if (bureauSelect) bureauSelect.addEventListener('change', checkDisponibilite);
+    if (debutField) debutField.addEventListener('change', checkDisponibilite);
+    if (finField) finField.addEventListener('change', checkDisponibilite);
+});
 </script>
+
+<style>
+    .reservation-item {
+        transition: all 0.2s;
+    }
+    .reservation-item:hover {
+        background: var(--bg4) !important;
+        transform: translateX(4px);
+    }
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background: #22c55e;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+        display: inline-block;
+        margin-right: 6px;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+    .quick-action {
+        transition: all 0.2s;
+    }
+</style>
+
 {% endblock %}

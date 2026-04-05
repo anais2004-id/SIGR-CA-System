@@ -2,749 +2,609 @@
 {% block title %}Ressources & Bureaux - SIGR-CA{% endblock %}
 {% block nav_ressources %}active{% endblock %}
 {% block page_title %}Gestion des ressources{% endblock %}
-{% block page_sub %}Zones, salles, équipements et matériel{% endblock %}
+{% block page_sub %}Zones, salles, matériel et équipements{% endblock %}
 
 {% block topbar_actions %}
 <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
 <button class="btn btn-ghost btn-sm" onclick="exportResources()">⬇️ Exporter</button>
-<button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Ajouter une zone</button>
+<button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Ajouter</button>
 {% endblock %}
 
 {% block content %}
 
 <style>
+/* KPIs */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.kpi-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.kpi-label {
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+}
+.kpi.k-blue .kpi-value { color: #1f6feb; }
+.kpi.k-green .kpi-value { color: #2dba6f; }
+.kpi.k-amber .kpi-value { color: #e3b341; }
+.kpi.k-purple .kpi-value { color: #a371f7; }
+.kpi.k-red .kpi-value { color: #f85149; }
+
+/* Onglets */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg3);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+}
 .tab-btn {
-  flex:1; padding:9px 16px; border-radius:7px; border:none;
-  background:transparent; color:var(--text2); font-size:12.5px;
-  font-weight:500; cursor:pointer; font-family:var(--font); transition:all .15s;
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
 }
 .tab-btn.active {
-  background:var(--bg2); color:var(--text);
-  box-shadow:0 1px 6px rgba(0,0,0,.3); font-weight:600;
+  background: var(--bg2);
+  color: var(--text);
+  box-shadow: 0 1px 6px rgba(0,0,0,.3);
 }
-.tab-btn:hover:not(.active) { color:var(--text); background:var(--bg4); }
 
-.occ-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
-.occ-card { 
-  background:var(--bg3); border:1px solid var(--border2); 
-  border-radius:var(--radius); padding:14px; transition:all .2s; cursor:pointer; 
+/* Zones Grid */
+.zones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
 }
-.occ-card:hover { border-color:rgba(31,111,235,.3); transform:translateY(-2px); box-shadow:var(--shadow); }
-.occ-card.selected { border-color:var(--blue); background:var(--blue3); }
-.occ-name { font-size:14px; font-weight:600; color:var(--text); margin-bottom:2px; }
-.occ-code { font-size:10px; color:var(--text3); font-family:var(--mono); }
-.occ-bar  { background:var(--bg4); border-radius:3px; height:5px; margin-top:8px; }
-.occ-fill { height:100%; border-radius:3px; transition:width .5s; }
-.occ-fill.full { background:var(--red); }
-.occ-fill.mid  { background:var(--amber); }
-.occ-fill.low  { background:var(--green); }
+.zone-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.zone-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: var(--blue);
+}
+.zone-header {
+  padding: 14px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.zone-name { font-size: 15px; font-weight: 600; }
+.zone-code { font-size: 10px; color: var(--text3); font-family: monospace; }
+.zone-body { padding: 14px; }
+.zone-capacity {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.zone-bar {
+  background: var(--bg4);
+  border-radius: 6px;
+  height: 6px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.zone-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
+.zone-fill.low { background: var(--green); }
+.zone-fill.mid { background: var(--amber); }
+.zone-fill.high { background: var(--red); }
+.zone-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border2);
+}
+.zone-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.zone-badge.disponible { background: rgba(45,186,111,0.12); color: #2dba6f; }
+.zone-badge.occupe { background: rgba(227,179,65,0.12); color: #e3b341; }
+.zone-badge.plein { background: rgba(248,81,73,0.12); color: #f85149; }
+.zone-footer {
+  padding: 10px 14px;
+  background: var(--bg3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
 
-.mat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
-.mat-card {
-  background:var(--bg3); border:1px solid var(--border2);
-  border-radius:12px; overflow:hidden; transition:all .2s;
-  display:flex; flex-direction:column;
+/* Matériel Grid */
+.materiel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
 }
-.mat-card:hover { border-color:rgba(31,111,235,.3); transform:translateY(-2px); box-shadow:var(--shadow); }
-.mat-img {
-  width:100%; height:160px; background:var(--bg4);
-  display:flex; align-items:center; justify-content:center;
-  font-size:48px; overflow:hidden; position:relative;
+.materiel-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s;
 }
-.mat-img img { width:100%; height:100%; object-fit:cover; cursor:zoom-in; transition:transform .3s; }
-.mat-img img:hover { transform:scale(1.05); }
-.mat-badge {
-  position:absolute; top:8px; right:8px;
-  padding:2px 8px; border-radius:20px; font-size:10px;
-  background:rgba(0,0,0,.6); color:white; backdrop-filter:blur(4px);
+.materiel-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: var(--blue);
 }
-.mat-body { padding:14px; flex:1; }
-.mat-name { font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px; }
-.mat-cat  { font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
-.mat-info { font-size:11px; color:var(--text2); line-height:1.5; }
-.mat-foot { padding:10px 14px; border-top:1px solid var(--border2); display:flex; align-items:center; gap:8px; }
+.materiel-header {
+  padding: 14px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.materiel-name { font-size: 15px; font-weight: 600; }
+.materiel-category { font-size: 10px; padding: 2px 8px; border-radius: 12px; }
+.materiel-body { padding: 14px; }
+.materiel-info { font-size: 12px; color: var(--text2); line-height: 1.5; }
+.materiel-info div { margin-bottom: 6px; }
+.materiel-footer {
+  padding: 10px 14px;
+  background: var(--bg3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
-.drop-zone {
-  border:2px dashed var(--border); border-radius:var(--radius);
-  padding:24px; text-align:center; cursor:pointer; transition:all .2s;
+/* Filtres */
+.filters-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  align-items: center;
 }
-.drop-zone:hover, .drop-zone.drag-over { border-color:var(--blue); background:var(--blue3); }
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text);
+}
+.filter-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text);
+}
+.filter-tag {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-tag.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
 
-.reservation-slot {
-  display:flex; align-items:center; gap:12px;
-  padding:10px; background:var(--bg3); border-radius:8px;
-  margin-bottom:8px; cursor:pointer;
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
 }
-.reservation-slot:hover { background:var(--blue3); }
+.modal {
+  background: var(--bg2);
+  border-radius: 12px;
+  width: 550px;
+  max-width: 95vw;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h3 { margin: 0; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text2);
+}
+.modal-body { padding: 20px; max-height: 500px; overflow-y: auto; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.form-input:focus, .form-select:focus { outline: none; border-color: var(--blue); }
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 </style>
 
-<!-- KPIs améliorés -->
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total zones</div><div class="kpi-icon">🚪</div></div>
-    <div class="kpi-value">{{ total_bureaux }}</div>
-    <div class="kpi-delta">{{ zones_actives|default:0 }} actives</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Capacité totale</div><div class="kpi-icon">👥</div></div>
-    <div class="kpi-value">{{ capacite_totale|default:"—" }}</div>
-    <div class="kpi-delta">personnes max</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Occupation moyenne</div><div class="kpi-icon">📊</div></div>
-    <div class="kpi-value">{{ occupation_moy|default:"—" }}%</div>
-    <div class="kpi-delta">en temps réel</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Matériel enregistré</div><div class="kpi-icon">🖥️</div></div>
-    <div class="kpi-value" id="kpi-materiel">0</div>
-    <div class="kpi-delta">équipements</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">En maintenance</div><div class="kpi-icon">🔧</div></div>
-    <div class="kpi-value" id="kpi-maintenance">0</div>
-    <div class="kpi-delta">hors service</div>
-  </div>
+<!-- KPIs -->
+<div class="kpi-grid">
+  <div class="kpi k-blue"><div class="kpi-header"><div class="kpi-label">Total zones</div></div><div class="kpi-value">{{ total_bureaux|default:0 }}</div></div>
+  <div class="kpi k-green"><div class="kpi-header"><div class="kpi-label">Capacité totale</div></div><div class="kpi-value">{{ capacite_totale|default:0 }}</div></div>
+  <div class="kpi k-amber"><div class="kpi-header"><div class="kpi-label">Occupation moy.</div></div><div class="kpi-value">{{ occupation_moy|default:0 }}%</div></div>
+  <div class="kpi k-purple"><div class="kpi-header"><div class="kpi-label">Matériel total</div></div><div class="kpi-value">{{ total_materiel|default:0 }}</div></div>
+  <div class="kpi k-red"><div class="kpi-header"><div class="kpi-label">En maintenance</div></div><div class="kpi-value">{{ materiel_maintenance|default:0 }}</div></div>
 </div>
 
-<!-- ONGLETS -->
-<div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;border:1px solid var(--border);margin-bottom:20px">
-  <button class="tab-btn active" id="tab-zones"    onclick="switchTab('zones')">🚪 Zones &amp; Bureaux</button>
-  <button class="tab-btn"        id="tab-materiel" onclick="switchTab('materiel')">🖥️ Matériel &amp; Équipements</button>
-  <button class="tab-btn"        id="tab-reservations" onclick="switchTab('reservations')">📅 Réservations en cours</button>
+<!-- Onglets -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('zones')">🚪 Zones & Bureaux</button>
+  <button class="tab-btn" onclick="switchTab('materiel')">🖥️ Matériel & Équipements</button>
 </div>
 
-<!-- ══════ PANEL ZONES ══════ -->
-<div id="panel-zones">
-
-  <div class="card">
-    <div class="card-head">
-      <span>🚪</span>
-      <span class="card-title">Occupation en temps réel</span>
-      <span class="card-sub" id="occ-time">Mis à jour : —</span>
-      <button class="btn btn-sm btn-ghost" style="margin-left:auto" onclick="refreshOccupation()">⟳ Rafraîchir</button>
-    </div>
-    <div class="card-body">
-      <div style="margin-bottom:16px">
-        <input class="search-inp" id="zoneSearch" style="width:100%"
-               placeholder="🔍 Rechercher une zone par nom, code, étage..." oninput="filterZones()">
+<!-- PANEL ZONES -->
+<div id="panelZones">
+  <div class="filters-bar">
+    <input type="text" id="searchZone" class="search-input" placeholder="🔍 Rechercher une zone..." oninput="filterZones()">
+    <select id="etageFilter" class="filter-select" onchange="filterZones()">
+      <option value="all">Tous les étages</option>
+      <option value="0">RDC</option>
+      <option value="1">Étage 1</option>
+      <option value="2">Étage 2</option>
+      <option value="3">Étage 3</option>
+    </select>
+  </div>
+  <div class="zones-grid" id="zonesGrid">
+    {% for bureau in bureaux %}
+    <div class="zone-card" data-id="{{ bureau.id }}" data-name="{{ bureau.nom|lower }}" data-etage="{{ bureau.etage|default:0 }}">
+      <div class="zone-header">
+        <span class="zone-name">{{ bureau.nom }}</span>
+        <span class="zone-code">{{ bureau.code_bureau|default:"—" }}</span>
       </div>
-      <div class="occ-grid" id="occ-grid">
-        {% for bureau in bureaux %}
-        <div class="occ-card" onclick="selectBureau('{{ bureau.id }}','{{ bureau.nom }}')" id="card-{{ bureau.id }}">
-          <div class="occ-name">{{ bureau.nom }}</div>
-          <div class="occ-code">{{ bureau.code_bureau|default:"—" }} · Étage {{ bureau.etage|default:"0" }}</div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin:10px 0 8px">
-            <span id="occ-{{ bureau.id }}">— / {{ bureau.capacite_max|default:"?" }}</span>
-            <span id="pct-{{ bureau.id }}" style="font-weight:600">—%</span>
+      <div class="zone-body">
+        <div class="zone-capacity"><span>👥 Capacité</span><span><strong>{{ bureau.capacite_max|default:10 }}</strong> pers</span></div>
+        <div class="zone-bar"><div class="zone-fill" style="width: {{ bureau.taux_occupation|default:0 }}%"></div></div>
+        <div class="zone-status">
+          <span>📊 <strong id="pct-{{ bureau.id }}">{{ bureau.taux_occupation|default:0 }}%</strong></span>
+          <span class="zone-badge" id="badge-{{ bureau.id }}">
+            {% if bureau.taux_occupation >= 70 %}🔴 Plein{% elif bureau.taux_occupation >= 30 %}🟡 Occupé{% else %}🟢 Disponible{% endif %}
+          </span>
+        </div>
+        <div class="zone-capacity" style="margin-top:8px"><span>📍 Étage {{ bureau.etage|default:"RDC" }}</span><span>🔒 {{ bureau.niveau_securite|default:"standard"|title }}</span></div>
+      </div>
+      <div class="zone-footer">
+        <button class="btn btn-edit btn-sm" onclick="editZone('{{ bureau.id }}')">✏️</button>
+        <button class="btn btn-del btn-sm" onclick="deleteZone('{{ bureau.id }}', '{{ bureau.nom }}')">🗑️</button>
+      </div>
+    </div>
+    {% empty %}
+    <div style="text-align:center; padding:60px; grid-column:1/-1">🚪 Aucune zone<br><button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('zone')">+ Ajouter</button></div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- PANEL MATÉRIEL -->
+<div id="panelMateriel" style="display:none">
+  <div class="filters-bar">
+    <input type="text" id="searchMateriel" class="search-input" placeholder="🔍 Rechercher un équipement..." oninput="filterMateriel()">
+    <select id="categorieFilter" class="filter-select" onchange="filterMateriel()">
+      <option value="all">Toutes catégories</option>
+      <option value="informatique">💻 Informatique</option>
+      <option value="mobilier">🪑 Mobilier</option>
+      <option value="audiovisuel">📽️ Audiovisuel</option>
+      <option value="imprimante">🖨️ Imprimante</option>
+      <option value="securite">🔒 Sécurité</option>
+      <option value="autre">📦 Autre</option>
+    </select>
+    <select id="statutFilter" class="filter-select" onchange="filterMateriel()">
+      <option value="all">Tous statuts</option>
+      <option value="disponible">✅ Disponible</option>
+      <option value="utilise">🔄 Utilisé</option>
+      <option value="maintenance">🔧 Maintenance</option>
+      <option value="hors_service">❌ Hors service</option>
+    </select>
+  </div>
+  <div class="materiel-grid" id="materielGrid">
+    {% for mat in materiels %}
+    <div class="materiel-card" data-categorie="{{ mat.categorie }}" data-statut="{{ mat.statut }}" data-nom="{{ mat.nom|lower }}">
+      <div class="materiel-header">
+        <span class="materiel-name">{{ mat.nom }}</span>
+        <span class="materiel-category" style="background:var(--blue3);color:var(--blue2)">{{ mat.categorie|title }}</span>
+      </div>
+      <div class="materiel-body">
+        <div class="materiel-info">
+          {% if mat.numero_serie %}<div>🔢 Série: {{ mat.numero_serie }}</div>{% endif %}
+          {% if mat.zone %}<div>🚪 Zone: {{ mat.zone }}</div>{% endif %}
+          {% if mat.description %}<div>📝 {{ mat.description|truncatechars:80 }}</div>{% endif %}
+          <div>📊 Statut: 
+            {% if mat.statut == 'disponible' %}✅ Disponible
+            {% elif mat.statut == 'utilise' %}🔄 Utilisé
+            {% elif mat.statut == 'maintenance' %}🔧 Maintenance
+            {% else %}❌ Hors service{% endif %}
           </div>
-          <div class="occ-bar"><div class="occ-fill low" id="bar-{{ bureau.id }}" style="width:0%"></div></div>
-          <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:10px;color:var(--text3)">🚪 {{ bureau.niveau_securite|default:"standard"|title }}</span>
-            <span class="badge b-green">● ACTIF</span>
+        </div>
+      </div>
+      <div class="materiel-footer">
+        <button class="btn btn-edit btn-sm" onclick="editMateriel('{{ mat.id }}')">✏️ Modifier</button>
+        <button class="btn btn-del btn-sm" onclick="deleteMateriel('{{ mat.id }}', '{{ mat.nom }}')">🗑️ Supprimer</button>
+      </div>
+    </div>
+    {% empty %}
+    <div style="text-align:center; padding:60px; grid-column:1/-1">🖥️ Aucun matériel<br><button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('materiel')">+ Ajouter</button></div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- MODAL AJOUT/MODIFICATION -->
+<div id="mainModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">➕ Ajouter</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs" style="margin-bottom:16px">
+        <button class="tab-btn active" onclick="switchModalTab('zone')" id="modalTabZone">🚪 Zone</button>
+        <button class="tab-btn" onclick="switchModalTab('materiel')" id="modalTabMateriel">🖥️ Matériel</button>
+      </div>
+      
+      <!-- Formulaire Zone -->
+      <div id="formZone">
+        <form method="post" action="{% url 'bureau_ajouter' %}" id="zoneForm">
+          {% csrf_token %}
+          <input type="hidden" name="bureau_id" id="zoneId">
+          <div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" name="nom" id="zoneNom" required></div>
+          <div class="form-group"><label class="form-label">Code interne</label><input type="text" class="form-input" name="code_bureau" id="zoneCode"></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Étage</label><input type="number" class="form-input" name="etage" id="zoneEtage" value="0"></div>
+            <div class="form-group"><label class="form-label">Capacité</label><input type="number" class="form-input" name="capacite_max" id="zoneCapacite" value="10"></div>
           </div>
-        </div>
-        {% empty %}
-        <div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text3)">
-          Aucune zone configurée
-          <br><br>
-          <button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Ajouter une zone</button>
-        </div>
-        {% endfor %}
+          <div class="form-group"><label class="form-label">Niveau sécurité</label><select class="form-select" name="niveau_securite" id="zoneSecurite"><option value="public">🟢 Public</option><option value="standard" selected>🔵 Standard</option><option value="restreint">🟠 Restreint</option><option value="critique">🔴 Critique</option></select></div>
+          <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" name="description" id="zoneDesc"></textarea></div>
+          <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button><button type="submit" class="btn btn-primary">💾 Enregistrer</button></div>
+        </form>
+      </div>
+      
+      <!-- Formulaire Matériel -->
+      <div id="formMateriel" style="display:none">
+        <form id="materielForm">
+          <input type="hidden" id="materielId">
+          <div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="matNom" required></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Catégorie</label><select class="form-select" id="matCategorie"><option value="informatique">💻 Informatique</option><option value="mobilier">🪑 Mobilier</option><option value="audiovisuel">📽️ Audiovisuel</option><option value="imprimante">🖨️ Imprimante</option><option value="securite">🔒 Sécurité</option><option value="autre">📦 Autre</option></select></div>
+            <div class="form-group"><label class="form-label">N° série</label><input type="text" class="form-input" id="matSerie"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Statut</label><select class="form-select" id="matStatut"><option value="disponible">✅ Disponible</option><option value="utilise">🔄 Utilisé</option><option value="maintenance">🔧 Maintenance</option><option value="hors_service">❌ Hors service</option></select></div>
+            <div class="form-group"><label class="form-label">Zone assignée</label><select class="form-select" id="matZone"><option value="">— Aucune —</option>{% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}</select></div>
+          </div>
+          <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="matDesc" rows="2"></textarea></div>
+          <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button><button type="button" class="btn btn-primary" onclick="saveMateriel()">💾 Enregistrer</button></div>
+        </form>
       </div>
     </div>
-  </div>
-
-  <!-- Détail bureau -->
-  <div class="card" id="bureau-detail" style="display:none">
-    <div class="card-head">
-      <span>📊</span>
-      <span class="card-title" id="detail-title">Détail</span>
-      <a href="#" id="detail-link" class="btn btn-edit btn-sm" style="margin-left:auto">Voir historique →</a>
-      <button class="btn btn-sm btn-ghost" onclick="openReservationModalForBureau()">+ Réserver</button>
-    </div>
-    <div class="card-body">
-      <div class="g2">
-        <div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:10px">Accès — 7 derniers jours</div>
-          <div class="bars" style="height:100px" id="bureau-chart"></div>
-          <div style="display:flex;gap:4px;margin-top:4px" id="bureau-labels"></div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:10px">Taux d'occupation actuel</div>
-          <div id="bureau-occ-detail" style="font-size:48px;font-weight:300;color:var(--green);font-family:var(--mono);margin:20px 0">— %</div>
-          <div class="progress-bar"><div class="progress-fill" id="bureau-occ-bar" style="width:0%"></div></div>
-        </div>
-      </div>
-      <div style="margin-top:20px">
-        <div style="font-size:11px;font-weight:600;margin-bottom:12px">📅 Prochaines réservations</div>
-        <div id="upcoming-reservations"></div>
-      </div>
-    </div>
-  </div>
-
-</div><!-- /panel-zones -->
-
-<!-- ══════ PANEL MATÉRIEL ══════ -->
-<div id="panel-materiel" style="display:none">
-
-  <div class="card">
-    <div class="card-head">
-      <span>🖥️</span>
-      <span class="card-title">Matériel &amp; Ressources</span>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input class="search-inp" style="width:180px" id="matSearch" placeholder="🔍 Nom, catégorie..." oninput="filterMat()"/>
-        <select class="form-select" style="width:130px" id="matStatusFilter" onchange="filterMat()">
-          <option value="all">Tous statuts</option>
-          <option value="disponible">✅ Disponible</option>
-          <option value="utilise">🔄 Utilisé</option>
-          <option value="maintenance">🔧 Maintenance</option>
-          <option value="hors_service">❌ Hors service</option>
-        </select>
-        <button class="filter-tab active" onclick="filterCat('all',this)">Tous</button>
-        <button class="filter-tab" onclick="filterCat('informatique',this)">💻 Info</button>
-        <button class="filter-tab" onclick="filterCat('mobilier',this)">🪑 Mobilier</button>
-        <button class="filter-tab" onclick="filterCat('audiovisuel',this)">📽️ AV</button>
-        <button class="filter-tab" onclick="filterCat('securite',this)">🔒 Sécurité</button>
-        <button class="filter-tab" onclick="filterCat('outillage',this)">🔧 Outillage</button>
-      </div>
-    </div>
-    <div class="card-body">
-      <div class="mat-grid" id="mat-grid">
-        <div id="mat-empty" style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text3)">
-          Aucun matériel enregistré
-          <br><br>
-          <button class="btn btn-primary btn-sm" onclick="openAddModal('materiel')">+ Ajouter du matériel</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Statistiques matériel -->
-  <div class="card">
-    <div class="card-head">
-      <span>📊</span>
-      <span class="card-title">Statistiques par catégorie</span>
-    </div>
-    <div class="card-body">
-      <div id="mat-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px"></div>
-    </div>
-  </div>
-
-</div><!-- /panel-materiel -->
-
-<!-- ══════ PANEL RÉSERVATIONS ══════ -->
-<div id="panel-reservations" style="display:none">
-
-  <div class="card">
-    <div class="card-head">
-      <span>📅</span>
-      <span class="card-title">Réservations en cours</span>
-      <span class="card-sub" id="resa-count">—</span>
-    </div>
-    <div class="card-body">
-      <div id="active-reservations-list" style="max-height:400px; overflow-y:auto"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-head">
-      <span>📊</span>
-      <span class="card-title">Ressources les plus demandées</span>
-    </div>
-    <div class="card-body">
-      <div id="top-resources"></div>
-    </div>
-  </div>
-
-</div>
-
-<!-- MODAL PRINCIPAL -->
-<div class="modal-overlay" id="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
-  <div class="modal" id="modal-content" style="width:600px;max-width:95vw"></div>
-</div>
-
-<!-- MODAL ZOOM PHOTO -->
-<div id="photo-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2000;align-items:center;justify-content:center;backdrop-filter:blur(8px)" onclick="closePhotoZoom()">
-  <div style="position:relative">
-    <img id="photo-zoom-img" src="" style="max-width:90vw;max-height:85vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
-    <button onclick="closePhotoZoom()" style="position:absolute;top:-14px;right:-14px;width:34px;height:34px;border-radius:50%;background:var(--red);color:white;border:none;cursor:pointer;font-size:16px;font-weight:700;">✕</button>
   </div>
 </div>
 
-{% endblock %}
+<script>
+// Variables
+let currentTab = 'zones';
+let materielsData = {{ materiels_json|safe|default:'[]' }};
 
-{% block extra_js %}
-
-// ══ ONGLETS ══
+// Changer d'onglet principal
 function switchTab(tab) {
-  document.getElementById("panel-zones").style.display = tab === "zones" ? "block" : "none";
-  document.getElementById("panel-materiel").style.display = tab === "materiel" ? "block" : "none";
-  document.getElementById("panel-reservations").style.display = tab === "reservations" ? "block" : "none";
-  document.getElementById("tab-zones").classList.toggle("active", tab === "zones");
-  document.getElementById("tab-materiel").classList.toggle("active", tab === "materiel");
-  document.getElementById("tab-reservations").classList.toggle("active", tab === "reservations");
-  if (tab === "materiel") renderMatGrid();
-  if (tab === "reservations") loadActiveReservations();
+  currentTab = tab;
+  document.getElementById('panelZones').style.display = tab === 'zones' ? 'block' : 'none';
+  document.getElementById('panelMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  if (tab === 'zones') document.querySelector('.tabs .tab-btn:first-child').classList.add('active');
+  else document.querySelector('.tabs .tab-btn:last-child').classList.add('active');
 }
 
-// ══ ZONES ══
+// Filtres Zones
 function filterZones() {
-  var term = document.getElementById("zoneSearch").value.toLowerCase();
-  document.querySelectorAll(".occ-card").forEach(function(c) {
-    var name = c.querySelector(".occ-name").textContent.toLowerCase();
-    var code = c.querySelector(".occ-code").textContent.toLowerCase();
-    c.style.display = (name.includes(term) || code.includes(term)) ? "" : "none";
+  var search = document.getElementById('searchZone').value.toLowerCase();
+  var etage = document.getElementById('etageFilter').value;
+  document.querySelectorAll('#zonesGrid .zone-card').forEach(card => {
+    var name = card.dataset.name || '';
+    var cardEtage = card.dataset.etage || '0';
+    var matchSearch = name.includes(search);
+    var matchEtage = etage === 'all' || cardEtage === etage;
+    card.style.display = (matchSearch && matchEtage) ? '' : 'none';
   });
+}
+
+// Filtres Matériel
+function filterMateriel() {
+  var search = document.getElementById('searchMateriel').value.toLowerCase();
+  var categorie = document.getElementById('categorieFilter').value;
+  var statut = document.getElementById('statutFilter').value;
+  document.querySelectorAll('#materielGrid .materiel-card').forEach(card => {
+    var name = card.dataset.nom || '';
+    var cat = card.dataset.categorie || '';
+    var st = card.dataset.statut || '';
+    var matchSearch = name.includes(search);
+    var matchCat = categorie === 'all' || cat === categorie;
+    var matchStatut = statut === 'all' || st === statut;
+    card.style.display = (matchSearch && matchCat && matchStatut) ? '' : 'none';
+  });
+}
+
+// Zones
+function editZone(id) {
+  var card = document.querySelector('.zone-card[data-id="' + id + '"]');
+  if (!card) return;
+  document.getElementById('modalTitle').textContent = '✏️ Modifier la zone';
+  document.getElementById('zoneId').value = id;
+  document.getElementById('zoneNom').value = card.querySelector('.zone-name')?.textContent || '';
+  document.getElementById('zoneCode').value = card.querySelector('.zone-code')?.textContent?.replace('—', '') || '';
+  document.getElementById('zoneEtage').value = card.querySelector('.zone-capacity:last-child span:first-child')?.textContent?.replace('📍 Étage ', '').replace('RDC', '0') || '0';
+  document.getElementById('zoneCapacite').value = card.querySelector('.zone-capacity strong')?.textContent || '10';
+  var securiteText = card.querySelector('.zone-capacity:last-child span:last-child')?.textContent?.replace('🔒 ', '').toLowerCase() || 'standard';
+  document.getElementById('zoneSecurite').value = securiteText;
+  document.getElementById('mainModal').style.display = 'flex';
+  switchModalTab('zone');
+}
+
+function deleteZone(id, name) {
+  if (confirm('Supprimer la zone "' + name + '" ?')) {
+    fetch('/bureaux/' + id + '/supprimer/', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
+      .then(() => location.reload());
+  }
+}
+
+// Matériel
+function editMateriel(id) {
+  var materiel = materielsData.find(m => m.id === id);
+  if (!materiel) return;
+  document.getElementById('modalTitle').textContent = '✏️ Modifier le matériel';
+  document.getElementById('materielId').value = id;
+  document.getElementById('matNom').value = materiel.nom || '';
+  document.getElementById('matCategorie').value = materiel.categorie || 'informatique';
+  document.getElementById('matSerie').value = materiel.numero_serie || '';
+  document.getElementById('matStatut').value = materiel.statut || 'disponible';
+  document.getElementById('matZone').value = materiel.zone || '';
+  document.getElementById('matDesc').value = materiel.description || '';
+  document.getElementById('mainModal').style.display = 'flex';
+  switchModalTab('materiel');
+}
+
+function deleteMateriel(id, name) {
+  if (confirm('Supprimer le matériel "' + name + '" ?')) {
+    fetch('/api/materiel/' + id + '/supprimer/', { method: 'DELETE', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
+      .then(() => location.reload());
+  }
+}
+
+function saveMateriel() {
+  var data = {
+    id: document.getElementById('materielId').value,
+    nom: document.getElementById('matNom').value,
+    categorie: document.getElementById('matCategorie').value,
+    numero_serie: document.getElementById('matSerie').value,
+    statut: document.getElementById('matStatut').value,
+    zone: document.getElementById('matZone').value,
+    description: document.getElementById('matDesc').value
+  };
+  if (!data.nom) { alert('Le nom est obligatoire'); return; }
+  fetch('/api/materiel/ajouter/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(data)
+  }).then(() => location.reload());
+}
+
+// Modal
+function openAddModal(type) {
+  document.getElementById('modalTitle').textContent = '➕ Ajouter';
+  document.getElementById('zoneId').value = '';
+  document.getElementById('zoneNom').value = '';
+  document.getElementById('zoneCode').value = '';
+  document.getElementById('zoneEtage').value = '0';
+  document.getElementById('zoneCapacite').value = '10';
+  document.getElementById('zoneSecurite').value = 'standard';
+  document.getElementById('zoneDesc').value = '';
+  document.getElementById('materielId').value = '';
+  document.getElementById('matNom').value = '';
+  document.getElementById('matCategorie').value = 'informatique';
+  document.getElementById('matSerie').value = '';
+  document.getElementById('matStatut').value = 'disponible';
+  document.getElementById('matZone').value = '';
+  document.getElementById('matDesc').value = '';
+  document.getElementById('mainModal').style.display = 'flex';
+  switchModalTab(type || 'zone');
+}
+
+function switchModalTab(tab) {
+  document.getElementById('formZone').style.display = tab === 'zone' ? 'block' : 'none';
+  document.getElementById('formMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
+  document.getElementById('modalTabZone').classList.toggle('active', tab === 'zone');
+  document.getElementById('modalTabMateriel').classList.toggle('active', tab === 'materiel');
+}
+
+function closeModal() {
+  document.getElementById('mainModal').style.display = 'none';
+}
+
+function refreshOccupation() {
+  fetch('/api/occupation/').then(r => r.json()).then(data => {
+    data.bureaux.forEach(b => {
+      var pctEl = document.getElementById('pct-' + b.id);
+      var badgeEl = document.getElementById('badge-' + b.id);
+      var fillEl = document.querySelector('.zone-card[data-id="' + b.id + '"] .zone-fill');
+      if (pctEl) pctEl.textContent = b.taux + '%';
+      if (fillEl) fillEl.style.width = b.taux + '%';
+      if (badgeEl) {
+        if (b.taux >= 70) { badgeEl.innerHTML = '🔴 Plein'; badgeEl.className = 'zone-badge plein'; }
+        else if (b.taux >= 30) { badgeEl.innerHTML = '🟡 Occupé'; badgeEl.className = 'zone-badge occupe'; }
+        else { badgeEl.innerHTML = '🟢 Disponible'; badgeEl.className = 'zone-badge disponible'; }
+      }
+    });
+  }).catch(() => {});
 }
 
 function refreshPage() { location.reload(); }
-
-function refreshOccupation() {
-  fetch("/api/occupation/")
-    .then(r => r.json())
-    .then(data => {
-      data.bureaux.forEach(b => {
-        var occEl = document.getElementById("occ-"+b.id);
-        var pctEl = document.getElementById("pct-"+b.id);
-        var barEl = document.getElementById("bar-"+b.id);
-        if(occEl) occEl.textContent = b.occupation+"/"+b.capacite;
-        if(pctEl) { pctEl.textContent = b.taux+"%"; pctEl.style.color = b.taux>=80?"var(--red)":b.taux>=60?"var(--amber)":"var(--green)"; }
-        if(barEl) { barEl.style.width = b.taux+"%"; barEl.className = "occ-fill "+(b.taux>=80?"full":b.taux>=60?"mid":"low"); }
-      });
-      var now = new Date();
-      document.getElementById("occ-time").textContent = "Mis à jour : "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
-    }).catch(() => {});
-}
-
-var selectedBureauId = null;
-function selectBureau(id, nom) {
-  if (selectedBureauId) {
-    var prev = document.getElementById("card-"+selectedBureauId);
-    if(prev) prev.classList.remove("selected");
-  }
-  selectedBureauId = id;
-  var card = document.getElementById("card-"+id);
-  if(card) card.classList.add("selected");
-  document.getElementById("detail-title").textContent = nom;
-  document.getElementById("detail-link").href = "/bureau/"+id+"/";
-  document.getElementById("bureau-detail").style.display = "block";
-  
-  fetch("/api/bureau/"+id+"/stats/")
-    .then(r => r.json())
-    .then(data => renderBureauChart(data))
-    .catch(() => {});
-  
-  fetch("/api/bureau/"+id+"/reservations/")
-    .then(r => r.json())
-    .then(data => {
-      var container = document.getElementById("upcoming-reservations");
-      if(data.reservations && data.reservations.length > 0) {
-        container.innerHTML = data.reservations.map(r => `
-          <div class="reservation-slot" onclick="viewReservation('${r.id}')">
-            <span>📅 ${new Date(r.debut).toLocaleString()}</span>
-            <span>→ ${new Date(r.fin).toLocaleTimeString()}</span>
-            <span>👤 ${r.employe}</span>
-          </div>
-        `).join('');
-      } else {
-        container.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">Aucune réservation à venir</div>';
-      }
-    });
-}
-
-function renderBureauChart(data) {
-  var bc = document.getElementById("bureau-chart");
-  var bl = document.getElementById("bureau-labels");
-  bc.innerHTML = ""; bl.innerHTML = "";
-  var mx = Math.max.apply(null, data.acces_par_jour.concat([1]));
-  data.acces_par_jour.forEach(function(v,i){
-    var w = document.createElement("div"); w.className = "bar-wrap";
-    w.innerHTML = '<div class="bar ok" style="height:'+Math.round((v/mx)*88)+'px"></div>';
-    bc.appendChild(w);
-    var l = document.createElement("div");
-    l.style.cssText = "flex:1;text-align:center;font-size:9px;color:var(--text3);font-family:var(--mono)";
-    l.textContent = data.dates[i] || "";
-    bl.appendChild(l);
-  });
-  
-  fetch("/api/occupation/")
-    .then(r => r.json())
-    .then(data => {
-      var bureau = data.bureaux.find(b => b.id == selectedBureauId);
-      if(bureau) {
-        var taux = bureau.taux;
-        document.getElementById("bureau-occ-detail").textContent = taux+"%";
-        document.getElementById("bureau-occ-detail").style.color = taux>80?"var(--red)":taux>60?"var(--amber)":"var(--green)";
-        document.getElementById("bureau-occ-bar").style.width = taux+"%";
-      }
-    });
-}
-
-function openReservationModalForBureau() {
-  if(selectedBureauId) {
-    window.location.href = "/reservations/ajouter/?bureau="+selectedBureauId;
-  }
-}
-
-// ══ MATÉRIEL — localStorage ══
-var MAT_KEY = "ge_materiel_v3";
-var CAT_ICO = {informatique:"💻",mobilier:"🪑",audiovisuel:"📽️",securite:"🔒",vehicule:"🚗",outillage:"🔧",autre:"📦"};
-var STATUT_BADGE = {
-  disponible:  '<span class="badge b-green">✅ Disponible</span>',
-  utilise:     '<span class="badge b-amber">🔄 Utilisé</span>',
-  maintenance: '<span class="badge b-red">🔧 Maintenance</span>',
-  hors_service:'<span class="badge b-gray">❌ Hors service</span>'
-};
-
-function getMat(){ try{ return JSON.parse(localStorage.getItem(MAT_KEY)||"[]"); } catch(e){ return []; } }
-function saveMat(l){ 
-  localStorage.setItem(MAT_KEY,JSON.stringify(l)); 
-  var kpi = document.getElementById("kpi-materiel"); 
-  if(kpi) kpi.textContent = l.length;
-  var maint = document.getElementById("kpi-maintenance");
-  if(maint) maint.textContent = l.filter(m => m.statut === "maintenance" || m.statut === "hors_service").length;
-  renderMatStats();
-}
-
-var _catFilter = "all", _statusFilter = "all", _searchFilter = "";
-
-function filterCat(cat,el){
-  _catFilter = cat;
-  document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
-  if(el) el.classList.add("active");
-  renderMatGrid();
-}
-function filterMat(){ 
-  _searchFilter = document.getElementById("matSearch").value.toLowerCase(); 
-  _statusFilter = document.getElementById("matStatusFilter").value;
-  renderMatGrid(); 
-}
-
-function renderMatStats() {
-  var list = getMat();
-  var stats = {};
-  list.forEach(m => {
-    if(!stats[m.categorie]) stats[m.categorie] = { total: 0, disponible: 0 };
-    stats[m.categorie].total++;
-    if(m.statut === "disponible") stats[m.categorie].disponible++;
-  });
-  var container = document.getElementById("mat-stats");
-  if(container) {
-    container.innerHTML = Object.entries(stats).map(([cat, data]) => `
-      <div style="background:var(--bg3); border-radius:8px; padding:12px; text-align:center">
-        <div style="font-size:24px">${CAT_ICO[cat]||"📦"}</div>
-        <div style="font-size:12px; font-weight:600; margin:4px 0">${cat}</div>
-        <div style="font-size:11px; color:var(--text2)">Total: ${data.total}</div>
-        <div style="font-size:11px; color:var(--green)">Dispo: ${data.disponible}</div>
-      </div>
-    `).join('');
-  }
-}
-
-function renderMatGrid(){
-  var list = getMat();
-  var filtered = list.filter(function(m){
-    var mc = _catFilter === "all" || m.categorie === _catFilter;
-    var ms = _searchFilter === "" ||
-           (m.nom||"").toLowerCase().includes(_searchFilter) ||
-           (m.categorie||"").toLowerCase().includes(_searchFilter) ||
-           (m.zone||"").toLowerCase().includes(_searchFilter);
-    var mst = _statusFilter === "all" || m.statut === _statusFilter;
-    return mc && ms && mst;
-  });
-  var grid = document.getElementById("mat-grid");
-  var empty = document.getElementById("mat-empty");
-  Array.from(grid.children).forEach(c => { if(c.id !== "mat-empty") c.remove(); });
-  if(filtered.length === 0){ empty.style.display = "block"; return; }
-  empty.style.display = "none";
-  filtered.forEach(function(m){
-    var card = document.createElement("div"); card.className = "mat-card";
-    var ico = CAT_ICO[m.categorie] || "📦";
-    var badge = STATUT_BADGE[m.statut] || '<span class="badge b-gray">'+m.statut+'</span>';
-    var statusClass = m.statut === "maintenance" ? "b-red" : (m.statut === "utilise" ? "b-amber" : "b-green");
-    var imgHtml = m.photo
-      ? '<div class="mat-img"><img src="'+m.photo+'" alt="'+m.nom+'" onclick="zoomPhoto(\''+m.id+'\')"><div class="mat-badge">'+badge+'</div></div>'
-      : '<div class="mat-img">'+ico+'<div class="mat-badge">'+badge+'</div></div>';
-    card.innerHTML =
-      imgHtml +
-      '<div class="mat-body">'+
-        '<div class="mat-name">'+m.nom+'</div>'+
-        '<div class="mat-cat">'+ico+' '+m.categorie+'</div>'+
-        '<div class="mat-info">'+
-          (m.zone ? '🚪 <strong>'+m.zone+'</strong><br>' : '')+
-          (m.numero_serie ? '🔢 <span style="font-family:var(--mono);font-size:10px">'+m.numero_serie+'</span><br>' : '')+
-          (m.description ? '<span style="color:var(--text3)">'+m.description+'</span>' : '')+
-        '</div>'+
-      '</div>'+
-      '<div class="mat-foot">'+
-        '<div style="margin-left:auto;display:flex;gap:4px">'+
-          '<button class="btn btn-edit btn-sm" onclick="editMat(\''+m.id+'\')">✏️</button>'+
-          '<button class="btn btn-del btn-sm" onclick="delMat(\''+m.id+'\')">🗑️</button>'+
-        '</div>'+
-      '</div>';
-    grid.insertBefore(card, empty);
-  });
-}
-
-function zoomPhoto(id){
-  var m = getMat().find(x => x.id === id); 
-  if(!m || !m.photo) return;
-  document.getElementById("photo-zoom-img").src = m.photo;
-  document.getElementById("photo-overlay").style.display = "flex";
-}
-function closePhotoZoom(){ document.getElementById("photo-overlay").style.display = "none"; }
-
-function delMat(id){
-  if(!confirm("Supprimer ce matériel ?")) return;
-  saveMat(getMat().filter(m => m.id !== id));
-  renderMatGrid();
-}
-function editMat(id){
-  var m = getMat().find(x => x.id === id); 
-  if(m) openAddModal("materiel", m);
-}
-
-// ══ RÉSERVATIONS ══
-function loadActiveReservations() {
-  fetch("/api/reservations/active/")
-    .then(r => r.json())
-    .then(data => {
-      var container = document.getElementById("active-reservations-list");
-      var countSpan = document.getElementById("resa-count");
-      if(countSpan) countSpan.textContent = data.total + " en cours";
-      if(data.reservations && data.reservations.length > 0) {
-        container.innerHTML = data.reservations.map(r => `
-          <div class="feed-item" onclick="viewReservation('${r.id}')">
-            <div class="feed-av" style="background:#a371f7">📆</div>
-            <div class="feed-info">
-              <div class="feed-name">${r.titre}</div>
-              <div class="feed-door">🚪 ${r.bureau} · 👤 ${r.employe}</div>
-              <div class="feed-time">${new Date(r.debut).toLocaleString()} → ${new Date(r.fin).toLocaleTimeString()}</div>
-            </div>
-            <div class="feed-status fs-ok">En cours</div>
-          </div>
-        `).join('');
-      } else {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">Aucune réservation en cours</div>';
-      }
-    });
-  
-  fetch("/api/resources/top/")
-    .then(r => r.json())
-    .then(data => {
-      var container = document.getElementById("top-resources");
-      if(data.resources && data.resources.length > 0) {
-        container.innerHTML = data.resources.map(r => `
-          <div style="display:flex; justify-content:space-between; padding:10px; background:var(--bg3); border-radius:8px; margin-bottom:8px">
-            <span>🚪 ${r.nom}</span>
-            <span>📊 ${r.reservations} réservations</span>
-            <span class="badge b-blue">${Math.round(r.taux)}%</span>
-          </div>
-        `).join('');
-      } else {
-        container.innerHTML = '<div style="color:var(--text3);text-align:center;padding:20px">Aucune donnée</div>';
-      }
-    });
-}
-
-function viewReservation(id) {
-  window.location.href = "/reservations/"+id+"/";
-}
-
-// ══ EXPORT ══
-function exportResources() {
-  var data = {
-    zones: {{ bureaux|safe }},
-    materiel: getMat()
-  };
-  var blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
-  var link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `ressources_export_${new Date().toISOString().slice(0,10)}.json`;
-  link.click();
-}
-
-// ══ MODAL ══
-var _photoB64 = null;
-
-function openAddModal(type, existing){
-  type = type || "zone";
-  existing = existing || null;
-  _photoB64 = null;
-  var isEdit = !!existing && !!existing.id;
-
-  var tabs = isEdit ? "" : '<div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:8px;margin-bottom:20px">'+
-    '<button class="tab-btn '+(type==="zone"?"active":"")+'" id="mt-zone" onclick="mTab(\'zone\')">🚪 Zone / Bureau</button>'+
-    '<button class="tab-btn '+(type==="materiel"?"active":"")+'" id="mt-mat"  onclick="mTab(\'materiel\')">🖥️ Matériel</button>'+
-  '</div>';
-
-  document.getElementById("modal-content").innerHTML =
-    '<div class="modal-title">'+(isEdit?"✏️ Modifier":"➕ Ajouter")+' une ressource</div>'+
-    '<div class="modal-sub">Gérer les zones, bureaux et matériel de l\'entreprise</div>'+
-    tabs+
-    '<div id="mf-zone" style="display:'+(type==="zone"?"block":"none")+'">'  +buildZoneForm(existing)+'</div>'+
-    '<div id="mf-mat"  style="display:'+(type==="materiel"?"block":"none")+'">'  +buildMatForm(existing)+'</div>';
-
-  document.getElementById("modal-overlay").style.display = "flex";
-}
-
-function mTab(t){
-  document.getElementById("mf-zone").style.display = t==="zone" ? "block" : "none";
-  document.getElementById("mf-mat").style.display = t==="materiel" ? "block" : "none";
-  document.getElementById("mt-zone").classList.toggle("active", t==="zone");
-  document.getElementById("mt-mat").classList.toggle("active", t==="materiel");
-}
-
-function buildZoneForm(d){
-  d = d || {};
-  var niveauOptions = [
-    {v:"public", l:"🟢 Public"},
-    {v:"standard", l:"🔵 Standard"},
-    {v:"restreint", l:"🟠 Restreint"},
-    {v:"critique", l:"🔴 Critique"}
-  ].map(s => `<option value="${s.v}" ${d.niveau_securite === s.v ? "selected" : ""}>${s.l}</option>`).join("");
-  
-  return '<form method="post" action="/bureaux/ajouter/">'+
-    '<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">'+
-    '<div class="form-row"><label class="form-label">Nom de la zone <span style="color:var(--red)">*</span></label>'+
-      '<input class="form-input" name="nom" value="'+(d.nom||"")+'" placeholder="ex: Bureau Direction" required></div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
-      '<div class="form-row"><label class="form-label">Code interne</label>'+
-        '<input class="form-input" name="code_bureau" value="'+(d.code_bureau||"")+'" placeholder="DIR-01"></div>'+
-      '<div class="form-row"><label class="form-label">Étage</label>'+
-        '<input class="form-input" name="etage" type="number" value="'+(d.etage||0)+'" min="0"></div>'+
-    '</div>'+
-    '<div class="form-row"><label class="form-label">Capacité maximale</label>'+
-      '<input class="form-input" name="capacite_max" type="number" value="'+(d.capacite_max||12)+'" min="1"></div>'+
-    '<div class="form-row"><label class="form-label">Niveau de sécurité</label>'+
-      '<select class="form-select" name="niveau_securite">'+niveauOptions+'</select></div>'+
-    '<div class="modal-actions">'+
-      '<button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>'+
-      '<button type="submit" class="btn btn-primary">'+(d.id?"💾 Enregistrer":"➕ Créer la zone")+'</button>'+
-    '</div></form>';
-}
-
-function buildMatForm(d){
-  d = d || {};
-  var cats = ["informatique","mobilier","audiovisuel","securite","vehicule","outillage","autre"];
-  var cOpts = cats.map(c => `<option value="${c}" ${d.categorie === c ? "selected" : ""}>${CAT_ICO[c]||"📦"} ${c}</option>`).join("");
-  var sOpts = [
-    {v:"disponible", l:"✅ Disponible"},
-    {v:"utilise", l:"🔄 Utilisé"},
-    {v:"maintenance", l:"🔧 Maintenance"},
-    {v:"hors_service", l:"❌ Hors service"}
-  ].map(s => `<option value="${s.v}" ${d.statut === s.v ? "selected" : ""}>${s.l}</option>`).join("");
-
-  var zOpts = '<option value="">— Aucune zone —</option>';
-  {% for bureau in bureaux %}
-  zOpts += '<option value="{{ bureau.nom }}" '+(d.zone === "{{ bureau.nom }}" ? "selected" : "")+'>{{ bureau.nom }}</option>';
-  {% endfor %}
-
-  var previewHtml = d.photo
-    ? '<img src="'+d.photo+'" id="pv-img" style="max-height:120px;max-width:100%;border-radius:8px;display:block;margin:0 auto 8px">'+
-      '<div style="font-size:11px;color:var(--green);text-align:center">✅ Photo existante</div>'
-    : '<div style="font-size:48px;margin-bottom:8px;text-align:center">📷</div>'+
-      '<div style="font-size:12px;color:var(--text2);text-align:center">Cliquez ou glissez une image ici</div>'+
-      '<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:4px">JPG · PNG · WEBP · max 5 Mo</div>';
-
-  return '<input type="hidden" id="mat-id" value="'+(d.id||"")+'">'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
-      '<div class="form-row"><label class="form-label">Nom <span style="color:var(--red)">*</span></label>'+
-        '<input class="form-input" id="m-nom" value="'+(d.nom||"")+'" placeholder="ex: Projecteur Epson" required></div>'+
-      '<div class="form-row"><label class="form-label">Catégorie</label>'+
-        '<select class="form-select" id="m-cat">'+cOpts+'</select></div>'+
-    '</div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
-      '<div class="form-row"><label class="form-label">N° de série</label>'+
-        '<input class="form-input" id="m-serie" value="'+(d.numero_serie||"")+'" placeholder="SN-XXXXXXX"></div>'+
-      '<div class="form-row"><label class="form-label">Statut</label>'+
-        '<select class="form-select" id="m-statut">'+sOpts+'</select></div>'+
-    '</div>'+
-    '<div class="form-row"><label class="form-label">Zone / Bureau assigné</label>'+
-      '<select class="form-select" id="m-zone">'+zOpts+'</select></div>'+
-    '<div class="form-row"><label class="form-label">Description</label>'+
-      '<textarea class="form-input" id="m-desc" rows="2" placeholder="Marque, modèle, utilisation...">'+(d.description||"")+'</textarea></div>'+
-
-    '<div class="form-row"><label class="form-label">Photo</label>'+
-      '<div class="drop-zone" id="drop-z"'+
-           ' onclick="document.getElementById(\'ph-input\').click()"'+
-           ' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'+
-           ' ondragleave="this.classList.remove(\'drag-over\')"'+
-           ' ondrop="handleDrop(event)">'+
-        '<div id="ph-preview">'+previewHtml+'</div>'+
-        '<input type="file" id="ph-input" accept="image/*" style="display:none" onchange="handleFileSelect(this)">'+
-      '</div>'+
-      (d.photo ? '<button type="button" class="btn btn-del btn-sm" style="margin-top:8px" onclick="clearPv()">🗑️ Supprimer la photo</button>' : '')+
-    '</div>'+
-
-    '<div class="modal-actions">'+
-      '<button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>'+
-      '<button type="button" class="btn btn-primary" onclick="saveMatForm()">'+
-        (d.id ? "💾 Enregistrer les modifications" : "➕ Ajouter le matériel")+
-      '</button>'+
-    '</div>';
-}
-
-function handleFileSelect(input){
-  if(!input.files || !input.files[0]) return;
-  readPhoto(input.files[0]);
-}
-function handleDrop(e){
-  e.preventDefault();
-  document.getElementById("drop-z").classList.remove("drag-over");
-  var f = e.dataTransfer.files[0];
-  if(!f || !f.type.startsWith("image/")){ alert("Fichier image requis (JPG, PNG, WEBP)"); return; }
-  readPhoto(f);
-}
-function readPhoto(f){
-  if(f.size > 5*1024*1024){ alert("Image trop lourde — maximum 5 Mo"); return; }
-  var r = new FileReader();
-  r.onload = function(e){
-    _photoB64 = e.target.result;
-    document.getElementById("ph-preview").innerHTML =
-      '<img src="'+e.target.result+'" style="max-height:120px;max-width:100%;border-radius:8px;display:block;margin:0 auto 8px">'+
-      '<div style="font-size:11px;color:var(--green);text-align:center">✅ Photo prête</div>';
-  };
-  r.readAsDataURL(f);
-}
-function clearPv(){
-  _photoB64 = null;
-  document.getElementById("ph-preview").innerHTML =
-    '<div style="font-size:48px;margin-bottom:8px;text-align:center">📷</div>'+
-    '<div style="font-size:12px;color:var(--text2);text-align:center">Cliquez ou glissez une image ici</div>'+
-    '<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:4px">JPG · PNG · WEBP · max 5 Mo</div>';
-}
-function saveMatForm(){
-  var nom = document.getElementById("m-nom").value.trim();
-  if(!nom){ alert("Le nom est obligatoire"); document.getElementById("m-nom").focus(); return; }
-  var existId = document.getElementById("mat-id").value;
-  var existPhoto = existId ? (getMat().find(x => x.id === existId)||{}).photo : null;
-  var m = {
-    id: existId || ("mat_"+Date.now()),
-    nom: nom,
-    categorie: document.getElementById("m-cat").value,
-    numero_serie: document.getElementById("m-serie").value.trim(),
-    statut: document.getElementById("m-statut").value,
-    zone: document.getElementById("m-zone").value,
-    description: document.getElementById("m-desc").value.trim(),
-    photo: _photoB64 || (existId ? existPhoto : null),
-    updated_at: new Date().toISOString()
-  };
-  var list = getMat();
-  var idx = list.findIndex(x => x.id === m.id);
-  if(idx >= 0) list[idx] = m;
-  else list.push(m);
-  saveMat(list);
-  closeModal();
-  switchTab("materiel");
-}
-function closeModal(){ document.getElementById("modal-overlay").style.display = "none"; }
+function exportResources() { alert("Export CSV à implémenter"); }
 
 // Initialisation
-window.onload = function() {
+document.addEventListener('DOMContentLoaded', function() {
   refreshOccupation();
-  renderMatStats();
   setInterval(refreshOccupation, 30000);
-};
+});
+</script>
+
 {% endblock %}
