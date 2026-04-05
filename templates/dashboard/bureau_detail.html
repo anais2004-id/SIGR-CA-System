@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ bureau.nom }} - SIGR-CA{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+{% block page_title %}{{ bureau.nom }}{% endblock %}
+{% block page_sub %}Détail de la zone{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'ressources' %}" class="btn btn-ghost btn-sm">← Retour</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <span>🚪</span>
+    <span class="card-title">{{ bureau.nom }}</span>
+  </div>
+  <div class="card-body">
+    <div class="g2">
+      <div>
+        <div><strong>Code:</strong> {{ bureau.code_bureau|default:"—" }}</div>
+        <div><strong>Étage:</strong> {{ bureau.etage|default:"0" }}</div>
+        <div><strong>Capacité:</strong> {{ bureau.capacite_max|default:"10" }} personnes</div>
+        <div><strong>Niveau sécurité:</strong> {{ bureau.niveau_securite|default:"standard"|title }}</div>
+      </div>
+      <div>
+        <div><strong>Occupation actuelle:</strong> {{ occupation_recente|default:0 }} personnes</div>
+        <div><strong>Taux d'occupation:</strong> {{ taux_occupation|default:0 }}%</div>
+        <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:{{ taux_occupation|default:0 }}%"></div></div>
+      </div>
+    </div>
+    {% if bureau.description %}
+    <div style="margin-top:16px"><strong>Description:</strong><br>{{ bureau.description }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><span>📊</span><span class="card-title">Historique des accès (7 derniers jours)</span></div>
+  <div class="card-body">
+    <div style="display:flex; align-items:flex-end; gap:8px; height:150px">
+      {% for h in historique %}
+      <div style="flex:1; text-align:center">
+        <div style="height:{{ h.acces|default:0|floatformat:0 }}px; background:var(--blue); border-radius:4px 4px 0 0; min-height:3px"></div>
+        <div style="font-size:10px; margin-top:4px">{{ h.date }}</div>
+        <div style="font-size:9px; color:var(--text3)">{{ h.acces }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

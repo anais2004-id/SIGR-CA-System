@@ -23,7 +23,7 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 import base64
 import logging
-
+from dashboard.models import UserSession, SessionLog
 from .models import Utilisateur, UserSession
 
 db = settings.MONGO_DB
@@ -775,83 +775,307 @@ def historique(request):
 
 
 # ====================== LIVE / SUPERVISION ======================
-
 @login_required
 def live(request):
-    acces_ok = db.acces_logs.count_documents({'resultat': 'AUTORISE'})
-    acces_no = db.acces_logs.count_documents({'resultat': 'REFUSE'})
-    total_bureaux = db.bureaux.count_documents({})
-    alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'}) if 'alertes' in db.list_collection_names() else 0
+    """Surveillance live - Dashboard temps réel"""
+    from datetime import datetime, timedelta
     
-    derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(20))
+    # Statistiques de la dernière heure
+    one_hour_ago = datetime.now() - timedelta(hours=1)
+    acces_ok_hour = db.acces_logs.count_documents({
+        'resultat': 'AUTORISE',
+        'timestamp': {'$gte': one_hour_ago}
+    })
+    acces_no_hour = db.acces_logs.count_documents({
+        'resultat': 'REFUSE',
+        'timestamp': {'$gte': one_hour_ago}
+    })
+    total_acces_hour = acces_ok_hour + acces_no_hour
+    taux_succes_hour = round((acces_ok_hour / total_acces_hour * 100), 1) if total_acces_hour > 0 else 0
+    
+    # Statistiques globales du jour
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    acces_ok_today = db.acces_logs.count_documents({
+        'resultat': 'AUTORISE',
+        'timestamp': {'$gte': today_start}
+    })
+    acces_no_today = db.acces_logs.count_documents({
+        'resultat': 'REFUSE',
+        'timestamp': {'$gte': today_start}
+    })
+    
+    # Alertes actives
+    alertes = 0
+    alertes_list = []
+    if 'alertes' in db.list_collection_names():
+        alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'})
+        alertes_list = list(db.alertes.find({'statut': 'NON_TRAITEE'}).sort('timestamp', -1).limit(10))
+        for a in alertes_list:
+            a['id'] = str(a['_id'])
+            if a.get('timestamp'):
+                a['timestamp'] = a['timestamp']
+    
+    # Derniers logs
+    derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(30))
     for log in derniers_logs:
         b = db.bureaux.find_one({'_id': log.get('bureau_id')})
         log['bureau_nom'] = b['nom'] if b else 'Inconnu'
         e = db.employees.find_one({'_id': log.get('utilisateur_id')})
-        log['nom_utilisateur'] = f"{e.get('nom','')} {e.get('prenom','')}" if e else 'Inconnu'
+        if e:
+            log['nom_utilisateur'] = f"{e.get('nom', '')} {e.get('prenom', '')}".strip() or 'Inconnu'
+            log['badge_id'] = e.get('badge_id', '???')
+        else:
+            log['nom_utilisateur'] = 'Inconnu'
+            log['badge_id'] = '???'
+        log['type_acces'] = log.get('type_acces', 'RFID')
+        log['resultat'] = log.get('resultat', 'REFUSE')
     
-    bureaux = list(db.bureaux.find().limit(10))
+    # Bureaux
+    bureaux = list(db.bureaux.find())
+    total_employes = db.employees.count_documents({'statut': 'actif'})
+    
     for b in bureaux:
         b['id'] = str(b['_id'])
+        b['capacite_max'] = b.get('capacite_max', 10)
+        # Occupation en temps réel (dernière heure)
+        recent_logs = db.acces_logs.count_documents({
+            'bureau_id': b['_id'],
+            'timestamp': {'$gte': one_hour_ago}
+        })
+        b['occupation'] = min(recent_logs, b['capacite_max'])
+        b['taux'] = round((b['occupation'] / b['capacite_max'] * 100), 1) if b['capacite_max'] > 0 else 0
+    
+    # Équipements
+    equipements = []
+    if 'equipements' in db.list_collection_names():
+        equipements = list(db.equipements.find().limit(10))
+        for eq in equipements:
+            eq['id'] = str(eq['_id'])
+    
+    # Évolution des KPIs (pour les deltas)
+    yesterday_start = (datetime.now() - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    acces_ok_yesterday = db.acces_logs.count_documents({
+        'resultat': 'AUTORISE',
+        'timestamp': {'$gte': yesterday_start, '$lt': today_start}
+    })
+    delta_ok = round(((acces_ok_today - acces_ok_yesterday) / acces_ok_yesterday * 100), 1) if acces_ok_yesterday > 0 else 0
     
     return render(request, 'dashboard/live.html', {
-        'acces_ok': acces_ok,
-        'acces_no': acces_no,
-        'total_bureaux': total_bureaux,
+        'acces_ok': acces_ok_today,
+        'acces_no': acces_no_today,
+        'total_bureaux': len(bureaux),
         'alertes': alertes,
+        'alertes_list': alertes_list,
         'derniers_logs': derniers_logs,
         'bureaux': bureaux,
+        'equipements': equipements,
+        'total_employes': total_employes,
+        'taux_succes': taux_succes_hour,
+        'delta_ok': delta_ok,
     })
 
-
 # ====================== RESSOURCES ======================
+# ====================== GESTION DES RESSOURCES (ZONES & MATÉRIEL) ======================
 
 @login_required
 def ressources(request):
+    """Gestion des ressources - Zones, bureaux et matériel"""
+    from datetime import datetime, timedelta
+    
+    # Récupération des bureaux/zones
     bureaux = list(db.bureaux.find())
     for b in bureaux:
         b['id'] = str(b['_id'])
+        b['zones_actives'] = True
+    
+    # Statistiques
+    total_bureaux = len(bureaux)
+    zones_actives = sum(1 for b in bureaux if b.get('statut', 'actif') == 'actif')
     capacite_totale = sum(b.get('capacite_max', 0) for b in bureaux)
+    
+    # Occupation moyenne en temps réel (dernière heure)
     one_hour_ago = datetime.now() - timedelta(hours=1)
     total_occ, total_cap = 0, 0
     for b in bureaux:
         cap = b.get('capacite_max', 10)
-        recent = db.acces_logs.count_documents({'bureau_id': b['_id'], 'timestamp': {'$gte': one_hour_ago}})
+        recent = db.acces_logs.count_documents({
+            'bureau_id': b['_id'], 
+            'timestamp': {'$gte': one_hour_ago}
+        })
         total_occ += min(recent * 3, cap)
         total_cap += cap
     occupation_moy = round(total_occ / total_cap * 100) if total_cap else 0
+    
+    # Récupération du matériel depuis MongoDB (pas localStorage)
+    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+    for m in materiels:
+        m['id'] = str(m['_id'])
+    
+    # Statistiques matériel
+    total_materiel = len(materiels)
+    materiel_maintenance = sum(1 for m in materiels if m.get('statut') in ['maintenance', 'hors_service'])
+    
+    # Statistiques par catégorie
+    categories_stats = {}
+    for m in materiels:
+        cat = m.get('categorie', 'autre')
+        if cat not in categories_stats:
+            categories_stats[cat] = {'total': 0, 'disponible': 0}
+        categories_stats[cat]['total'] += 1
+        if m.get('statut') == 'disponible':
+            categories_stats[cat]['disponible'] += 1
+    
     return render(request, 'dashboard/ressources.html', {
-        'total_bureaux': len(bureaux),
+        'bureaux': bureaux,
+        'total_bureaux': total_bureaux,
+        'zones_actives': zones_actives,
         'capacite_totale': capacite_totale,
         'occupation_moy': occupation_moy,
-        'bureaux': bureaux,
+        'materiels': materiels,
+        'total_materiel': total_materiel,
+        'materiel_maintenance': materiel_maintenance,
+        'categories_stats': categories_stats,
     })
 
 
 @login_required
 def bureau_ajouter(request):
+    """Ajouter/modifier un bureau/zone"""
     if request.method == 'POST':
         try:
+            bureau_id = request.POST.get('bureau_id')
             data = {
                 'nom': request.POST.get('nom'),
-                'code_bureau': request.POST.get('code_bureau'),
+                'code_bureau': request.POST.get('code_bureau', ''),
                 'etage': int(request.POST.get('etage', 0)),
                 'capacite_max': int(request.POST.get('capacite_max', 10)),
                 'niveau_securite': request.POST.get('niveau_securite', 'standard'),
                 'description': request.POST.get('description', ''),
-                'created_at': datetime.now(),
+                'statut': request.POST.get('statut', 'actif'),
+                'updated_at': datetime.now(),
             }
-            db.bureaux.insert_one(data)
-            messages.success(request, f"Ressource ajoutée avec succès!")
+            
+            if bureau_id:
+                # Modification
+                db.bureaux.update_one({'_id': ObjectId(bureau_id)}, {'$set': data})
+                messages.success(request, f"Zone '{data['nom']}' modifiée avec succès!")
+            else:
+                # Création
+                data['created_at'] = datetime.now()
+                db.bureaux.insert_one(data)
+                messages.success(request, f"Zone '{data['nom']}' ajoutée avec succès!")
+        except Exception as e:
+            messages.error(request, f"Erreur: {str(e)}")
+    
+    return redirect('ressources')
+
+
+@login_required
+def bureau_supprimer(request, bureau_id):
+    """Supprimer un bureau/zone"""
+    if request.method == 'POST':
+        try:
+            db.bureaux.delete_one({'_id': ObjectId(bureau_id)})
+            messages.success(request, "Zone supprimée avec succès!")
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
     return redirect('ressources')
 
 
 @login_required
-def bureau_detail(request, bureau_id):
-    return redirect('ressources')
+def api_bureau_stats(request, bureau_id):
+    """API pour les statistiques d'un bureau"""
+    try:
+        bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+        if not bureau:
+            return JsonResponse({'error': 'Bureau non trouvé'}, status=404)
+        
+        # Statistiques des 7 derniers jours
+        dates = []
+        acces_par_jour = []
+        for i in range(6, -1, -1):
+            day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            count = db.acces_logs.count_documents({
+                'bureau_id': ObjectId(bureau_id),
+                'timestamp': {'$gte': day_start, '$lt': day_end}
+            })
+            dates.append(day_start.strftime('%a'))
+            acces_par_jour.append(count)
+        
+        return JsonResponse({
+            'dates': dates,
+            'acces_par_jour': acces_par_jour,
+            'nom': bureau.get('nom'),
+            'capacite': bureau.get('capacite_max', 0)
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
+
+@login_required
+def api_materiel_list(request):
+    """API pour la liste du matériel"""
+    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+    for m in materiels:
+        m['id'] = str(m['_id'])
+    return JsonResponse({'materiels': materiels})
+
+
+@login_required
+def api_materiel_ajouter(request):
+    """API pour ajouter/modifier du matériel"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        materiel_id = data.get('id')
+        
+        materiel_data = {
+            'nom': data.get('nom'),
+            'categorie': data.get('categorie', 'autre'),
+            'numero_serie': data.get('numero_serie', ''),
+            'statut': data.get('statut', 'disponible'),
+            'zone': data.get('zone', ''),
+            'description': data.get('description', ''),
+            'photo': data.get('photo', ''),
+            'updated_at': datetime.now()
+        }
+        
+        if 'materiels' not in db.list_collection_names():
+            db.create_collection('materiels')
+        
+        if materiel_id and materiel_id.startswith('mat_'):
+            # Nouveau matériel avec ID temporaire
+            materiel_data['created_at'] = datetime.now()
+            result = db.materiels.insert_one(materiel_data)
+            return JsonResponse({'status': 'success', 'id': str(result.inserted_id)})
+        elif materiel_id:
+            # Modification
+            db.materiels.update_one({'_id': ObjectId(materiel_id)}, {'$set': materiel_data})
+            return JsonResponse({'status': 'success', 'id': materiel_id})
+        else:
+            # Nouveau matériel
+            materiel_data['created_at'] = datetime.now()
+            result = db.materiels.insert_one(materiel_data)
+            return JsonResponse({'status': 'success', 'id': str(result.inserted_id)})
+            
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_materiel_supprimer(request, materiel_id):
+    """API pour supprimer du matériel"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        db.materiels.delete_one({'_id': ObjectId(materiel_id)})
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 # ====================== CALENDRIER ET RÈGLES ======================
 
@@ -970,16 +1194,21 @@ def api_bureaux(request):
 
 
 # ====================== STATISTIQUES ======================
-
 @login_required
 def statistiques(request):
+    from datetime import datetime, timedelta
+    import json
+    
     now = datetime.now()
     start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # ===== KPIs de base =====
     total_mois = db.acces_logs.count_documents({'timestamp': {'$gte': start_month}})
     total_all = db.acces_logs.count_documents({})
     autorises = db.acces_logs.count_documents({'resultat': 'AUTORISE'})
     taux_succes = round(autorises / total_all * 100) if total_all else 0
     
+    # ===== Top employés =====
     top_employes = []
     for t in db.acces_logs.aggregate([
         {'$match': {'timestamp': {'$gte': start_month}}},
@@ -991,15 +1220,15 @@ def statistiques(request):
         if emp:
             auto_emp = db.acces_logs.count_documents({'utilisateur_id': t['_id'], 'resultat': 'AUTORISE'})
             top_employes.append({
-                'nom': emp.get('nom'),
-                'prenom': emp.get('prenom'),
-                'departement': emp.get('departement'),
+                'nom': emp.get('nom', ''),
+                'prenom': emp.get('prenom', ''),
+                'departement': emp.get('departement', ''),
                 'nb_acces': t['count'],
                 'taux_succes': round(auto_emp / t['count'] * 100) if t['count'] else 0,
                 'dernier_acces': None,
-                'zone_principale': 'Atelier'
             })
     
+    # ===== Zones stats =====
     zones_stats = []
     for z in db.acces_logs.aggregate([
         {'$match': {'timestamp': {'$gte': start_month}}},
@@ -1009,11 +1238,21 @@ def statistiques(request):
     ]):
         b = db.bureaux.find_one({'_id': z['_id']})
         if b:
-            total_z = db.acces_logs.count_documents({'bureau_id': z['_id']})
-            auto_z = db.acces_logs.count_documents({'bureau_id': z['_id'], 'resultat': 'AUTORISE'})
-            zones_stats.append({'nom': b['nom'], 'count': z['count'], 'pct': round(auto_z / total_z * 100) if total_z else 0})
+            zones_stats.append({
+                'nom': b.get('nom', 'Inconnu'), 
+                'count': z['count']
+            })
     
-    labels, autorises_list, refuses_list, prediction_list = [], [], [], []
+    # Calculer les pourcentages
+    total_zones = sum(z['count'] for z in zones_stats)
+    for z in zones_stats:
+        z['pct'] = round(z['count'] / total_zones * 100) if total_zones else 0
+    
+    # ===== Données pour le graphique (30 jours) =====
+    labels = []
+    autorises_list = []
+    refuses_list = []
+    
     for i in range(29, -1, -1):
         day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
@@ -1023,27 +1262,352 @@ def statistiques(request):
         autorises_list.append(a)
         refuses_list.append(r)
     
+    # Prédictions
+    prediction_list = []
     for i in range(len(autorises_list)):
         window = autorises_list[max(0, i-6):i+1]
         avg = sum(window) / len(window) if window else 0
         prediction_list.append(round(avg * 1.05, 1))
     
-    chart_data = json.dumps({'labels': labels, 'autorises': autorises_list, 'refuses': refuses_list, 'prediction': prediction_list})
+    # Calcul de la prédiction globale
     last_7 = sum(autorises_list[-7:]) if len(autorises_list) >= 7 else sum(autorises_list)
     prev_7 = sum(autorises_list[-14:-7]) if len(autorises_list) >= 14 else last_7
     prediction_pct = round(((last_7 - prev_7) / prev_7 * 100) if prev_7 else 0, 1)
     
-    return render(request, 'dashboard/statistiques.html', {
+    # ===== Données occupation salles =====
+    total_salles = db.bureaux.count_documents({})
+    reservations_mois = db.reservations.count_documents({
+        'date_debut': {'$gte': start_month},
+        'statut': 'confirmee'
+    })
+    heures_possibles = total_salles * 240 if total_salles > 0 else 1
+    heures_occupees = reservations_mois * 2
+    occupation_moy = min(100, round((heures_occupees / heures_possibles) * 100, 1)) if heures_possibles > 0 else 0
+    
+    total_reservations = reservations_mois
+    
+    # Salles disponibles maintenant
+    salles_reservees = db.reservations.distinct('bureau_id', {
+        'date_debut': {'$lte': now},
+        'date_fin': {'$gte': now},
+        'statut': 'confirmee'
+    })
+    salles_disponibles = total_salles - len(salles_reservees)
+    
+    # Graphique occupation des salles
+    occupation_labels = []
+    occupation_values = []
+    for bureau in db.bureaux.find().limit(8):
+        res_count = db.reservations.count_documents({
+            'bureau_id': bureau['_id'],
+            'date_debut': {'$gte': start_month},
+            'statut': 'confirmee'
+        })
+        taux = min(100, round((res_count * 2 / 240) * 100, 1)) if res_count > 0 else 0
+        occupation_labels.append(bureau.get('nom', 'Salle')[:15])
+        occupation_values.append(taux)
+    
+    # Top ressources
+    top_ressources_list = []
+    pipeline = [
+        {'$match': {'date_debut': {'$gte': start_month}, 'statut': 'confirmee'}},
+        {'$group': {'_id': '$bureau_id', 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+        {'$limit': 5}
+    ]
+    results = list(db.reservations.aggregate(pipeline))
+    total_res = sum(r['count'] for r in results) if results else 1
+    for r in results:
+        bureau = db.bureaux.find_one({'_id': r['_id']})
+        if bureau:
+            top_ressources_list.append({
+                'nom': bureau.get('nom', 'Salle')[:20],
+                'reservations': r['count'],
+                'taux': round(r['count'] / total_res * 100, 1)
+            })
+    
+    # ===== Construction du contexte =====
+    context = {
+        # KPIs
         'total_mois': total_mois,
         'taux_succes': taux_succes,
         'taux_refus': 100 - taux_succes,
         'pic_heure': '08h30',
         'zone_active': zones_stats[0]['nom'] if zones_stats else 'N/A',
         'top_employes': top_employes,
-        'zones_stats': zones_stats,
-        'chart_data': chart_data,
         'prediction': prediction_pct,
+        
+        # KPIs ressources
+        'occupation_moy': occupation_moy,
+        'total_reservations': total_reservations,
+        'salles_disponibles': salles_disponibles,
+        'total_salles': total_salles,
+        
+        # Données JSON (stringifiées correctement)
+        'chart_labels': json.dumps(labels),
+        'chart_autorises': json.dumps(autorises_list),
+        'chart_refuses': json.dumps(refuses_list),
+        'chart_prediction': json.dumps(prediction_list),
+        'zones_stats': json.dumps(zones_stats),
+        'top_ressources': json.dumps(top_ressources_list),
+        'occupation_labels': json.dumps(occupation_labels),
+        'occupation_values': json.dumps(occupation_values),
+    }
+    
+    return render(request, 'dashboard/statistiques.html', context)
+    # ====================== STATISTIQUES AVANCÉES ======================
+
+@login_required
+def api_stats_export_csv(request):
+    """Export des statistiques en CSV"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    import csv
+    from datetime import datetime, timedelta
+    from django.http import HttpResponse
+    
+    # Récupérer la période
+    days = int(request.GET.get('days', 30))
+    start_date = datetime.now() - timedelta(days=days)
+    
+    # Récupérer les données
+    stats = []
+    for i in range(days, -1, -1):
+        day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        a = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
+        r = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
+        
+        stats.append({
+            'date': day_start.strftime('%d/%m/%Y'),
+            'autorises': a,
+            'refuses': r,
+            'total': a + r,
+            'taux_succes': round(a / (a + r) * 100, 1) if (a + r) > 0 else 0
+        })
+    
+    # Créer la réponse CSV
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="statistiques_acces_{datetime.now().strftime("%Y%m%d")}.csv"'
+    
+    writer = csv.writer(response)
+    writer.writerow(['Date', 'Accès autorisés', 'Accès refusés', 'Total', 'Taux de succès (%)'])
+    
+    for s in stats:
+        writer.writerow([s['date'], s['autorises'], s['refuses'], s['total'], s['taux_succes']])
+    
+    return response
+
+
+@login_required
+def api_stats_export_pdf(request):
+    """Export des statistiques en PDF"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    from datetime import datetime, timedelta
+    from django.http import HttpResponse
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    import io
+    
+    # Récupérer la période
+    days = int(request.GET.get('days', 30))
+    start_date = datetime.now() - timedelta(days=days)
+    
+    # Récupérer les données
+    stats = []
+    for i in range(days, -1, -1):
+        day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        a = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
+        r = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
+        
+        stats.append([day_start.strftime('%d/%m/%Y'), str(a), str(r), str(a + r), f"{round(a / (a + r) * 100, 1) if (a + r) > 0 else 0}%"])
+    
+    # Créer le PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+    elements = []
+    
+    # Style
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, alignment=1)
+    
+    # Titre
+    elements.append(Paragraph(f"Rapport des statistiques d'accès - {datetime.now().strftime('%d/%m/%Y')}", title_style))
+    elements.append(Spacer(1, 0.5 * cm))
+    
+    # Tableau
+    data = [['Date', 'Autorisés', 'Refusés', 'Total', 'Taux succès']] + stats
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+    ]))
+    
+    elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+    
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="statistiques_acces_{datetime.now().strftime("%Y%m%d")}.pdf"'
+    return response
+
+
+@login_required
+def api_stats_departement(request):
+    """Statistiques par département"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    from datetime import datetime, timedelta
+    
+    days = int(request.GET.get('days', 30))
+    start_date = datetime.now() - timedelta(days=days)
+    
+    # Récupérer tous les employés par département
+    pipeline = [
+        {'$match': {'statut': 'actif'}},
+        {'$group': {'_id': '$departement', 'count': {'$sum': 1}}}
+    ]
+    dept_counts = list(db.employees.aggregate(pipeline))
+    
+    # Statistiques par département
+    dept_stats = []
+    for dept in dept_counts:
+        dept_name = dept['_id'] or 'Non défini'
+        
+        # Récupérer les employés de ce département
+        employees = list(db.employees.find({'departement': dept_name}))
+        employee_ids = [e['_id'] for e in employees]
+        
+        # Compter les accès
+        total_acces = db.acces_logs.count_documents({
+            'utilisateur_id': {'$in': employee_ids},
+            'timestamp': {'$gte': start_date}
+        })
+        
+        autorises = db.acces_logs.count_documents({
+            'utilisateur_id': {'$in': employee_ids},
+            'timestamp': {'$gte': start_date},
+            'resultat': 'AUTORISE'
+        })
+        
+        dept_stats.append({
+            'nom': dept_name,
+            'employes': dept['count'],
+            'acces': total_acces,
+            'taux_succes': round(autorises / total_acces * 100, 1) if total_acces > 0 else 0
+        })
+    
+    return JsonResponse({'departements': dept_stats})
+
+
+@login_required
+def api_stats_period_custom(request):
+    """Statistiques pour une période personnalisée"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    from datetime import datetime
+    
+    date_debut_str = request.GET.get('date_debut')
+    date_fin_str = request.GET.get('date_fin')
+    
+    if not date_debut_str or not date_fin_str:
+        return JsonResponse({'error': 'Dates manquantes'}, status=400)
+    
+    try:
+        date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
+        date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
+        date_fin = date_fin.replace(hour=23, minute=59, second=59)
+    except ValueError:
+        return JsonResponse({'error': 'Format de date invalide'}, status=400)
+    
+    # Statistiques globales
+    total_acces = db.acces_logs.count_documents({'timestamp': {'$gte': date_debut, '$lte': date_fin}})
+    autorises = db.acces_logs.count_documents({'timestamp': {'$gte': date_debut, '$lte': date_fin}, 'resultat': 'AUTORISE'})
+    
+    # Données quotidiennes
+    stats = []
+    current = date_debut
+    while current <= date_fin:
+        day_end = current.replace(hour=23, minute=59, second=59)
+        a = db.acces_logs.count_documents({'timestamp': {'$gte': current, '$lte': day_end}, 'resultat': 'AUTORISE'})
+        r = db.acces_logs.count_documents({'timestamp': {'$gte': current, '$lte': day_end}, 'resultat': 'REFUSE'})
+        
+        stats.append({
+            'date': current.strftime('%d/%m'),
+            'autorises': a,
+            'refuses': r
+        })
+        current += timedelta(days=1)
+    
+    return JsonResponse({
+        'total_acces': total_acces,
+        'taux_succes': round(autorises / total_acces * 100, 1) if total_acces > 0 else 0,
+        'stats': stats
     })
+
+
+@login_required
+def api_stats_trend_cache(request):
+    """Version avec cache des statistiques de tendance"""
+    from django.core.cache import cache
+    from datetime import datetime, timedelta
+    
+    days = int(request.GET.get('days', 30))
+    cache_key = f"stats_trend_{days}"
+    
+    # Vérifier le cache
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return JsonResponse(cached_data)
+    
+    # Calculer les données
+    now = datetime.now()
+    labels, autorises_list, refuses_list, prediction_list = [], [], [], []
+    
+    for i in range(days - 1, -1, -1):
+        day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        a = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
+        r = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
+        labels.append(day_start.strftime('%d/%m'))
+        autorises_list.append(a)
+        refuses_list.append(r)
+    
+    # Prédictions
+    for i in range(len(autorises_list)):
+        window = autorises_list[max(0, i-6):i+1]
+        avg = sum(window) / len(window) if window else 0
+        prediction_list.append(round(avg * 1.05, 1))
+    
+    data = {
+        'labels': labels,
+        'autorises': autorises_list,
+        'refuses': refuses_list,
+        'prediction': prediction_list
+    }
+    
+    # Mettre en cache pour 5 minutes
+    cache.set(cache_key, data, 300)
+    
+    return JsonResponse(data)
 
 
 # ====================== PARAMÈTRES ======================
@@ -1111,32 +1675,53 @@ def api_bureau_stats(request, bureau_id):
 
 
 # ====================== API LIVE FEED ======================
-
 @login_required
 def api_live_feed(request):
-    derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(15))
+    """API pour le flux live des accès"""
+    from datetime import datetime, timedelta
+    
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Récupérer les derniers logs
+    logs = list(db.acces_logs.find().sort('timestamp', -1).limit(30))
     logs_data = []
-    for log in derniers_logs:
+    
+    for log in logs:
         emp = db.employees.find_one({'_id': log.get('utilisateur_id')})
         bureau = db.bureaux.find_one({'_id': log.get('bureau_id')})
-        nom = f"{emp.get('nom','?')} {emp.get('prenom','')}" if emp else 'Inconnu'
-        badge = emp.get('badge_id', '???') if emp else '???'
+        
         logs_data.append({
-            'nom': nom,
-            'badge': badge,
-            'zone': bureau['nom'] if bureau else 'Zone inconnue',
+            'nom': f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or 'Inconnu' if emp else 'Inconnu',
+            'badge': emp.get('badge_id', '???') if emp else '???',
+            'zone': bureau.get('nom', 'Zone inconnue') if bureau else 'Zone inconnue',
             'resultat': log.get('resultat', 'REFUSE'),
             'method': log.get('type_acces', 'RFID'),
             'time': log['timestamp'].strftime('%H:%M:%S') if log.get('timestamp') else '--:--:--',
         })
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    acces_ok = db.acces_logs.count_documents({'timestamp': {'$gte': today_start}, 'resultat': 'AUTORISE'})
-    acces_no = db.acces_logs.count_documents({'timestamp': {'$gte': today_start}, 'resultat': 'REFUSE'})
+    
+    # Statistiques du jour
+    acces_ok = db.acces_logs.count_documents({
+        'timestamp': {'$gte': today_start},
+        'resultat': 'AUTORISE'
+    })
+    acces_no = db.acces_logs.count_documents({
+        'timestamp': {'$gte': today_start},
+        'resultat': 'REFUSE'
+    })
+    total = acces_ok + acces_no
+    taux_succes = round((acces_ok / total * 100), 1) if total > 0 else 0
+    
+    # Alertes
     alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'}) if 'alertes' in db.list_collection_names() else 0
-    presences = db.acces_logs.count_documents({'timestamp': {'$gte': today_start}})
+    
     return JsonResponse({
         'logs': logs_data,
-        'stats': {'acces_ok': acces_ok, 'acces_no': acces_no, 'alertes': alertes, 'presences': presences}
+        'stats': {
+            'acces_ok': acces_ok,
+            'acces_no': acces_no,
+            'taux_succes': taux_succes,
+            'alertes': alertes,
+        }
     })
 
 
@@ -1853,7 +2438,141 @@ def resource_supprimer(request, resource_id):
         messages.success(request, "Ressource désactivée")
     
     return redirect('resource_list')
+# ====================== GESTION DES RESSOURCES (SUITE) ======================
 
+@login_required
+def bureau_detail(request, bureau_id):
+    """Détail d'un bureau/zone"""
+    try:
+        bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+        if not bureau:
+            messages.error(request, "Zone non trouvée")
+            return redirect('ressources')
+        
+        bureau['id'] = str(bureau['_id'])
+        
+        # Statistiques d'occupation
+        one_hour_ago = datetime.now() - timedelta(hours=1)
+        occupation_recente = db.acces_logs.count_documents({
+            'bureau_id': ObjectId(bureau_id),
+            'timestamp': {'$gte': one_hour_ago}
+        })
+        
+        capacite = bureau.get('capacite_max', 10)
+        taux_occupation = min(100, round((occupation_recente * 3 / capacite) * 100)) if capacite > 0 else 0
+        
+        # Historique des 7 derniers jours
+        historique = []
+        for i in range(6, -1, -1):
+            day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            count = db.acces_logs.count_documents({
+                'bureau_id': ObjectId(bureau_id),
+                'timestamp': {'$gte': day_start, '$lt': day_end}
+            })
+            historique.append({
+                'date': day_start.strftime('%d/%m'),
+                'acces': count
+            })
+        
+        return render(request, 'dashboard/bureau_detail.html', {
+            'bureau': bureau,
+            'taux_occupation': taux_occupation,
+            'historique': historique,
+            'capacite': capacite,
+            'occupation_recente': occupation_recente
+        })
+    except Exception as e:
+        messages.error(request, f"Erreur: {str(e)}")
+        return redirect('ressources')
+
+
+@login_required
+def api_bureau_reservations(request, bureau_id):
+    """API pour les réservations d'un bureau (simplifié)"""
+    try:
+        reservations = list(db.reservations.find({
+            'bureau_id': ObjectId(bureau_id),
+            'statut': 'confirmee',
+            'date_debut': {'$gte': datetime.now()}
+        }).sort('date_debut', 1).limit(5))
+        
+        resultats = []
+        for r in reservations:
+            employe = db.employees.find_one({'_id': r.get('employe_id')})
+            resultats.append({
+                'id': str(r['_id']),
+                'debut': r['date_debut'].isoformat(),
+                'fin': r['date_fin'].isoformat(),
+                'employe': f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip() if employe else 'Inconnu'
+            })
+        
+        return JsonResponse({'reservations': resultats})
+    except Exception as e:
+        return JsonResponse({'reservations': [], 'error': str(e)})
+
+
+@login_required
+def api_materiel_list(request):
+    """API pour la liste du matériel"""
+    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+    for m in materiels:
+        m['id'] = str(m['_id'])
+    return JsonResponse({'materiels': materiels})
+
+
+@login_required
+def api_materiel_ajouter(request):
+    """API pour ajouter/modifier du matériel"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        materiel_id = data.get('id')
+        
+        materiel_data = {
+            'nom': data.get('nom'),
+            'categorie': data.get('categorie', 'autre'),
+            'numero_serie': data.get('numero_serie', ''),
+            'statut': data.get('statut', 'disponible'),
+            'zone': data.get('zone', ''),
+            'description': data.get('description', ''),
+            'photo': data.get('photo', ''),
+            'updated_at': datetime.now()
+        }
+        
+        if 'materiels' not in db.list_collection_names():
+            db.create_collection('materiels')
+        
+        if materiel_id and not materiel_id.startswith('mat_') and len(materiel_id) == 24:
+            # Modification d'un existant
+            db.materiels.update_one({'_id': ObjectId(materiel_id)}, {'$set': materiel_data})
+            return JsonResponse({'status': 'success', 'id': materiel_id})
+        else:
+            # Nouveau matériel
+            materiel_data['created_at'] = datetime.now()
+            result = db.materiels.insert_one(materiel_data)
+            return JsonResponse({'status': 'success', 'id': str(result.inserted_id)})
+            
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_materiel_supprimer(request, materiel_id):
+    """API pour supprimer du matériel"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        result = db.materiels.delete_one({'_id': ObjectId(materiel_id)})
+        if result.deleted_count > 0:
+            return JsonResponse({'status': 'success'})
+        else:
+            return JsonResponse({'status': 'error', 'message': 'Matériel non trouvé'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 # ====================== API RESSOURCES ======================
 
@@ -2199,22 +2918,18 @@ def api_stats_predictions(request):
 # ====================== SESSIONS ACTIVES ======================
 
 # dashboard/views.py - Mettez à jour la vue active_sessions
+from dashboard.models import UserSession, SessionLog
 
 @login_required
 def active_sessions(request):
     if not request.user.is_staff:
         return redirect('employe_espace')
     
-    # Récupérer TOUTES les sessions actives, pas seulement celles du PC local
+    # Récupérer TOUTES les sessions actives
     active_sessions = UserSession.objects.filter(
         is_active=True,
         logout_time__isnull=True
     ).select_related('user').order_by('-last_activity')
-    
-    # Afficher toutes les sessions dans la console pour déboguer
-    print(f"📊 {active_sessions.count()} sessions actives trouvées:")
-    for s in active_sessions:
-        print(f"  - {s.user.username} | IP: {s.ip_address} | Dernière activité: {s.last_activity}")
     
     total_connected = active_sessions.count()
     total_users = Utilisateur.objects.filter(is_active=True).count()
@@ -2223,12 +2938,16 @@ def active_sessions(request):
     inactive_threshold = timezone.now() - timedelta(minutes=30)
     inactive_sessions = active_sessions.filter(last_activity__lt=inactive_threshold).count()
     
+    # Statistiques par appareil
+    desktop_sessions = active_sessions.filter(device_type='desktop').count()
+    mobile_sessions = active_sessions.filter(device_type='mobile').count()
+    tablet_sessions = active_sessions.filter(device_type='tablet').count()
+    
     # Récupérer l'historique des dernières 24h
     last_24h = timezone.now() - timedelta(hours=24)
-    recent_history = UserSession.objects.filter(
-        logout_time__isnull=False,
-        logout_time__gte=last_24h
-    ).select_related('user').order_by('-logout_time')[:50]
+    recent_history = SessionLog.objects.filter(
+        timestamp__gte=last_24h
+    ).select_related('user').order_by('-timestamp')[:100]
     
     return render(request, 'dashboard/active_sessions.html', {
         'active_sessions': active_sessions,
@@ -2237,9 +2956,13 @@ def active_sessions(request):
         'admin_sessions': admin_sessions,
         'employee_sessions': employee_sessions,
         'inactive_sessions': inactive_sessions,
+        'desktop_sessions': desktop_sessions,
+        'mobile_sessions': mobile_sessions,
+        'tablet_sessions': tablet_sessions,
         'recent_history': recent_history,
         'now': timezone.now(),
     })
+
 
 @login_required
 def terminate_session(request, session_id):
@@ -2249,14 +2972,26 @@ def terminate_session(request, session_id):
     if request.method == 'POST':
         try:
             user_session = UserSession.objects.get(id=session_id)
+            username = user_session.user.username
+            
+            # Log de la terminaison
+            SessionLog.objects.create(
+                user=user_session.user,
+                action='terminated',
+                ip_address=user_session.ip_address,
+                session_key=user_session.session_key
+            )
+            
             user_session.is_active = False
             user_session.logout_time = timezone.now()
             user_session.save()
+            
             try:
                 Session.objects.filter(session_key=user_session.session_key).delete()
             except:
                 pass
-            messages.success(request, f"Session de {user_session.user.username} terminée")
+            
+            messages.success(request, f"Session de {username} terminée")
         except UserSession.DoesNotExist:
             messages.error(request, "Session non trouvée")
     
@@ -2277,6 +3012,14 @@ def terminate_all_sessions(request):
         
         count = other_sessions.count()
         for session in other_sessions:
+            # Log de la terminaison
+            SessionLog.objects.create(
+                user=session.user,
+                action='terminated',
+                ip_address=session.ip_address,
+                session_key=session.session_key
+            )
+            
             session.is_active = False
             session.logout_time = timezone.now()
             session.save()
@@ -2302,18 +3045,40 @@ def api_connected_users(request):
     
     users = []
     for session in active_sessions:
-        is_active_now = (timezone.now() - session.last_activity).seconds < 300
+        last_activity_seconds = (timezone.now() - session.last_activity).seconds
+        if last_activity_seconds < 300:
+            status = 'active'
+            status_badge = '🟢 Actif'
+            badge_class = 'b-green'
+        elif last_activity_seconds < 1800:
+            status = 'idle'
+            status_badge = '🟡 Inactif'
+            badge_class = 'b-amber'
+        else:
+            status = 'inactive'
+            status_badge = '🔴 Très inactif'
+            badge_class = 'b-red'
+        
+        device_icon = '💻' if session.device_type == 'desktop' else '📱' if session.device_type == 'mobile' else '📟'
+        
         users.append({
             'id': session.id,
             'user_id': session.user.id,
             'username': session.user.username,
-            'full_name': session.user.get_full_name(),
+            'full_name': session.user.get_full_name() or session.user.username,
             'is_staff': session.user.is_staff,
             'login_time': session.login_time.strftime('%d/%m/%Y %H:%M:%S'),
             'last_activity': session.last_activity.strftime('%d/%m/%Y %H:%M:%S'),
+            'last_activity_seconds': last_activity_seconds,
             'ip_address': session.ip_address or '—',
             'session_key': session.session_key,
-            'is_active': is_active_now,
+            'status': status,
+            'status_badge': status_badge,
+            'badge_class': badge_class,
+            'device_type': session.device_type,
+            'device_icon': device_icon,
+            'duration': session.get_duration(),
+            'location': session.location or '—',
         })
     
     return JsonResponse({
@@ -2321,9 +3086,94 @@ def api_connected_users(request):
         'users': users,
         'timestamp': timezone.now().strftime('%d/%m/%Y %H:%M:%S'),
     })
-# dashboard/views.py - Ajoutez cette fonction
 
 
+@login_required
+def api_session_stats(request):
+    """API pour les statistiques des sessions"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Connexions aujourd'hui
+    today_logins = SessionLog.objects.filter(
+        action='login',
+        timestamp__gte=today_start
+    ).count()
+    
+    # Moyenne de connexions par jour (7 derniers jours)
+    seven_days_ago = now - timedelta(days=7)
+    avg_logins = SessionLog.objects.filter(
+        action='login',
+        timestamp__gte=seven_days_ago
+    ).count() / 7
+    
+    # Sessions actives par appareil
+    device_stats = {
+        'desktop': UserSession.objects.filter(is_active=True, device_type='desktop').count(),
+        'mobile': UserSession.objects.filter(is_active=True, device_type='mobile').count(),
+        'tablet': UserSession.objects.filter(is_active=True, device_type='tablet').count(),
+    }
+    
+    return JsonResponse({
+        'today_logins': today_logins,
+        'avg_logins': round(avg_logins, 1),
+        'device_stats': device_stats,
+    })
+
+
+@login_required
+def clear_session_history(request):
+    """Vider l'historique des sessions"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    if request.method == 'POST':
+        days = int(request.POST.get('days', 30))
+        threshold = timezone.now() - timedelta(days=days)
+        
+        deleted_count = SessionLog.objects.filter(timestamp__lt=threshold).delete()[0]
+        messages.success(request, f"{deleted_count} entrées d'historique supprimées")
+    
+    return redirect('active_sessions')
+
+
+@login_required
+def api_session_details(request, session_id):
+    """Détails d'une session spécifique"""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    try:
+        session = UserSession.objects.get(id=session_id)
+        
+        # Récupérer l'historique des actions de cet utilisateur
+        user_logs = SessionLog.objects.filter(
+            user=session.user
+        ).order_by('-timestamp')[:20]
+        
+        logs_data = [{
+            'action': log.action,
+            'timestamp': log.timestamp.strftime('%d/%m/%Y %H:%M:%S'),
+            'ip_address': log.ip_address,
+        } for log in user_logs]
+        
+        return JsonResponse({
+            'user': session.user.username,
+            'full_name': session.user.get_full_name(),
+            'login_time': session.login_time.strftime('%d/%m/%Y %H:%M:%S'),
+            'last_activity': session.last_activity.strftime('%d/%m/%Y %H:%M:%S'),
+            'duration': session.get_duration(),
+            'ip_address': session.ip_address,
+            'device_type': session.device_type,
+            'location': session.location,
+            'user_agent': session.user_agent[:200],
+            'logs': logs_data,
+        })
+    except UserSession.DoesNotExist:
+        return JsonResponse({'error': 'Session non trouvée'}, status=404)
 
 @login_required
 def employe_profil(request):
@@ -2825,3 +3675,332 @@ def api_reservation_qr(request, reservation_id):
         })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+        # ====================== STATISTIQUES GESTION DES RESSOURCES ======================
+# Ajoutez ces fonctions à la fin de votre fichier views.py
+
+@login_required
+def get_ressource_stats(request):
+    """Statistiques de gestion des ressources pour le dashboard"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Taux d'occupation des salles
+    total_salles = db.bureaux.count_documents({})
+    
+    # Compter les réservations actives du mois
+    reservations_mois = db.reservations.count_documents({
+        'date_debut': {'$gte': start_month},
+        'statut': 'confirmee'
+    })
+    
+    # Calcul du taux d'occupation (basé sur 8h/jour * 30 jours = 240h par salle)
+    heures_possibles = total_salles * 240 if total_salles > 0 else 1
+    heures_occupees = reservations_mois * 2  # moyenne 2h par réservation
+    taux_occupation = min(100, round((heures_occupees / heures_possibles) * 100, 1)) if heures_possibles > 0 else 0
+    
+    # Réservations totales du mois
+    total_reservations = db.reservations.count_documents({
+        'date_debut': {'$gte': start_month},
+        'statut': 'confirmee'
+    })
+    
+    # Salles disponibles actuellement
+    salles_reservees = db.reservations.distinct('bureau_id', {
+        'date_debut': {'$lte': now},
+        'date_fin': {'$gte': now},
+        'statut': 'confirmee'
+    })
+    salles_disponibles = total_salles - len(salles_reservees)
+    
+    # Taux d'annulation (30 derniers jours)
+    thirty_days_ago = now - timedelta(days=30)
+    total_commandes = db.reservations.count_documents({
+        'date_debut': {'$gte': thirty_days_ago}
+    })
+    annulations = db.reservations.count_documents({
+        'date_debut': {'$gte': thirty_days_ago},
+        'statut': 'annulee'
+    })
+    taux_annulation = round((annulations / total_commandes) * 100, 1) if total_commandes > 0 else 0
+    
+    return {
+        'taux_occupation': taux_occupation,
+        'total_reservations': total_reservations,
+        'salles_disponibles': salles_disponibles,
+        'total_salles': total_salles,
+        'taux_annulation': taux_annulation,
+    }
+
+
+@login_required
+def get_occupation_stats(request):
+    """Statistiques d'occupation par salle"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    thirty_days_ago = now - timedelta(days=30)
+    
+    bureaux = list(db.bureaux.find())
+    occupation_data = []
+    
+    for bureau in bureaux:
+        # Compter les réservations des 30 derniers jours
+        reservations_count = db.reservations.count_documents({
+            'bureau_id': bureau['_id'],
+            'date_debut': {'$gte': thirty_days_ago},
+            'statut': 'confirmee'
+        })
+        
+        # Calculer le taux d'occupation (max 30 jours * 8h par jour = 240h)
+        # Chaque réservation dure en moyenne 2h
+        heures_occupees = reservations_count * 2
+        heures_possibles = 240  # 30 jours * 8h
+        taux = min(100, round((heures_occupees / heures_possibles) * 100, 1)) if heures_possibles > 0 else 0
+        
+        occupation_data.append({
+            'nom': bureau.get('nom', 'Salle inconnue'),
+            'taux': taux,
+            'reservations': reservations_count
+        })
+    
+    # Trier par taux d'occupation décroissant
+    occupation_data.sort(key=lambda x: x['taux'], reverse=True)
+    
+    return {
+        'labels': [o['nom'] for o in occupation_data[:10]],
+        'values': [o['taux'] for o in occupation_data[:10]]
+    }
+
+
+@login_required
+def get_top_ressources(request):
+    """Top ressources les plus réservées"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    thirty_days_ago = now - timedelta(days=30)
+    
+    pipeline = [
+        {'$match': {
+            'date_debut': {'$gte': thirty_days_ago},
+            'statut': 'confirmee'
+        }},
+        {'$group': {
+            '_id': '$bureau_id',
+            'count': {'$sum': 1}
+        }},
+        {'$sort': {'count': -1}},
+        {'$limit': 5}
+    ]
+    
+    results = list(db.reservations.aggregate(pipeline))
+    total_reservations = sum(r['count'] for r in results)
+    
+    top_ressources = []
+    for r in results:
+        bureau = db.bureaux.find_one({'_id': r['_id']})
+        if bureau:
+            top_ressources.append({
+                'nom': bureau.get('nom', 'Salle inconnue'),
+                'reservations': r['count'],
+                'pct': round((r['count'] / total_reservations) * 100, 1) if total_reservations > 0 else 0
+            })
+    
+    return top_ressources
+
+
+@login_required
+def get_weekly_schedule(request):
+    """Planning des réservations pour les 7 prochains jours"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    week_later = now + timedelta(days=7)
+    
+    reservations = list(db.reservations.find({
+        'date_debut': {'$gte': now, '$lte': week_later},
+        'statut': 'confirmee'
+    }).sort('date_debut', 1).limit(10))
+    
+    schedule = []
+    for r in reservations:
+        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+        schedule.append({
+            'date': r['date_debut'].strftime('%d/%m'),
+            'heure': r['date_debut'].strftime('%H:%M'),
+            'titre': r.get('titre', 'Sans titre'),
+            'salle': bureau.get('nom', 'Salle inconnue') if bureau else 'Salle inconnue',
+            'participants': r.get('nb_participants', 1)
+        })
+    
+    return schedule
+
+
+@login_required
+def get_hour_stats(request):
+    """Statistiques horaires des accès"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    thirty_days_ago = now - timedelta(days=30)
+    
+    # Créer les tranches horaires
+    hours = [f"{h:02d}h-{h+1:02d}h" for h in range(0, 24)]
+    hour_counts = [0] * 24
+    
+    # Compter les accès par heure
+    logs = db.acces_logs.find({
+        'timestamp': {'$gte': thirty_days_ago}
+    })
+    
+    for log in logs:
+        if log.get('timestamp'):
+            hour = log['timestamp'].hour
+            hour_counts[hour] += 1
+    
+    return {
+        'labels': hours,
+        'values': hour_counts
+    }
+
+
+@login_required
+def get_zone_stats_data(request):
+    """Statistiques par zone pour les graphiques"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    thirty_days_ago = now - timedelta(days=30)
+    
+    pipeline = [
+        {'$match': {'timestamp': {'$gte': thirty_days_ago}}},
+        {'$group': {
+            '_id': '$bureau_id',
+            'count': {'$sum': 1}
+        }},
+        {'$sort': {'count': -1}},
+        {'$limit': 5}
+    ]
+    
+    results = list(db.acces_logs.aggregate(pipeline))
+    total_acces = sum(r['count'] for r in results)
+    
+    labels = []
+    values = []
+    details = []
+    
+    for r in results:
+        bureau = db.bureaux.find_one({'_id': r['_id']})
+        if bureau:
+            nom = bureau.get('nom', 'Zone inconnue')
+            pct = round((r['count'] / total_acces) * 100, 1) if total_acces > 0 else 0
+            labels.append(nom)
+            values.append(r['count'])
+            details.append({
+                'nom': nom,
+                'count': r['count'],
+                'pct': pct
+            })
+    
+    return {
+        'labels': labels,
+        'values': values,
+        'details': details,
+        'total': total_acces
+    }
+
+
+# ====================== API ENDPOINTS POUR LES STATISTIQUES ======================
+
+@login_required
+def api_stats_overview(request):
+    """API endpoint pour les statistiques globales (pour AJAX)"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        ressource_stats = get_ressource_stats(request)
+        occupation_stats = get_occupation_stats(request)
+        top_ressources = get_top_ressources(request)
+        weekly_schedule = get_weekly_schedule(request)
+        hour_stats = get_hour_stats(request)
+        zone_stats = get_zone_stats_data(request)
+        
+        return JsonResponse({
+            'status': 'success',
+            'ressource_stats': ressource_stats,
+            'occupation_stats': occupation_stats,
+            'top_ressources': top_ressources,
+            'weekly_schedule': weekly_schedule,
+            'hour_stats': hour_stats,
+            'zone_stats': zone_stats,
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_occupation_stats(request):
+    """API pour les statistiques d'occupation des salles"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        occupation = get_occupation_stats(request)
+        return JsonResponse({
+            'status': 'success',
+            'data': occupation
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_top_ressources(request):
+    """API pour le top des ressources"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        top = get_top_ressources(request)
+        return JsonResponse({
+            'status': 'success',
+            'data': top
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_weekly_schedule(request):
+    """API pour le planning hebdomadaire"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        schedule = get_weekly_schedule(request)
+        return JsonResponse({
+            'status': 'success',
+            'data': schedule
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_hour_stats(request):
+    """API pour les statistiques horaires"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        stats = get_hour_stats(request)
+        return JsonResponse({
+            'status': 'success',
+            'labels': stats['labels'],
+            'values': stats['values']
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

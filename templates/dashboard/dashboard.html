@@ -15,7 +15,10 @@
 
 {% block content %}
 
-
+{# ══════════════════════════════════════════════
+   GARDE : si l'utilisateur est un employé (pas admin)
+   → on l'affiche une bannière de redirection
+   ══════════════════════════════════════════════ #}
 {% if user.is_authenticated and not user.is_staff %}
 
   <div class="alert-box info" style="margin-bottom:8px">

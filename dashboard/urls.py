@@ -148,4 +148,35 @@ urlpatterns = [
     path('reservations/<str:reservation_id>/refuser/',    views.reservation_refuser,  name='reservation_refuser'),
     
     # ── API QR Code ──────────────────────────────────────────────────────
-    path('api/reservations/<str:reservation_id>/qr/', views.api_reservation_qr,      name='api_reservation_qr'),]
+    path('api/reservations/<str:reservation_id>/qr/', views.api_reservation_qr,      name='api_reservation_qr'),
+path('api/stats/overview/', views.api_stats_overview, name='api_stats_overview'),
+path('api/stats/occupation/', views.api_occupation_stats, name='api_occupation_stats'),
+path('api/stats/top-ressources/', views.api_top_ressources, name='api_top_ressources'),
+path('api/stats/weekly-schedule/', views.api_weekly_schedule, name='api_weekly_schedule'),
+path('api/stats/hour/', views.api_hour_stats, name='api_hour_stats'),
+# Export statistiques
+    path('dashboard/api/stats/export/csv/', views.api_stats_export_csv, name='api_stats_export_csv'),
+    path('dashboard/api/stats/export/pdf/', views.api_stats_export_pdf, name='api_stats_export_pdf'),
+    path('dashboard/api/stats/departement/', views.api_stats_departement, name='api_stats_departement'),
+    path('dashboard/api/stats/period-custom/', views.api_stats_period_custom, name='api_stats_period_custom'),
+    path('dashboard/api/stats/trend-cache/', views.api_stats_trend_cache, name='api_stats_trend_cache'),
+# Ajoutez ces lignes
+path('active-sessions/', views.active_sessions, name='active_sessions'),
+path('terminate-session/<int:session_id>/', views.terminate_session, name='terminate_session'),
+path('terminate-all-sessions/', views.terminate_all_sessions, name='terminate_all_sessions'),
+path('api/connected-users/', views.api_connected_users, name='api_connected_users'),
+path('api/session-stats/', views.api_session_stats, name='api_session_stats'),
+path('api/session-details/<int:session_id>/', views.api_session_details, name='api_session_details'),
+path('clear-session-history/', views.clear_session_history, name='clear_session_history'),
+# Ajoutez ces routes
+path('api/bureau/<str:bureau_id>/stats/', views.api_bureau_stats, name='api_bureau_stats'),
+path('api/materiel/list/', views.api_materiel_list, name='api_materiel_list'),
+path('api/materiel/ajouter/', views.api_materiel_ajouter, name='api_materiel_ajouter'),
+path('api/materiel/<str:materiel_id>/supprimer/', views.api_materiel_supprimer, name='api_materiel_supprimer'),
+path('bureau/supprimer/<str:bureau_id>/', views.bureau_supprimer, name='bureau_supprimer'),
+
+# Gestion des ressources (bureaux/zones)
+    path('ressources/', views.ressources, name='ressources'),
+    path('bureaux/ajouter/', views.bureau_ajouter, name='bureau_ajouter'),
+    path('bureaux/<str:bureau_id>/', views.bureau_detail, name='bureau_detail'),
+    path('bureaux/<str:bureau_id>/supprimer/', views.bureau_supprimer, name='bureau_supprimer'),]

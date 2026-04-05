@@ -2,420 +2,394 @@
 {% block title %}Statistiques & Analytics - SIGR-CA{% endblock %}
 {% block nav_stats %}active{% endblock %}
 {% block page_title %}Tableau de bord analytique{% endblock %}
-{% block page_sub %}Analyse détaillée des accès et IA prédictive{% endblock %}
+{% block page_sub %}Analyse détaillée des accès et gestion des ressources{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-ghost btn-sm" onclick="exportStats()">⬇️ Exporter rapport</button>
-<button class="btn btn-ghost btn-sm" onclick="refreshStats()">↻ Actualiser</button>
-<select class="form-select" style="width:120px" id="periodSelect" onchange="changePeriod()">
-  <option value="7">7 jours</option>
-  <option value="30" selected>30 jours</option>
-  <option value="90">90 jours</option>
-  <option value="365">Année</option>
-</select>
+<div style="display:flex; gap:8px; flex-wrap:wrap">
+    <button class="btn btn-ghost btn-sm" onclick="exportStats('csv')">⬇️ Export CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportStats('pdf')">📄 Export PDF</button>
+    <button class="btn btn-ghost btn-sm" onclick="refreshStats()">↻ Actualiser</button>
+    
+    <!-- Filtre par département -->
+    <select class="form-select" style="width:140px" id="deptFilter" onchange="filterByDepartement()">
+        <option value="all">Tous les départements</option>
+    </select>
+    
+    <!-- Période -->
+    <select class="form-select" style="width:130px" id="periodSelect" onchange="changePeriod()">
+        <option value="7">7 jours</option>
+        <option value="30" selected>30 jours</option>
+        <option value="90">90 jours</option>
+        <option value="365">Année complète</option>
+    </select>
+    
+    <!-- Période personnalisée -->
+    <button class="btn btn-ghost btn-sm" onclick="showCustomPeriodModal()">📅 Période perso</button>
+</div>
 {% endblock %}
 
 {% block content %}
 
-<!-- KPIs améliorés avec prédictions IA -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">📊</div></div>
-    <div class="kpi-value">{{ total_mois|default:"0" }}</div>
-    <div class="kpi-delta" id="trend-total">+{{ trend_total|default:12 }}% vs mois dernier</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Taux de succès</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ taux_succes|default:"0" }}%</div>
-    <div class="kpi-delta" id="trend-succes">↑ {{ trend_succes|default:3 }}%</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Taux de refus</div><div class="kpi-icon">🚫</div></div>
-    <div class="kpi-value">{{ taux_refus|default:"0" }}%</div>
-    <div class="kpi-delta neg" id="trend-refus">↓ {{ trend_refus|default:2 }}%</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Pic horaire</div><div class="kpi-icon">⏰</div></div>
-    <div class="kpi-value" style="font-size:22px">{{ pic_heure|default:"08h30" }}</div>
-    <div class="kpi-delta">Heure de pointe</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Zone la plus active</div><div class="kpi-icon">🚪</div></div>
-    <div class="kpi-value" style="font-size:16px">{{ zone_active|default:"Direction" }}</div>
-    <div class="kpi-delta">{{ zone_active_pct|default:32 }}% des accès</div>
-  </div>
-  <div class="kpi k-cyan" style="--cyan:#39d0f0">
-    <div class="kpi-header"><div class="kpi-label">Prédiction IA</div><div class="kpi-icon">🤖</div></div>
-    <div class="kpi-value" style="font-size:18px" id="prediction-value">+{{ prediction|default:8 }}%</div>
-    <div class="kpi-delta">Croissance prévue mois prochain</div>
-  </div>
+<!-- KPIs -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px">
+    <div class="kpi k-blue">
+        <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">📊</div></div>
+        <div class="kpi-value" id="kpi-total">{{ total_mois|default:0 }}</div>
+    </div>
+    <div class="kpi k-green">
+        <div class="kpi-header"><div class="kpi-label">Taux de succès</div><div class="kpi-icon">✅</div></div>
+        <div class="kpi-value" id="kpi-taux">{{ taux_succes|default:0 }}%</div>
+    </div>
+    <div class="kpi k-red">
+        <div class="kpi-header"><div class="kpi-label">Taux de refus</div><div class="kpi-icon">🚫</div></div>
+        <div class="kpi-value">{{ taux_refus|default:0 }}%</div>
+    </div>
+    <div class="kpi k-amber">
+        <div class="kpi-header"><div class="kpi-label">Pic horaire</div><div class="kpi-icon">⏰</div></div>
+        <div class="kpi-value">{{ pic_heure|default:"08h30" }}</div>
+    </div>
+    <div class="kpi k-purple">
+        <div class="kpi-header"><div class="kpi-label">Zone la plus active</div><div class="kpi-icon">🚪</div></div>
+        <div class="kpi-value">{{ zone_active|default:"N/A" }}</div>
+    </div>
+    <div class="kpi k-cyan">
+        <div class="kpi-header"><div class="kpi-label">Prédiction IA</div><div class="kpi-icon">🤖</div></div>
+        <div class="kpi-value" id="prediction-value">+{{ prediction|default:0 }}%</div>
+    </div>
+</div>
+
+<!-- KPIs Ressources -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; margin-top:16px">
+    <div class="kpi k-blue">
+        <div class="kpi-header"><div class="kpi-label">Taux d'occupation moyen</div></div>
+        <div class="kpi-value">{{ occupation_moy|default:0 }}%</div>
+    </div>
+    <div class="kpi k-green">
+        <div class="kpi-header"><div class="kpi-label">Réservations totales</div></div>
+        <div class="kpi-value">{{ total_reservations|default:0 }}</div>
+    </div>
+    <div class="kpi k-amber">
+        <div class="kpi-header"><div class="kpi-label">Salles disponibles</div></div>
+        <div class="kpi-value">{{ salles_disponibles|default:0 }} / {{ total_salles|default:0 }}</div>
+    </div>
+</div>
+
+<!-- Graphiques -->
+<div class="g2">
+    <div class="card">
+        <div class="card-head"><span>📈</span><span class="card-title">Évolution des accès</span><span class="card-sub" id="period-label">30 derniers jours</span></div>
+        <div class="card-body">
+            <canvas id="trend-chart" height="200" style="width:100%; max-height:250px"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><span>🏢</span><span class="card-title">Occupation des ressources</span></div>
+        <div class="card-body">
+            <canvas id="occupation-chart" height="200" style="width:100%; max-height:250px"></canvas>
+        </div>
+    </div>
 </div>
 
 <div class="g2">
-  <!-- Grand graphique 30 jours avec prédiction -->
-  <div class="card">
+    <div class="card">
+        <div class="card-head"><span>🚪</span><span class="card-title">Répartition par zone</span></div>
+        <div class="card-body">
+            <canvas id="zone-chart" height="200" style="width:100%; max-height:250px"></canvas>
+            <div id="zone-stats-detail" style="margin-top:20px"></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><span>🏆</span><span class="card-title">Top ressources réservées</span></div>
+        <div class="card-body">
+            <div id="top-ressources-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistiques par département -->
+<div class="card">
     <div class="card-head">
-      <span>📈</span>
-      <span class="card-title">Évolution des accès</span>
-      <span class="card-sub" id="period-label">30 derniers jours</span>
+        <span>🏢</span>
+        <span class="card-title">Statistiques par département</span>
+        <button class="btn btn-ghost btn-sm" onclick="refreshDeptStats()" style="margin-left:auto">↻ Rafraîchir</button>
     </div>
     <div class="card-body">
-      <div class="bar-legend" style="margin-bottom:12px">
-        <span><div class="dot-leg" style="background:var(--blue2)"></div>Accès autorisés</span>
-        <span><div class="dot-leg" style="background:var(--red)"></div>Accès refusés</span>
-        <span><div class="dot-leg" style="background:var(--green)"></div>Prédiction IA</span>
-      </div>
-      <canvas id="trend-chart" style="height:180px; width:100%"></canvas>
+        <div id="dept-stats-list"></div>
     </div>
-  </div>
-
-  <!-- Répartition par zone avec graphique -->
-  <div class="card">
-    <div class="card-head">
-      <span>🚪</span>
-      <span class="card-title">Répartition par zone</span>
-      <span class="card-sub">Top 5 zones les plus utilisées</span>
-    </div>
-    <div class="card-body">
-      <canvas id="zone-chart" style="height:180px; width:100%"></canvas>
-      <div style="margin-top:16px" id="zone-stats-detail"></div>
-    </div>
-  </div>
 </div>
 
-<!-- Analyse horaire -->
+<!-- Top employés -->
 <div class="card">
-  <div class="card-head">
-    <span>⏰</span>
-    <span class="card-title">Analyse horaire - Répartition des accès</span>
-    <span class="card-sub">Heures de pointe et périodes creuses</span>
-  </div>
-  <div class="card-body">
-    <canvas id="hour-chart" style="height:200px; width:100%"></canvas>
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:20px" id="hour-stats">
-      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
-        <div style="font-size:11px; color:var(--text3)">Heure de pointe</div>
-        <div style="font-size:24px; font-weight:300; color:var(--amber)" id="peak-hour">08h00-09h00</div>
-      </div>
-      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
-        <div style="font-size:11px; color:var(--text3)">Période creuse</div>
-        <div style="font-size:24px; font-weight:300; color:var(--green)" id="off-peak">12h00-14h00</div>
-      </div>
-      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
-        <div style="font-size:11px; color:var(--text3)">Moyenne horaire</div>
-        <div style="font-size:24px; font-weight:300" id="avg-hour">34 accès</div>
-      </div>
-      <div class="stat-card" style="background:var(--bg3); border-radius:10px; padding:12px; text-align:center">
-        <div style="font-size:11px; color:var(--text3)">Recommandation IA</div>
-        <div style="font-size:14px; font-weight:500; color:var(--blue2)" id="ai-recommendation">Éviter 08h-09h</div>
-      </div>
+    <div class="card-head"><span>👥</span><span class="card-title">Top 5 employés</span></div>
+    <div style="overflow-x:auto">
+        <table class="tbl">
+            <thead><tr><th>Employé</th><th>Département</th><th>Accès</th><th>Taux succès</th></tr></thead>
+            <tbody id="top-employees-body">
+                {% for emp in top_employes %}
+                <tr>
+                    <td><strong>{{ emp.nom }} {{ emp.prenom }}</strong></td>
+                    <td>{{ emp.departement|default:"—" }}</td>
+                    <td style="text-align:center">{{ emp.nb_acces }}</td>
+                    <td><span style="color:{% if emp.taux_succes >= 85 %}#22c55e{% elif emp.taux_succes >= 70 %}#eab308{% else %}#ef4444{% endif %}">{{ emp.taux_succes }}%</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" style="text-align:center;padding:40px">Aucune donnée disponible</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-  </div>
 </div>
 
-<!-- Top 5 employés amélioré -->
-<div class="card">
-  <div class="card-head">
-    <span>👥</span>
-    <span class="card-title">Top 5 employés — Accès ce mois</span>
-    <button class="btn btn-edit btn-sm" onclick="exportTopEmployees()" style="margin-left:auto">⬇️ Exporter</button>
-  </div>
-  <div style="overflow-x:auto">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Employé</th>
-          <th>Département</th>
-          <th>Zone principale</th>
-          <th>Nombre d'accès</th>
-          <th>Taux de succès</th>
-          <th>Dernier accès</th>
-          <th>Tendance</th>
-        </thead>
-      <tbody id="top-employees-body">
-        {% for emp in top_employes %}
-        <tr>
-          <td>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="emp-av" style="background:#1f6feb;width:34px;height:34px;font-size:12px">
-                {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
-              </div>
-              <div style="font-weight:500">{{ emp.nom }} {{ emp.prenom }}</div>
-            </div>
-          </td>
-          <td>{{ emp.departement|default:"—" }}</td>
-          <td>{{ emp.zone_principale|default:"—" }}</td>
-          <td style="font-family:var(--mono);text-align:center;font-weight:600">{{ emp.nb_acces }}</td>
-          <td>
-            <span style="color: 
-              {% if emp.taux_succes >= 90 %}var(--green)
-              {% elif emp.taux_succes >= 70 %}var(--amber)
-              {% else %}var(--red){% endif %}; 
-              font-family:var(--mono); font-weight:500;">
-              {{ emp.taux_succes }}%
-            </span>
-            <div class="progress-bar" style="height:3px; margin-top:4px">
-              <div class="progress-fill" style="width: {{ emp.taux_succes }}%; background: 
-                {% if emp.taux_succes >= 90 %}var(--green)
-                {% elif emp.taux_succes >= 70 %}var(--amber)
-                {% else %}var(--red){% endif %}"></div>
-            </div>
-          </td>
-          <td style="font-size:11.5px;color:var(--text2);font-family:var(--mono)">
-            {{ emp.dernier_acces|date:"d/m H:i"|default:"—" }}
-          </td>
-          <td>
-            {% if emp.tendance > 0 %}
-              <span class="badge b-green">↑ +{{ emp.tendance }}%</span>
-            {% elif emp.tendance < 0 %}
-              <span class="badge b-red">↓ {{ emp.tendance }}%</span>
-            {% else %}
-              <span class="badge b-gray">→ 0%</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="7" style="text-align:center;padding:60px;color:var(--text3)">
-            Aucune donnée disponible pour le mois en cours
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Prédictions et insights IA -->
-<div class="card" style="background:linear-gradient(135deg, var(--blue3), var(--purple2))">
-  <div class="card-head">
-    <span>🤖</span>
-    <span class="card-title">Insights IA & Recommandations</span>
-    <span class="card-sub">Basé sur l'analyse des données</span>
-  </div>
-  <div class="card-body">
-    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px">
-      <div class="insight-card" style="background:var(--bg3); border-radius:10px; padding:14px">
-        <div style="font-size:24px; margin-bottom:8px">📊</div>
-        <div style="font-weight:600; margin-bottom:4px">Prédiction occupation</div>
-        <div style="font-size:12px; color:var(--text2)">Pic d'activité prévu mardi prochain entre 09h et 11h (+45% d'affluence)</div>
-      </div>
-      <div class="insight-card" style="background:var(--bg3); border-radius:10px; padding:14px">
-        <div style="font-size:24px; margin-bottom:8px">💡</div>
-        <div style="font-weight:600; margin-bottom:4px">Optimisation recommandée</div>
-        <div style="font-size:12px; color:var(--text2)">Ajouter un lecteur RFID à l'entrée secondaire pour réduire les files d'attente</div>
-      </div>
-      <div class="insight-card" style="background:var(--bg3); border-radius:10px; padding:14px">
-        <div style="font-size:24px; margin-bottom:8px">⚠️</div>
-        <div style="font-weight:600; margin-bottom:4px">Anomalie détectée</div>
-        <div style="font-size:12px; color:var(--text2)">Augmentation des refus d'accès zone Atelier (+23% cette semaine)</div>
-      </div>
+<!-- Modal période personnalisée -->
+<div id="customPeriodModal" class="modal-overlay" style="display:none">
+    <div class="modal" style="width:400px">
+        <div class="modal-title">📅 Période personnalisée</div>
+        <div class="modal-sub">Sélectionnez une plage de dates</div>
+        
+        <div class="form-row">
+            <label class="form-label">Date de début</label>
+            <input type="date" class="form-input" id="custom-date-debut">
+        </div>
+        <div class="form-row">
+            <label class="form-label">Date de fin</label>
+            <input type="date" class="form-input" id="custom-date-fin">
+        </div>
+        
+        <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" onclick="closeCustomPeriodModal()">Annuler</button>
+            <button type="button" class="btn btn-primary" onclick="applyCustomPeriod()">Appliquer</button>
+        </div>
     </div>
-  </div>
 </div>
 
 <style>
-.stat-card {
-  transition: transform 0.2s;
-}
-.stat-card:hover {
-  transform: translateY(-2px);
-}
-.insight-card {
-  transition: all 0.2s;
-}
-.insight-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--blue);
-}
-.kpi.k-cyan::after {
-  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
-}
+.kpi { padding: 16px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--border); }
+.kpi-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.kpi-label { font-size: 12px; color: var(--text2); }
+.kpi-value { font-size: 28px; font-weight: 600; }
+.progress-bar { background: var(--bg4); border-radius: 4px; height: 6px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 4px; }
+.dept-card { background: var(--bg3); border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 3px solid var(--blue); }
 </style>
 
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-let trendChart, zoneChart, hourChart;
+// Données
+const chartLabels = {{ chart_labels|safe }};
+const chartAutorises = {{ chart_autorises|safe }};
+const chartRefuses = {{ chart_refuses|safe }};
+const chartPrediction = {{ chart_prediction|safe }};
+const zonesStats = {{ zones_stats|safe }};
+const topRessources = {{ top_ressources|safe }};
+const occupationLabels = {{ occupation_labels|safe }};
+const occupationValues = {{ occupation_values|safe }};
 
-// Données réelles ou simulées
-const chartData = {{ chart_data|safe|default:'{"labels":[],"autorises":[],"refuses":[],"prediction":[]}' }};
-const zoneData = {{ zone_stats_data|safe|default:'{"labels":[],"values":[],"details":[]}' }};
-const hourData = {{ hour_stats|safe|default:'{"labels":[],"values":[]}' }};
+let trendChart, occupationChart, zoneChart;
 
+// Initialisation des graphiques
 function initCharts() {
-  // Graphique d'évolution
-  const trendCtx = document.getElementById('trend-chart')?.getContext('2d');
-  if (trendCtx) {
-    const labels = chartData.labels || [];
-    const autorises = chartData.autorises || [];
-    const refuses = chartData.refuses || [];
-    const prediction = chartData.prediction || [];
-    
-    trendChart = new Chart(trendCtx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          { label: 'Autorisés', data: autorises, borderColor: '#2dba6f', backgroundColor: 'rgba(45,186,111,0.1)', tension: 0.4, fill: true },
-          { label: 'Refusés', data: refuses, borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', tension: 0.4, fill: true },
-          { label: 'Prédiction IA', data: prediction, borderColor: '#e3b341', borderDash: [5, 5], tension: 0.4, fill: false }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } },
-        scales: { y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'accès' } } }
-      }
-    });
-  }
-  
-  // Graphique par zone (camembert)
-  const zoneCtx = document.getElementById('zone-chart')?.getContext('2d');
-  if (zoneCtx && zoneData.labels && zoneData.labels.length > 0) {
-    zoneChart = new Chart(zoneCtx, {
-      type: 'doughnut',
-      data: {
-        labels: zoneData.labels,
-        datasets: [{ data: zoneData.values, backgroundColor: ['#1f6feb', '#2dba6f', '#e3b341', '#a371f7', '#f85149', '#39d0f0'] }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} accès (${Math.round(ctx.raw / zoneData.total * 100)}%)` } } }
-      }
-    });
-    
-    // Détails des zones
-    const detailDiv = document.getElementById('zone-stats-detail');
-    if (detailDiv && zoneData.details) {
-      detailDiv.innerHTML = zoneData.details.map(z => `
-        <div style="margin-bottom:12px">
-          <div style="display:flex; justify-content:space-between; margin-bottom:4px">
-            <span>🚪 ${z.nom}</span>
-            <span style="font-family:var(--mono)">${z.count} accès (${z.pct}%)</span>
-          </div>
-          <div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%; background:linear-gradient(90deg,var(--blue),var(--cyan))"></div></div>
-        </div>
-      `).join('');
+    if (typeof Chart === 'undefined') {
+        setTimeout(initCharts, 100);
+        return;
     }
-  }
-  
-  // Graphique horaire
-  const hourCtx = document.getElementById('hour-chart')?.getContext('2d');
-  if (hourCtx && hourData.labels && hourData.labels.length > 0) {
-    hourChart = new Chart(hourCtx, {
-      type: 'bar',
-      data: {
-        labels: hourData.labels,
-        datasets: [{ label: 'Accès', data: hourData.values, backgroundColor: 'rgba(31,111,235,0.7)', borderRadius: 4 }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw} accès` } } },
-        scales: { y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'accès' } } }
-      }
-    });
     
-    // Trouver heure de pointe
-    const maxIndex = hourData.values.indexOf(Math.max(...hourData.values));
-    const peakHour = hourData.labels[maxIndex];
-    document.getElementById('peak-hour').textContent = peakHour;
+    // Graphique tendance
+    const trendCtx = document.getElementById('trend-chart')?.getContext('2d');
+    if (trendCtx && chartLabels && chartLabels.length) {
+        trendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    { label: '✅ Autorisés', data: chartAutorises, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.3 },
+                    { label: '❌ Refusés', data: chartRefuses, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3 },
+                    { label: '🤖 Prédiction', data: chartPrediction, borderColor: '#eab308', borderDash: [5,5], fill: false, tension: 0.3 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+        });
+    }
     
-    // Trouver période creuse
-    const minIndex = hourData.values.indexOf(Math.min(...hourData.values));
-    const offPeak = hourData.labels[minIndex];
-    document.getElementById('off-peak').textContent = offPeak;
+    // Graphique occupation
+    const occCtx = document.getElementById('occupation-chart')?.getContext('2d');
+    if (occCtx && occupationLabels && occupationLabels.length) {
+        occupationChart = new Chart(occCtx, {
+            type: 'bar',
+            data: { labels: occupationLabels, datasets: [{ label: 'Occupation (%)', data: occupationValues, backgroundColor: '#3b82f6', borderRadius: 6 }] },
+            options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, max: 100 } } }
+        });
+    }
     
-    // Moyenne horaire
-    const avg = Math.round(hourData.values.reduce((a,b) => a+b, 0) / hourData.values.length);
-    document.getElementById('avg-hour').textContent = avg + ' accès';
+    // Graphique zones
+    const zoneCtx = document.getElementById('zone-chart')?.getContext('2d');
+    if (zoneCtx && zonesStats && zonesStats.length) {
+        zoneChart = new Chart(zoneCtx, {
+            type: 'doughnut',
+            data: { labels: zonesStats.map(z => z.nom), datasets: [{ data: zonesStats.map(z => z.count), backgroundColor: ['#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ef4444'] }] },
+            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } }
+        });
+        
+        let html = '';
+        zonesStats.forEach(z => {
+            html += `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><span>🚪 ${z.nom}</span><span>${z.count} accès (${z.pct}%)</span></div><div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%; background:#3b82f6"></div></div></div>`;
+        });
+        document.getElementById('zone-stats-detail').innerHTML = html;
+    }
     
-    // Recommandation IA
-    if (peakHour.includes('08') || peakHour.includes('09')) {
-      document.getElementById('ai-recommendation').innerHTML = 'Éviter 08h-09h (forte affluence)';
-    } else if (peakHour.includes('12') || peakHour.includes('13')) {
-      document.getElementById('ai-recommendation').innerHTML = 'Pause déjeuner (affluence modérée)';
+    // Top ressources
+    const topList = document.getElementById('top-ressources-list');
+    if (topList && topRessources && topRessources.length) {
+        let html = '';
+        topRessources.forEach((r, i) => {
+            html += `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span><strong>${i+1}.</strong> 🏢 ${r.nom}</span><span>${r.reservations} réservations</span></div><div class="progress-bar"><div class="progress-fill" style="width:${r.taux}%; background:#3b82f6"></div></div></div>`;
+        });
+        topList.innerHTML = html;
+    }
+    
+    // Charger les stats par département
+    loadDeptStats();
+}
+
+// Statistiques par département
+function loadDeptStats() {
+    fetch('/dashboard/api/stats/departement/?days=' + document.getElementById('periodSelect').value)
+        .then(r => r.json())
+        .then(data => {
+            if (data.departements && data.departements.length) {
+                let html = '<div class="g2" style="gap:12px">';
+                data.departements.forEach(dept => {
+                    html += `
+                        <div class="dept-card">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                                <span style="font-weight:600">🏢 ${dept.nom}</span>
+                                <span>👥 ${dept.employes} employés</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                                <span>Accès: ${dept.acces}</span>
+                                <span>Taux succès: <strong style="color:${dept.taux_succes >= 80 ? '#22c55e' : dept.taux_succes >= 60 ? '#eab308' : '#ef4444'}">${dept.taux_succes}%</strong></span>
+                            </div>
+                            <div class="progress-bar"><div class="progress-fill" style="width:${dept.taux_succes}%; background:${dept.taux_succes >= 80 ? '#22c55e' : dept.taux_succes >= 60 ? '#eab308' : '#ef4444'}"></div></div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                document.getElementById('dept-stats-list').innerHTML = html;
+            } else {
+                document.getElementById('dept-stats-list').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">Aucune donnée départementale</div>';
+            }
+        })
+        .catch(err => console.error("Erreur chargement stats départements:", err));
+}
+
+function refreshDeptStats() { loadDeptStats(); }
+
+// Filtre par département
+function filterByDepartement() {
+    const dept = document.getElementById('deptFilter').value;
+    if (dept === 'all') {
+        location.reload();
     } else {
-      document.getElementById('ai-recommendation').innerHTML = 'Privilégier les créneaux après 14h';
+        window.location.href = `/dashboard/statistiques/?departement=${encodeURIComponent(dept)}`;
     }
-  }
 }
 
+// Changement de période
 function changePeriod() {
-  const period = document.getElementById('periodSelect').value;
-  const label = document.getElementById('period-label');
-  if (period === '7') label.textContent = '7 derniers jours';
-  else if (period === '30') label.textContent = '30 derniers jours';
-  else if (period === '90') label.textContent = '90 derniers jours';
-  else label.textContent = 'Année';
-  
-  // Recharger les données avec la nouvelle période
-  fetch(`/api/stats/trend/?days=${period}`)
-    .then(r => r.json())
-    .then(data => {
-      if (trendChart) {
-        trendChart.data.labels = data.labels;
-        trendChart.data.datasets[0].data = data.autorises;
-        trendChart.data.datasets[1].data = data.refuses;
-        trendChart.data.datasets[2].data = data.prediction;
-        trendChart.update();
-      }
-    });
+    const days = document.getElementById('periodSelect').value;
+    document.getElementById('period-label').textContent = `${days} derniers jours`;
+    
+    fetch(`/dashboard/api/stats/trend-cache/?days=${days}`)
+        .then(r => r.json())
+        .then(data => {
+            if (trendChart && data) {
+                trendChart.data.labels = data.labels || [];
+                trendChart.data.datasets[0].data = data.autorises || [];
+                trendChart.data.datasets[1].data = data.refuses || [];
+                trendChart.data.datasets[2].data = data.prediction || [];
+                trendChart.update();
+            }
+            loadDeptStats();
+        })
+        .catch(err => console.error("Erreur:", err));
 }
 
-function exportStats() {
-  const period = document.getElementById('periodSelect').value;
-  const periodText = period === '7' ? '7j' : period === '30' ? '30j' : period === '90' ? '90j' : 'annee';
-  
-  let csv = "Date,Accès Autorisés,Accès Refusés,Taux Succès,Prédiction IA\n";
-  
-  const labels = trendChart?.data.labels || [];
-  const autorises = trendChart?.data.datasets[0]?.data || [];
-  const refuses = trendChart?.data.datasets[1]?.data || [];
-  const prediction = trendChart?.data.datasets[2]?.data || [];
-  
-  for (let i = 0; i < labels.length; i++) {
-    const total = autorises[i] + refuses[i];
-    const taux = total > 0 ? Math.round(autorises[i] / total * 100) : 0;
-    csv += `"${labels[i]}","${autorises[i]}","${refuses[i]}","${taux}%","${prediction[i] || '-'}"\n`;
-  }
-  
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `statistiques_acces_${periodText}_${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
-}
-
-function exportTopEmployees() {
-  let csv = "Employé,Département,Zone principale,Nombre accès,Taux succès,Dernier accès,Tendance\n";
-  const rows = document.querySelectorAll('#top-employees-body tr');
-  rows.forEach(row => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length >= 7) {
-      csv += `"${cells[0].textContent.trim()}","${cells[1].textContent.trim()}","${cells[2].textContent.trim()}",`;
-      csv += `"${cells[3].textContent.trim()}","${cells[4].textContent.trim()}","${cells[5].textContent.trim()}","${cells[6].textContent.trim()}"\n`;
+// Export
+function exportStats(type) {
+    const days = document.getElementById('periodSelect').value;
+    if (type === 'csv') {
+        window.location.href = `/dashboard/api/stats/export/csv/?days=${days}`;
+    } else if (type === 'pdf') {
+        window.location.href = `/dashboard/api/stats/export/pdf/?days=${days}`;
     }
-  });
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `top_employes_${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
 }
 
-function refreshStats() {
-  location.reload();
+// Période personnalisée
+function showCustomPeriodModal() {
+    document.getElementById('customPeriodModal').style.display = 'flex';
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today.setDate(today.getDate() - 30));
+    document.getElementById('custom-date-debut').value = thirtyDaysAgo.toISOString().slice(0,10);
+    document.getElementById('custom-date-fin').value = new Date().toISOString().slice(0,10);
 }
 
-// Initialisation
-window.onload = function() {
-  initCharts();
-};
+function closeCustomPeriodModal() {
+    document.getElementById('customPeriodModal').style.display = 'none';
+}
+
+function applyCustomPeriod() {
+    const dateDebut = document.getElementById('custom-date-debut').value;
+    const dateFin = document.getElementById('custom-date-fin').value;
+    
+    if (!dateDebut || !dateFin) {
+        alert("Veuillez sélectionner les deux dates");
+        return;
+    }
+    
+    fetch(`/dashboard/api/stats/period-custom/?date_debut=${dateDebut}&date_fin=${dateFin}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.stats) {
+                document.getElementById('kpi-total').textContent = data.total_acces;
+                document.getElementById('kpi-taux').textContent = data.taux_succes + '%';
+                document.getElementById('period-label').textContent = `${dateDebut} au ${dateFin}`;
+                
+                if (trendChart) {
+                    trendChart.data.labels = data.stats.map(s => s.date);
+                    trendChart.data.datasets[0].data = data.stats.map(s => s.autorises);
+                    trendChart.data.datasets[1].data = data.stats.map(s => s.refuses);
+                    trendChart.update();
+                }
+            }
+            closeCustomPeriodModal();
+        })
+        .catch(err => console.error("Erreur:", err));
+}
+
+function refreshStats() { location.reload(); }
+
+// Charger les départements dans le filtre
+function loadDepartements() {
+    fetch('/dashboard/api/stats/departement/')
+        .then(r => r.json())
+        .then(data => {
+            const select = document.getElementById('deptFilter');
+            if (data.departements) {
+                data.departements.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept.nom;
+                    option.textContent = dept.nom;
+                    select.appendChild(option);
+                });
+            }
+        });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadDepartements();
+    initCharts();
+});
 </script>
 {% endblock %}
