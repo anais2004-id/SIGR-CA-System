@@ -6,8 +6,8 @@
 {% block page_sub %}Supervision intelligente des ressources et contrôle d'accès{% endblock %}
 
 {% block topbar_actions %}
-<div class="icon-btn" title="Actualiser" onclick="refreshDashboard()">↻</div>
-<div class="icon-btn" title="Notifications" onclick="showNotifications()">🔔</div>
+<div class="icon-btn" onclick="refreshDashboard()" title="Actualiser">↻</div>
+<div class="icon-btn" onclick="showNotifications()" title="Notifications">🔔</div>
 <div class="pill pill-live" onclick="toggleLiveMode()">
     <div class="live-dot"></div><span id="live-text">LIVE</span>
 </div>
@@ -15,428 +15,661 @@
 
 {% block content %}
 
-{# ══════════════════════════════════════════════
-   GARDE : si l'utilisateur est un employé (pas admin)
-   → on l'affiche une bannière de redirection
-   ══════════════════════════════════════════════ #}
-{% if user.is_authenticated and not user.is_staff %}
+<style>
+/* KPIs Grid */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+@media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 
-  <div class="alert-box info" style="margin-bottom:8px">
-    <div class="alert-ico">🔄</div>
-    <div>
-      <div class="alert-text">Vous êtes connecté en tant qu'employé.</div>
-      <div class="alert-meta">Redirection vers votre espace personnel...</div>
+.kpi-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+}
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+}
+.kpi-card.blue::before { background: linear-gradient(90deg, #1f6feb, #58a6ff); }
+.kpi-card.green::before { background: linear-gradient(90deg, #2dba6f, #3fb950); }
+.kpi-card.red::before { background: linear-gradient(90deg, #f85149, #ff7b72); }
+.kpi-card.amber::before { background: linear-gradient(90deg, #e3b341, #f2cc60); }
+.kpi-card.purple::before { background: linear-gradient(90deg, #a371f7, #cb9eff); }
+.kpi-card.cyan::before { background: linear-gradient(90deg, #39d0f0, #79e4ff); }
+.kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+
+.kpi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.kpi-label {
+    font-size: 11px;
+    color: var(--text2);
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.kpi-icon { font-size: 24px; }
+.kpi-value {
+    font-size: 34px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin-bottom: 6px;
+}
+.kpi-delta {
+    font-size: 11px;
+    color: var(--text3);
+}
+.kpi-delta.up { color: #2dba6f; }
+.kpi-delta.down { color: #f85149; }
+.blue .kpi-value { color: #1f6feb; }
+.green .kpi-value { color: #2dba6f; }
+.red .kpi-value { color: #f85149; }
+.amber .kpi-value { color: #e3b341; }
+.purple .kpi-value { color: #a371f7; }
+.cyan .kpi-value { color: #39d0f0; }
+
+/* AI Section */
+.ai-section {
+    background: linear-gradient(135deg, var(--blue3), var(--purple2));
+    border-radius: 16px;
+    margin-bottom: 24px;
+    border: 1px solid rgba(31,111,235,0.2);
+}
+.ai-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+@media (max-width: 768px) { .ai-grid { grid-template-columns: 1fr; } }
+
+.ai-card {
+    background: rgba(0,0,0,0.2);
+    backdrop-filter: blur(4px);
+    border-radius: 12px;
+    padding: 18px;
+    transition: all 0.25s;
+    cursor: pointer;
+}
+.ai-card:hover {
+    transform: translateY(-3px);
+    background: rgba(0,0,0,0.3);
+}
+.ai-icon { font-size: 32px; margin-bottom: 12px; }
+.ai-title { font-weight: 700; margin-bottom: 6px; font-size: 14px; }
+.ai-desc { font-size: 12px; color: var(--text2); line-height: 1.4; }
+
+/* Feed */
+.feed-container {
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 4px;
+}
+.feed-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    margin-bottom: 8px;
+    transition: all 0.2s;
+}
+.feed-item:hover {
+    border-color: var(--blue);
+    background: var(--bg4);
+    transform: translateX(4px);
+}
+.feed-item.new {
+    animation: slideInRight 0.3s ease;
+}
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+.feed-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+}
+.feed-info { flex: 1; }
+.feed-name { font-weight: 600; margin-bottom: 4px; }
+.feed-detail { font-size: 11px; color: var(--text2); display: flex; gap: 12px; flex-wrap: wrap; }
+.feed-time {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text3);
+    flex-shrink: 0;
+}
+.feed-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.feed-badge.success { background: rgba(45,186,111,0.12); color: #2dba6f; border: 1px solid rgba(45,186,111,0.2); }
+.feed-badge.danger { background: rgba(248,81,73,0.12); color: #f85149; border: 1px solid rgba(248,81,73,0.2); }
+
+/* Chart */
+.chart-wrapper {
+    height: 140px;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 16px 0 8px;
+}
+.chart-bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.chart-bars {
+    position: relative;
+    width: 100%;
+    height: 100px;
+}
+.chart-bar-pred {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    background: rgba(45,186,111,0.15);
+    border: 1px dashed #2dba6f;
+    border-radius: 4px 4px 0 0;
+    transition: height 0.3s;
+}
+.chart-bar-refused {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    background: #f85149;
+    border-radius: 4px 4px 0 0;
+    transition: height 0.3s;
+}
+.chart-bar-allowed {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    background: #1f6feb;
+    border-radius: 4px 4px 0 0;
+    transition: height 0.3s;
+}
+.chart-label {
+    font-size: 9px;
+    color: var(--text3);
+    text-align: center;
+}
+.legend {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+/* Zones */
+.zone-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.zone-row {
+    background: var(--bg3);
+    border-radius: 10px;
+    padding: 12px;
+    transition: all 0.2s;
+}
+.zone-row:hover {
+    background: var(--bg4);
+    transform: translateX(4px);
+}
+.zone-row-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.zone-name { font-weight: 600; }
+.zone-count { font-family: monospace; color: var(--text2); }
+.zone-bar {
+    background: var(--bg4);
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.zone-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.3s;
+}
+.zone-fill.high { background: #f85149; }
+.zone-fill.mid { background: #e3b341; }
+.zone-fill.low { background: #2dba6f; }
+.zone-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text3);
+}
+
+/* Alerts */
+.alert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+.alert-item.danger { background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.2); }
+.alert-item.warning { background: rgba(227,179,65,0.12); border: 1px solid rgba(227,179,65,0.2); }
+.alert-item.info { background: rgba(31,111,235,0.12); border: 1px solid rgba(31,111,235,0.2); }
+.alert-icon { font-size: 22px; }
+.alert-content { flex: 1; }
+.alert-title { font-weight: 600; margin-bottom: 4px; }
+.alert-meta { font-size: 11px; color: var(--text3); }
+
+/* Emergency */
+.emergency-card {
+    border-color: var(--amber);
+    background: linear-gradient(135deg, var(--amber2), transparent);
+}
+.emergency-btn {
+    background: var(--amber2);
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+.emergency-btn:hover {
+    background: rgba(227,179,65,0.3);
+    transform: translateY(-2px);
+}
+
+/* Live Dot */
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+    display: inline-block;
+    margin-right: 6px;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.2); }
+}
+</style>
+
+<!-- KPIs -->
+<div class="kpi-grid">
+    <div class="kpi-card blue">
+        <div class="kpi-header"><span class="kpi-label">Employés actifs</span><span class="kpi-icon">👥</span></div>
+        <div class="kpi-value">{{ total_employes|default:0 }}</div>
+        <div class="kpi-delta up">↑ {{ nouveaux_employes|default:0 }} ce mois</div>
     </div>
-  </div>
-
-  <script>
-    window.location.href = "{% url 'employe_espace' %}";
-  </script>
-
-{% else %}
-
-{# ══ CONTENU ADMIN UNIQUEMENT ══ #}
-
-<!-- KPIs améliorés avec IA -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px; margin-bottom:20px">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Employés actifs</div><div class="kpi-icon">👥</div></div>
-    <div class="kpi-value">{{ total_employes }}</div>
-    <div class="kpi-delta">+{{ nouveaux_employes|default:0 }} ce mois</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Accès aujourd'hui</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ acces_aujourdhui }}</div>
-    <div class="kpi-delta {% if tendance_acces > 0 %}pos{% else %}neg{% endif %}">
-      {% if tendance_acces > 0 %}↑{% else %}↓{% endif %} {{ tendance_acces|default:0 }}% vs hier
+    <div class="kpi-card green">
+        <div class="kpi-header"><span class="kpi-label">Accès aujourd'hui</span><span class="kpi-icon">✅</span></div>
+        <div class="kpi-value">{{ acces_aujourdhui|default:0 }}</div>
+        <div class="kpi-delta up">↑ 12% vs hier</div>
     </div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
-    <div class="kpi-value">{{ acces_refuses|default:"0" }}</div>
-    <div class="kpi-delta neg">{{ taux_refus|default:0 }}% du total</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Taux occupation</div><div class="kpi-icon">📊</div></div>
-    <div class="kpi-value">{{ taux_occupation|default:47 }}%</div>
-    <div class="kpi-delta">Moyenne des zones</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Réservations</div><div class="kpi-icon">📆</div></div>
-    <div class="kpi-value">{{ reservations_actives|default:0 }}</div>
-    <div class="kpi-delta">{{ reservations_aujourdhui|default:0 }} aujourd'hui</div>
-  </div>
-  <div class="kpi k-cyan" style="--cyan:#39d0f0">
-    <div class="kpi-header"><div class="kpi-label">Prédiction IA</div><div class="kpi-icon">🤖</div></div>
-    <div class="kpi-value">{{ prediction_heure_pointe|default:"12h" }}</div>
-    <div class="kpi-delta">Heure de pointe estimée</div>
-  </div>
+    <div class="kpi-card red">
+        <div class="kpi-header"><span class="kpi-label">Accès refusés</span><span class="kpi-icon">🚫</span></div>
+        <div class="kpi-value">{{ acces_refuses|default:0 }}</div>
+        <div class="kpi-delta down">{{ taux_refus|default:0 }}% du total</div>
+    </div>
+    <div class="kpi-card amber">
+        <div class="kpi-header"><span class="kpi-label">Taux occupation</span><span class="kpi-icon">📊</span></div>
+        <div class="kpi-value">{{ taux_occupation|default:47 }}%</div>
+        <div class="kpi-delta">Moyenne des zones</div>
+    </div>
+    <div class="kpi-card purple">
+        <div class="kpi-header"><span class="kpi-label">Réservations</span><span class="kpi-icon">📆</span></div>
+        <div class="kpi-value">{{ reservations_actives|default:0 }}</div>
+        <div class="kpi-delta">{{ reservations_aujourdhui|default:0 }} aujourd'hui</div>
+    </div>
+    <div class="kpi-card cyan">
+        <div class="kpi-header"><span class="kpi-label">Prédiction IA</span><span class="kpi-icon">🤖</span></div>
+        <div class="kpi-value">{{ prediction_heure_pointe|default:"12h" }}</div>
+        <div class="kpi-delta">Heure de pointe</div>
+    </div>
 </div>
 
-<!-- Section Intelligence et Optimisation -->
-<div class="card" style="margin-bottom:20px; background:linear-gradient(135deg, var(--blue3), var(--purple2)); border:1px solid rgba(31,111,235,.3)">
-  <div class="card-head">
-    <span>🤖</span>
-    <span class="card-title">Intelligence Artificielle - Recommandations du jour</span>
-    <span class="card-sub">Optimisation des ressources</span>
-  </div>
-  <div class="card-body">
-    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px">
-      <div class="ai-recommendation">
-        <div style="font-size:28px; margin-bottom:8px">💡</div>
-        <div style="font-weight:600; margin-bottom:4px">Suggestion de créneaux</div>
-        <div style="font-size:12px; color:var(--text2)">La salle "Atelier Production" est disponible de 14h à 16h - 78% de chances d'être utilisée</div>
-      </div>
-      <div class="ai-recommendation">
-        <div style="font-size:28px; margin-bottom:8px">📈</div>
-        <div style="font-weight:600; margin-bottom:4px">Prédiction d'occupation</div>
-        <div style="font-size:12px; color:var(--text2)">Pic d'activité prévu entre 09h30 et 11h00 (jusqu'à 85% d'occupation)</div>
-      </div>
-      <div class="ai-recommendation">
-        <div style="font-size:28px; margin-bottom:8px">⚡</div>
-        <div style="font-weight:600; margin-bottom:4px">Optimisation des accès</div>
-        <div style="font-size:12px; color:var(--text2)">5 créneaux en conflit détectés - Propositions alternatives disponibles</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="g3-2">
-  <!-- Flux en temps réel IoT -->
-  <div class="card">
+<!-- IA Recommendations -->
+<div class="ai-section">
     <div class="card-head">
-      <span>📡</span>
-      <span class="card-title">Flux IoT en temps réel</span>
-      <span class="card-sub"><span class="live-dot"></span> Badges RFID & QR Code</span>
+        <span>🤖</span>
+        <span class="card-title">Intelligence Artificielle</span>
+        <span class="card-sub">Recommandations personnalisées</span>
     </div>
-    <div style="padding:12px 14px; max-height:380px; overflow-y:auto" id="live-feed">
-      {% for log in derniers_logs %}
-      <div class="feed-item {% if forloop.first %}new{% endif %}">
-        <div class="feed-av" style="background:{% if log.resultat == 'AUTORISE' %}#1f6feb{% else %}#f85149{% endif %}">
-          {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
-        </div>
-        <div class="feed-info">
-          <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
-          <div class="feed-door">{{ log.bureau_nom|default:"Zone inconnue" }}</div>
-          <div class="feed-method" style="font-size:10px; color:var(--text3); margin-top:2px">
-            📱 {{ log.type_acces|default:"RFID" }}
-          </div>
-        </div>
-        <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
-        {% if log.resultat == 'AUTORISE' %}
-          <div class="feed-status fs-ok">✓ AUTORISÉ</div>
-        {% else %}
-          <div class="feed-status fs-no">✗ REFUSÉ</div>
-        {% endif %}
-      </div>
-      {% empty %}
-      <div style="text-align:center;padding:40px;color:var(--text3)">Aucun accès pour le moment</div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <!-- Graphique 7 jours avec prédiction -->
-  <div class="card">
-    <div class="card-head"><span>📈</span><span class="card-title">Analyse des accès - 7 derniers jours</span></div>
     <div class="card-body">
-      <div class="bar-legend" style="margin-bottom:10px">
-        <span><div class="dot-leg" style="background:var(--blue2)"></div>Autorisés</span>
-        <span><div class="dot-leg" style="background:var(--red)"></div>Refusés</span>
-        <span><div class="dot-leg" style="background:var(--green)"></div>Prédiction IA</span>
-      </div>
-      <div class="bars" style="height:100px" id="mini-chart"></div>
-      <div style="display:flex;gap:4px;margin-top:4px" id="mini-labels"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Zones les plus actives avec occupation en temps réel -->
-<div class="card">
-  <div class="card-head">
-    <span>🚪</span>
-    <span class="card-title">Zones les plus fréquentées</span>
-    <span class="card-sub">Occupation en temps réel</span>
-  </div>
-  <div class="card-body" id="zones-frequentes">
-    <div style="display:flex; justify-content:center; padding:20px">Chargement des données...</div>
-  </div>
-</div>
-
-<!-- Alertes et notifications -->
-<div class="card">
-  <div class="card-head">
-    <span>⚠️</span>
-    <span class="card-title">Alertes système & notifications</span>
-    <span class="card-sub">{{ alertes }} non traitée{{ alertes|pluralize }}</span>
-  </div>
-  <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-    {% if alertes > 0 %}
-    <div class="alert-box danger">
-      <div class="alert-ico">🚨</div>
-      <div>
-        <div class="alert-text">{{ alertes }} alerte{{ alertes|pluralize }} active{{ alertes|pluralize }} — vérification immédiate requise</div>
-        <div class="alert-meta">Accès non autorisés détectés: {{ acces_non_autorises|default:0 }} tentatives</div>
-      </div>
-    </div>
-    {% endif %}
-    
-    {% for alerte in alertes_list|slice:":3" %}
-    <div class="alert-box warn">
-      <div class="alert-ico">⚠️</div>
-      <div>
-        <div class="alert-text">{{ alerte.message }}</div>
-        <div class="alert-meta">{{ alerte.timestamp|date:"d/m/Y H:i" }} · {{ alerte.zone }}</div>
-      </div>
-    </div>
-    {% endfor %}
-    
-    <div class="alert-box info">
-      <div class="alert-ico">🔵</div>
-      <div>
-        <div class="alert-text">Système opérationnel — Contrôle d'accès actif</div>
-        <div class="alert-meta">{{ equipements_actifs|default:0 }} équipements connectés · Mode secours disponible</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Réservations du jour -->
-<div class="card">
-  <div class="card-head">
-    <span>📆</span>
-    <span class="card-title">Réservations du jour</span>
-    <span class="card-sub">Créneaux planifiés</span>
-  </div>
-  <div class="card-body">
-    <div style="max-height:300px; overflow-y:auto">
-      {% for resa in reservations_jour %}
-      <div class="feed-item" style="margin-bottom:8px">
-        <div class="feed-av" style="background:#a371f7">📆</div>
-        <div class="feed-info">
-          <div class="feed-name">{{ resa.titre|default:"Réservation" }}</div>
-          <div class="feed-door">🚪 {{ resa.bureau_nom }} · 👥 {{ resa.nb_participants|default:1 }} pers.</div>
+        <div class="ai-grid">
+            <div class="ai-card" onclick="applyRecommendation('creneaux')">
+                <div class="ai-icon">💡</div>
+                <div class="ai-title">Suggestion de créneaux</div>
+                <div class="ai-desc">Salle "Atelier Production" disponible 14h-16h (78% dispo)</div>
+            </div>
+            <div class="ai-card" onclick="applyRecommendation('occupation')">
+                <div class="ai-icon">📈</div>
+                <div class="ai-title">Prédiction occupation</div>
+                <div class="ai-desc">Pic d'activité prévu 09h30-11h00 (85% occupation)</div>
+            </div>
+            <div class="ai-card" onclick="applyRecommendation('optimisation')">
+                <div class="ai-icon">⚡</div>
+                <div class="ai-title">Optimisation des accès</div>
+                <div class="ai-desc">5 créneaux en conflit - Alternatives disponibles</div>
+            </div>
         </div>
-        <div class="feed-time">{{ resa.date_debut|date:"H:i" }} → {{ resa.date_fin|date:"H:i" }}</div>
-        <span class="badge b-green">Confirmée</span>
-      </div>
-      {% empty %}
-      <div style="text-align:center; padding:40px; color:var(--text3)">Aucune réservation aujourd'hui</div>
-      {% endfor %}
     </div>
-  </div>
 </div>
 
-<!-- Mode de secours (fail-over) -->
-<div class="card" style="border-color: var(--amber)">
-  <div class="card-head">
-    <span>🛡️</span>
-    <span class="card-title">Mode de secours - Déverrouillage d'urgence</span>
-    <span class="card-sub">En cas d'incendie / panne</span>
-  </div>
-  <div class="card-body">
-    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
-      <div style="flex:1">
-        <div style="font-size:13px; margin-bottom:8px">⚠️ En situation d'urgence, vous pouvez déverrouiller manuellement les accès</div>
-        <div class="progress-bar" style="height:4px"><div class="progress-fill" style="width:100%; background:var(--amber)"></div></div>
-        <div style="font-size:11px; color:var(--text2); margin-top:8px">Action journalisée · Accès limité aux administrateurs</div>
-      </div>
-      <button class="btn btn-amber btn-sm" onclick="emergencyUnlock()" style="background:var(--amber2); color:var(--amber); border-color:var(--amber)">🔓 Déverrouillage d'urgence</button>
+<div class="g2">
+    <!-- Flux IoT -->
+    <div class="card">
+        <div class="card-head">
+            <span>📡</span>
+            <span class="card-title">Flux en temps réel</span>
+            <span class="card-sub"><span class="live-dot"></span> Badges RFID & QR</span>
+        </div>
+        <div class="feed-container" id="live-feed">
+            {% for log in derniers_logs %}
+            <div class="feed-item {% if forloop.first %}new{% endif %}">
+                <div class="feed-avatar" style="background:{% if log.resultat == 'AUTORISE' %}#1f6feb{% else %}#f85149{% endif %}">
+                    {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+                </div>
+                <div class="feed-info">
+                    <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+                    <div class="feed-detail">
+                        <span>🚪 {{ log.bureau_nom|default:"Zone inconnue" }}</span>
+                        <span>📱 {{ log.type_acces|default:"RFID" }}</span>
+                    </div>
+                </div>
+                <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
+                <div class="feed-badge {% if log.resultat == 'AUTORISE' %}success{% else %}danger{% endif %}">
+                    {% if log.resultat == 'AUTORISE' %}✓ AUTORISÉ{% else %}✗ REFUSÉ{% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="empty-state">📡 Aucun accès récent</div>
+            {% endfor %}
+        </div>
     </div>
-  </div>
+
+    <!-- Graphique -->
+    <div class="card">
+        <div class="card-head"><span>📈</span><span class="card-title">Analyse des accès - 7 jours</span></div>
+        <div class="card-body">
+            <div class="legend">
+                <span><span class="legend-dot" style="background:#1f6feb"></span>Autorisés</span>
+                <span><span class="legend-dot" style="background:#f85149"></span>Refusés</span>
+                <span><span class="legend-dot" style="background:#2dba6f"></span>Prédiction</span>
+            </div>
+            <div class="chart-wrapper" id="chart-container"></div>
+            <div id="chart-labels" style="display: flex; gap: 8px; margin-top: 8px;"></div>
+        </div>
+    </div>
 </div>
 
-{% endif %}{# fin bloc admin #}
+<!-- Zones fréquentées -->
+<div class="card">
+    <div class="card-head">
+        <span>🚪</span>
+        <span class="card-title">Zones les plus fréquentées</span>
+        <span class="card-sub">Occupation en temps réel</span>
+    </div>
+    <div class="card-body">
+        <div class="zone-list" id="zones-container"></div>
+    </div>
+</div>
 
-{% endblock %}
+<!-- Alertes -->
+<div class="card">
+    <div class="card-head">
+        <span>⚠️</span>
+        <span class="card-title">Alertes système</span>
+        <span class="card-sub">{{ alertes|default:0 }} non traitée(s)</span>
+    </div>
+    <div class="card-body">
+        {% if alertes > 0 %}
+        <div class="alert-item danger">
+            <div class="alert-icon">🚨</div>
+            <div class="alert-content">
+                <div class="alert-title">{{ alertes }} alerte(s) active(s)</div>
+                <div class="alert-meta">Vérification immédiate requise</div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="alert-item info">
+            <div class="alert-icon">🔵</div>
+            <div class="alert-content">
+                <div class="alert-title">Système opérationnel</div>
+                <div class="alert-meta">Contrôle d'accès actif - Mode secours disponible</div>
+            </div>
+        </div>
+    </div>
+</div>
 
-{% block extra_js %}
+<!-- Mode secours -->
+<div class="card emergency-card">
+    <div class="card-head">
+        <span>🛡️</span>
+        <span class="card-title">Mode de secours - Urgence</span>
+        <span class="card-sub">Action journalisée</span>
+    </div>
+    <div class="card-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+            <div style="flex: 1;">
+                <div style="margin-bottom: 8px;">⚠️ En situation d'urgence, vous pouvez déverrouiller tous les accès</div>
+                <div class="progress-bar"><div class="progress-fill" style="width: 100%; background: var(--amber);"></div></div>
+                <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">Cette action est tracée dans les logs</div>
+            </div>
+            <button class="emergency-btn" onclick="emergencyUnlock()">🔓 Déverrouillage d'urgence</button>
+        </div>
+    </div>
+</div>
+
 <script>
-// Ne lancer les graphiques que si on est admin
-{% if user.is_staff %}
-const stats7jours = {{ stats_7jours|safe }};
+var chartData = {{ stats_7jours|safe|default:'[]' }};
 
-function render7DaysChart() {
-  const mc = document.getElementById("mini-chart");
-  const ml = document.getElementById("mini-labels");
-  if (!mc) return;
-  mc.innerHTML = ""; ml.innerHTML = "";
-  let labels = [], okData = [], noData = [], predData = [];
-  
-  stats7jours.forEach(item => {
-    labels.push(item._id ? item._id.slice(5) : "—");
-    okData.push(item.autorises || 0);
-    noData.push((item.total || 0) - (item.autorises || 0));
-    // Prédiction IA : moyenne mobile + 5%
-    const avg = ((item.autorises || 0) + ((item.total || 0) - (item.autorises || 0))) / 2;
-    predData.push(Math.round(avg * 1.05));
-  });
-  
-  while (labels.length < 7) { 
-    labels.unshift("—"); okData.unshift(0); noData.unshift(0); predData.unshift(0);
-  }
-  
-  const max = Math.max(...okData.map((v,i) => Math.max(v + noData[i], predData[i]))) || 1;
-  
-  labels.forEach((label, i) => {
-    const wrap = document.createElement("div"); 
-    wrap.className = "bar-wrap";
-    const okH = Math.round((okData[i] / max) * 88);
-    const noH = Math.round((noData[i] / max) * 88);
-    const predH = Math.round((predData[i] / max) * 88);
+function renderChart() {
+    var container = document.getElementById('chart-container');
+    var labelsDiv = document.getElementById('chart-labels');
+    if (!container || !chartData || chartData.length === 0) {
+        if (container) container.innerHTML = '<div style="text-align:center;padding:40px">Chargement...</div>';
+        return;
+    }
     
-    wrap.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;height:88px;position:relative">
-        <div class="bar pred" style="height:${predH}px; background:rgba(45,186,111,0.3); border:1px dashed #2dba6f; position:absolute; bottom:0; width:100%;"></div>
-        <div class="bar no" style="height:${noH}px; position:relative; z-index:1"></div>
-        <div class="bar ok" style="height:${okH}px; position:relative; z-index:1"></div>
-      </div>`;
-    mc.appendChild(wrap);
+    container.innerHTML = '';
+    labelsDiv.innerHTML = '';
     
-    const lbl = document.createElement("div");
-    lbl.style.cssText = "flex:1;text-align:center;font-size:9px;color:var(--text3);font-family:var(--mono)";
-    lbl.textContent = label;
-    ml.appendChild(lbl);
-  });
-}
-
-function renderZonesFrequentes() {
-  const container = document.getElementById('zones-frequentes');
-  if (!container) return;
-  
-  // Données réelles des zones
-  const zones = [
-    {nom: "Direction Générale", count: 142, pct: 92, occupation: 78},
-    {nom: "Atelier Production", count: 98, pct: 76, occupation: 65},
-    {nom: "Salle Serveur", count: 67, pct: 54, occupation: 42},
-    {nom: "Bureau Administratif", count: 45, pct: 38, occupation: 31},
-    {nom: "Laboratoire", count: 38, pct: 32, occupation: 28},
-    {nom: "Archives", count: 22, pct: 18, occupation: 15},
-  ];
-  
-  let html = '';
-  zones.forEach(z => {
-    const occClass = z.occupation > 70 ? 'high' : (z.occupation > 40 ? 'mid' : 'low');
-    html += `<div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-        <span style="font-size:13px"><strong>🚪 ${z.nom}</strong></span>
-        <span style="font-family:var(--mono);color:var(--text2)">${z.count} accès</span>
-      </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%"></div></div>
-      <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:10px">
-        <span style="color:var(--text3)">📊 Occupation: ${z.occupation}%</span>
-        <span style="color:var(--${occClass === 'high' ? 'red' : (occClass === 'mid' ? 'amber' : 'green')})">
-          ${z.occupation > 70 ? '🟢 Forte affluence' : (z.occupation > 40 ? '🟡 Affluence modérée' : '🔵 Faible affluence')}
-        </span>
-      </div>
-    </div>`;
-  });
-  container.innerHTML = html;
-}
-
-let liveInterval;
-function toggleLiveMode() {
-  const liveText = document.getElementById('live-text');
-  if (liveInterval) {
-    clearInterval(liveInterval); liveInterval = null;
-    liveText.textContent = "LIVE (arrêté)";
-  } else {
-    liveInterval = setInterval(() => refreshLiveFeed(), 10000);
-    liveText.textContent = "LIVE (10s)";
-  }
-}
-
-function refreshLiveFeed() {
-  fetch('/api/live-feed/')
-    .then(r => r.json())
-    .then(data => {
-      const feed = document.getElementById('live-feed');
-      if (feed && data.logs) {
-        feed.innerHTML = data.logs.map(log => `
-          <div class="feed-item new">
-            <div class="feed-av" style="background:${log.resultat === 'AUTORISE' ? '#1f6feb' : '#f85149'}">
-              ${log.nom.slice(0,2).toUpperCase()}
+    var maxVal = 0;
+    chartData.forEach(function(item) {
+        var total = (item.autorises || 0) + ((item.total || 0) - (item.autorises || 0));
+        if (total > maxVal) maxVal = total;
+    });
+    if (maxVal === 0) maxVal = 1;
+    
+    chartData.forEach(function(item) {
+        var autorises = item.autorises || 0;
+        var refuses = (item.total || 0) - autorises;
+        var prediction = Math.round(autorises * 1.05);
+        
+        var barItem = document.createElement('div');
+        barItem.className = 'chart-bar-item';
+        
+        var predHeight = Math.min(100, Math.round(prediction / maxVal * 100));
+        var refusedHeight = Math.min(100, Math.round(refuses / maxVal * 100));
+        var allowedHeight = Math.min(100, Math.round(autorises / maxVal * 100));
+        
+        barItem.innerHTML = `
+            <div class="chart-bars">
+                <div class="chart-bar-pred" style="height:${predHeight}px"></div>
+                <div class="chart-bar-refused" style="height:${refusedHeight}px"></div>
+                <div class="chart-bar-allowed" style="height:${allowedHeight}px"></div>
             </div>
-            <div class="feed-info">
-              <div class="feed-name">${log.nom}</div>
-              <div class="feed-door">${log.zone}</div>
-              <div class="feed-method" style="font-size:10px; color:var(--text3)">📱 ${log.method}</div>
-            </div>
-            <div class="feed-time">${log.time}</div>
-            <div class="feed-status ${log.resultat === 'AUTORISE' ? 'fs-ok' : 'fs-no'}">
-              ${log.resultat === 'AUTORISE' ? '✓ AUTORISÉ' : '✗ REFUSÉ'}
-            </div>
-          </div>
-        `).join('');
-      }
+            <div class="chart-label">${item._id ? item._id.slice(5) : '—'}</div>
+        `;
+        container.appendChild(barItem);
     });
 }
 
-function refreshDashboard() { location.reload(); }
+function renderZones() {
+    var container = document.getElementById('zones-container');
+    if (!container) return;
+    
+    var zones = [
+        {nom: "Direction Générale", acces: 142, occupation: 78},
+        {nom: "Atelier Production", acces: 98, occupation: 65},
+        {nom: "Salle Serveur", acces: 67, occupation: 42},
+        {nom: "Bureau Administratif", acces: 45, occupation: 31},
+        {nom: "Laboratoire", acces: 38, occupation: 28}
+    ];
+    
+    var html = '';
+    zones.forEach(function(z) {
+        var occClass = z.occupation > 70 ? 'high' : (z.occupation > 40 ? 'mid' : 'low');
+        var statusText = z.occupation > 70 ? '🔴 Très fréquenté' : (z.occupation > 40 ? '🟡 Affluence modérée' : '🟢 Faible affluence');
+        html += `
+            <div class="zone-row">
+                <div class="zone-row-header">
+                    <span class="zone-name">🚪 ${z.nom}</span>
+                    <span class="zone-count">${z.acces} accès</span>
+                </div>
+                <div class="zone-bar"><div class="zone-fill ${occClass}" style="width: ${z.occupation}%"></div></div>
+                <div class="zone-footer">
+                    <span>📊 Occupation: ${z.occupation}%</span>
+                    <span>${statusText}</span>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function applyRecommendation(type) {
+    if (type === 'creneaux') {
+        alert('💡 Suggestion: La salle "Atelier Production" est disponible de 14h à 16h.\nTaux de disponibilité: 78%');
+    } else if (type === 'occupation') {
+        alert('📈 Prédiction: Pic d\'activité prévu demain entre 09h30 et 11h00.\nOccupation estimée: 85%');
+    } else {
+        alert('⚡ Optimisation: 5 créneaux en conflit détectés.\nConsultez la page des réservations pour voir les alternatives.');
+    }
+}
 
 function showNotifications() {
-  alert('🔔 Notifications récentes:\n\n' +
-        '• 2 nouvelles réservations pour aujourd\'hui\n' +
-        '• 1 accès non autorisé détecté à 09:32\n' +
-        '• Maintenance programmée sur lecteurs RFID ce soir\n' +
-        '• Rappel: Réunion direction à 14h');
+    alert('🔔 NOTIFICATIONS RÉCENTES\n\n' +
+          '• 📅 2 nouvelles réservations pour aujourd\'hui\n' +
+          '• 🚫 1 accès non autorisé détecté à 09:32\n' +
+          '• 🔧 Maintenance programmée sur lecteurs RFID ce soir\n' +
+          '• ⏰ Rappel: Réunion direction à 14h');
+}
+
+var liveInterval = null;
+var liveEnabled = true;
+
+function toggleLiveMode() {
+    liveEnabled = !liveEnabled;
+    var liveText = document.getElementById('live-text');
+    if (liveEnabled) {
+        if (liveInterval) clearInterval(liveInterval);
+        liveInterval = setInterval(refreshLiveFeed, 10000);
+        liveText.textContent = 'LIVE';
+    } else {
+        if (liveInterval) clearInterval(liveInterval);
+        liveInterval = null;
+        liveText.textContent = 'PAUSE';
+    }
+}
+
+function refreshLiveFeed() {
+    if (!liveEnabled) return;
+    fetch('/api/live-feed/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var feed = document.getElementById('live-feed');
+            if (feed && data.logs && data.logs.length) {
+                feed.innerHTML = data.logs.slice(0, 10).map(function(log, idx) {
+                    return '<div class="feed-item ' + (idx === 0 ? 'new' : '') + '">' +
+                        '<div class="feed-avatar" style="background:' + (log.resultat === 'AUTORISE' ? '#1f6feb' : '#f85149') + '">' +
+                            (log.nom ? log.nom.slice(0,2).toUpperCase() : '??') +
+                        '</div>' +
+                        '<div class="feed-info">' +
+                            '<div class="feed-name">' + (log.nom || 'Inconnu') + '</div>' +
+                            '<div class="feed-detail">' +
+                                '<span>🚪 ' + (log.zone || 'Zone inconnue') + '</span>' +
+                                '<span>📱 ' + (log.method || 'RFID') + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="feed-time">' + (log.time || '--:--:--') + '</div>' +
+                        '<div class="feed-badge ' + (log.resultat === 'AUTORISE' ? 'success' : 'danger') + '">' +
+                            (log.resultat === 'AUTORISE' ? '✓ AUTORISÉ' : '✗ REFUSÉ') +
+                        '</div>' +
+                    '</div>';
+                }).join('');
+            }
+        })
+        .catch(function(err) { console.error('Erreur:', err); });
+}
+
+function refreshDashboard() {
+    location.reload();
 }
 
 function emergencyUnlock() {
-  if (confirm('⚠️ ACTION D\'URGENCE ⚠️\n\n' +
-              'Cette action déverrouillera TOUS les accès du bâtiment.\n' +
-              'Cette action sera journalisée.\n\n' +
-              'Confirmez-vous le déverrouillage d\'urgence ?')) {
-    fetch('/api/emergency-unlock/', {
-      method: 'POST',
-      headers: {'X-CSRFToken': '{{ csrf_token }}'}
-    })
-    .then(r => r.json())
-    .then(data => {
-      alert(data.message || '✅ Déverrouillage d\'urgence activé. Tous les accès sont ouverts.');
-      refreshDashboard();
-    })
-    .catch(() => alert('❌ Erreur lors du déverrouillage'));
-  }
+    if (confirm('⚠️ ACTION D\'URGENCE ⚠️\n\nDéverrouiller TOUS les accès du bâtiment ?\nCette action sera journalisée dans les logs.')) {
+        fetch('/api/emergency-unlock/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            alert(data.message || '✅ Déverrouillage d\'urgence activé. Tous les accès sont ouverts.');
+            refreshDashboard();
+        })
+        .catch(function() { alert('❌ Erreur lors du déverrouillage'); });
+    }
 }
 
-window.onload = function() {
-  render7DaysChart();
-  renderZonesFrequentes();
-};
-{% endif %}
+document.addEventListener('DOMContentLoaded', function() {
+    renderChart();
+    renderZones();
+    liveInterval = setInterval(refreshLiveFeed, 10000);
+});
 </script>
 
-<style>
-.ai-recommendation {
-  background: var(--bg3);
-  border-radius: 12px;
-  padding: 16px;
-  transition: transform 0.2s;
-}
-.ai-recommendation:hover {
-  transform: translateY(-2px);
-  background: var(--bg4);
-}
-.kpi.k-cyan::after {
-  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
-}
-.feed-method {
-  font-size: 10px;
-  color: var(--text3);
-}
-.btn-amber {
-  background: var(--amber2);
-  color: var(--amber);
-  border-color: var(--amber);
-}
-.btn-amber:hover {
-  background: rgba(227,179,65,0.3);
-  transform: translateY(-1px);
-}
-.bar.pred {
-  background: rgba(45,186,111,0.2);
-  border: 1px dashed #2dba6f;
-  border-radius: 2px;
-}
-</style>
 {% endblock %}
