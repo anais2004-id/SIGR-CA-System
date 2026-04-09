@@ -101,13 +101,22 @@
             {% elif r.statut == 'annulee' %}<span class="badge b-red">❌ Annulée</span>
             {% else %}<span class="badge b-gray">{{ r.statut }}</span>{% endif %}
           </td>
-          <td>
-            {% if r.statut == 'confirmee' %}
-              <button class="btn btn-sm btn-primary" onclick="showQRCode('{{ r.id }}','{{ r.titre|escapejs }}')">📱 QR</button>
-            {% elif r.statut == 'en_attente' %}
-              <span class="badge b-amber">Attente</span>
-            {% else %}<span style="color:var(--text3);">—</span>{% endif %}
-          </td>
+         <!-- Colonne QR Code dans le tableau -->
+<td>
+    {% if r.statut == 'confirmee' %}
+        {% if r.qr_code %}
+            <button class="btn btn-sm btn-primary" onclick="showQRCodeModal('{{ r.id }}', '{{ r.titre|escapejs }}')">
+                📱 QR Code
+            </button>
+        {% else %}
+            <span class="badge b-amber">En génération...</span>
+        {% endif %}
+    {% elif r.statut == 'en_attente' %}
+        <span class="badge b-amber">En attente</span>
+    {% else %}
+        <span class="badge b-gray">—</span>
+    {% endif %}
+</td>
           <td>
             {% if r.statut != 'annulee' and r.statut != 'terminee' %}
             <form method="post" action="{% url 'employe_annuler_reservation' r.id %}"
@@ -195,7 +204,34 @@
     </div>
   </div>
 </div>
-
+<!-- Modal QR Code -->
+<div id="qrCodeModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQRCodeModal()">
+    <div class="modal" style="width: 500px; text-align: center;">
+        <div class="modal-header">
+            <h3>📱 QR Code d'accès</h3>
+            <button class="modal-close" onclick="closeQRCodeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="qrCodeModalBody">
+            <div style="text-align: center;">
+                <div id="qrCodeImage" style="background: white; padding: 20px; border-radius: 12px; display: inline-block;">
+                    <div style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
+                        <span>Chargement...</span>
+                    </div>
+                </div>
+                <div id="qrCodeInfo" style="margin-top: 16px;">
+                    <div><strong>Réservation:</strong> <span id="qrTitre">—</span></div>
+                    <div><strong>Salle:</strong> <span id="qrSalle">—</span></div>
+                    <div><strong>Date:</strong> <span id="qrDate">—</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="downloadQRCode()">⬇️ Télécharger</button>
+            <button class="btn btn-secondary" onclick="printQRCode()">🖨️ Imprimer</button>
+            <button class="btn btn-ghost" onclick="closeQRCodeModal()">Fermer</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -212,6 +248,18 @@
 .resa-block.cancelled { background:var(--red2); border-left-color:var(--red); opacity:.7; text-decoration:line-through; }
 .slot-empty { background:var(--bg3); border:1px dashed var(--border); border-radius:4px; padding:3px 6px; font-size:10px; text-align:center; cursor:pointer; color:var(--text3); transition:all .15s; }
 .slot-empty:hover { background:var(--blue3); border-color:var(--blue); color:var(--blue2); }
+/* Ajoutez ce style */
+.btn-secondary {
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.btn-secondary:hover {
+    background: var(--bg4);
+}
 </style>
 
 <script>
@@ -510,5 +558,119 @@ document.addEventListener('DOMContentLoaded', function() {
   if (dateDebut) dateDebut.addEventListener('change', checkDispo);
   if (dateFin)   dateFin.addEventListener('change', checkDispo);
 });
+// Dans le script de employe_mes_reservations.html
+let currentQRCodeData = null;
+let currentQRCodeTitle = '';
+
+function showQRCodeModal(reservationId, titre) {
+    currentQRCodeTitle = titre;
+    const modal = document.getElementById('qrCodeModal');
+    modal.style.display = 'flex';
+    
+    // Afficher chargement
+    document.getElementById('qrCodeImage').innerHTML = '<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;">⏳ Chargement...</div>';
+    document.getElementById('qrTitre').textContent = titre;
+    document.getElementById('qrSalle').textContent = 'Chargement...';
+    document.getElementById('qrDate').textContent = 'Chargement...';
+    
+    // Récupérer le QR code via l'API
+    fetch(`/api/reservations/${reservationId}/qr/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.qr_code) {
+                currentQRCodeData = data.qr_code;
+                // Afficher l'image QR code
+                document.getElementById('qrCodeImage').innerHTML = `
+                    <img src="data:image/png;base64,${data.qr_code}" 
+                         style="width:200px; height:200px; border-radius: 8px;" 
+                         alt="QR Code">
+                `;
+                document.getElementById('qrSalle').textContent = data.bureau_nom || '—';
+                if (data.date_debut) {
+                    const date = new Date(data.date_debut);
+                    document.getElementById('qrDate').textContent = date.toLocaleString('fr-FR');
+                }
+            } else {
+                document.getElementById('qrCodeImage').innerHTML = `
+                    <div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:12px;">
+                        ❌ QR code non disponible
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            document.getElementById('qrCodeImage').innerHTML = `
+                <div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:12px;">
+                    ❌ Erreur de chargement
+                </div>
+            `;
+        });
+}
+
+function closeQRCodeModal() {
+    document.getElementById('qrCodeModal').style.display = 'none';
+    currentQRCodeData = null;
+}
+
+function downloadQRCode() {
+    if (currentQRCodeData) {
+        const link = document.createElement('a');
+        link.download = `qrcode_${currentQRCodeTitle.replace(/\s/g, '_')}.png`;
+        link.href = `data:image/png;base64,${currentQRCodeData}`;
+        link.click();
+    } else {
+        alert('QR code non disponible');
+    }
+}
+
+function printQRCode() {
+    if (currentQRCodeData) {
+        const qrImage = `<img src="data:image/png;base64,${currentQRCodeData}" style="width:250px; height:250px;">`;
+        const titre = document.getElementById('qrTitre').textContent;
+        const salle = document.getElementById('qrSalle').textContent;
+        const date = document.getElementById('qrDate').textContent;
+        
+        const win = window.open();
+        win.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>QR Code - ${titre}</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        text-align: center;
+                        padding: 50px;
+                    }
+                    .qr-container {
+                        margin: 20px auto;
+                    }
+                    .info {
+                        margin-top: 20px;
+                        font-size: 14px;
+                    }
+                    .info div {
+                        margin: 5px 0;
+                    }
+                </style>
+            </head>
+            <body>
+                <h2>🔐 QR Code d'accès</h2>
+                <div class="qr-container">${qrImage}</div>
+                <div class="info">
+                    <div><strong>Réservation:</strong> ${titre}</div>
+                    <div><strong>Salle:</strong> ${salle}</div>
+                    <div><strong>Date:</strong> ${date}</div>
+                </div>
+                <p>Présentez ce code au lecteur</p>
+            </body>
+            </html>
+        `);
+        win.print();
+    } else {
+        alert('QR code non disponible');
+    }
+}
 </script>
 {% endblock %}

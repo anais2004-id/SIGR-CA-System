@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Mes Notifications - SIGR-CA{% endblock %}
+{% block title %}Notifications Admin - SIGR-CA{% endblock %}
 {% block page_title %}Centre de notifications{% endblock %}
-{% block page_sub %}Restez informé de vos réservations et alertes{% endblock %}
-{% block nav_emp_notifications %}active{% endblock %}
+{% block page_sub %}Gestion des alertes et notifications administrateur{% endblock %}
+{% block nav_notifications %}active{% endblock %}
 
 {% block topbar_actions %}
 <button class="btn btn-ghost btn-sm" onclick="markAllAsRead()">✓ Tout marquer comme lu</button>
 <button class="btn btn-ghost btn-sm" onclick="deleteAllNotifications()">🗑️ Tout supprimer</button>
+<button class="btn btn-ghost btn-sm" onclick="sendTestNotification()">🔔 Envoyer test</button>
 <button class="btn btn-ghost btn-sm" onclick="refreshNotifications()">↻ Actualiser</button>
 {% endblock %}
 
@@ -42,7 +43,6 @@
   padding: 16px;
   margin-bottom: 12px;
   transition: all 0.2s;
-  position: relative;
 }
 .notification-item:hover {
   transform: translateX(4px);
@@ -51,17 +51,6 @@
 .notification-item.unread {
   background: var(--blue3);
   border-left: 3px solid var(--blue);
-}
-.notification-item.unread::before {
-  content: '';
-  position: absolute;
-  left: -3px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 30px;
-  background: var(--blue);
-  border-radius: 3px;
 }
 .notification-header {
   display: flex;
@@ -86,6 +75,7 @@
   color: var(--text2);
   margin-bottom: 12px;
   padding-left: 36px;
+  white-space: pre-line;
 }
 .notification-actions {
   display: flex;
@@ -115,10 +105,10 @@
 <div class="notification-filters">
   <button class="filter-btn active" onclick="filterNotifications('all')">📋 Toutes</button>
   <button class="filter-btn" onclick="filterNotifications('reservation')">📅 Réservations</button>
-  <button class="filter-btn" onclick="filterNotifications('rappel')">⏰ Rappels</button>
   <button class="filter-btn" onclick="filterNotifications('alerte')">⚠️ Alertes</button>
+  <button class="filter-btn" onclick="filterNotifications('systeme')">💻 Système</button>
+  <button class="filter-btn" onclick="filterNotifications('maintenance')">🔧 Maintenance</button>
   <button class="filter-btn" onclick="filterNotifications('info')">ℹ️ Informations</button>
-  <button class="filter-btn" onclick="filterNotifications('confirmation')">✅ Confirmations</button>
 </div>
 
 <!-- Statistiques -->
@@ -127,7 +117,6 @@
     <span class="badge b-blue">📊 Total: {{ notifications|length }}</span>
     <span class="badge b-amber">🟡 Non lues: {{ unread_count }}</span>
   </div>
-  <button class="btn btn-sm btn-primary" onclick="sendTestNotification()">🔔 Envoyer test</button>
 </div>
 
 <!-- Liste des notifications -->
@@ -147,7 +136,7 @@
         </div>
         <div class="notification-date">{{ notif.created_at|date:"d/m/Y H:i" }}</div>
       </div>
-      <div class="notification-message">{{ notif.message }}</div>
+      <div class="notification-message">{{ notif.message|linebreaksbr }}</div>
       <div class="notification-actions">
         {% if notif.status == 'non_lu' %}
           <button class="btn btn-sm btn-primary" onclick="markAsRead('{{ notif.id }}')">✓ Marquer comme lu</button>
@@ -163,7 +152,7 @@
     <div class="empty-state">
       <div class="empty-icon">🔔</div>
       <div>Aucune notification</div>
-      <div style="font-size: 12px; margin-top: 8px;">Les notifications apparaîtront ici</div>
+      <div style="font-size: 12px; margin-top: 8px;">Les notifications administrateur apparaîtront ici</div>
       <button class="btn btn-primary btn-sm" style="margin-top: 16px;" onclick="sendTestNotification()">📨 Envoyer une notification test</button>
     </div>
   {% endif %}
@@ -186,7 +175,7 @@ function filterNotifications(type) {
 
 async function markAsRead(notificationId) {
   try {
-    const response = await fetch('/api/notifications/mark-read/', {
+    const response = await fetch('/api/admin/notifications/mark-read/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -199,7 +188,6 @@ async function markAsRead(notificationId) {
       const item = document.querySelector(`.notification-item[data-id="${notificationId}"]`);
       if (item) {
         item.classList.remove('unread');
-        // Mettre à jour le compteur
         updateUnreadCount();
       }
     }
@@ -210,7 +198,7 @@ async function markAsRead(notificationId) {
 
 async function markAllAsRead() {
   try {
-    const response = await fetch('/api/notifications/mark-read/', {
+    const response = await fetch('/api/admin/notifications/mark-read/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -234,7 +222,7 @@ async function deleteNotification(notificationId) {
   if (!confirm('Supprimer cette notification ?')) return;
   
   try {
-    const response = await fetch('/api/notifications/delete/', {
+    const response = await fetch('/api/admin/notifications/delete/', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -265,11 +253,12 @@ async function deleteAllNotifications() {
   if (!confirm('Supprimer TOUTES les notifications ? Cette action est irréversible.')) return;
   
   try {
-    const response = await fetch('/api/notifications/delete-all/', {
+    const response = await fetch('/api/admin/notifications/delete/', {
       method: 'DELETE',
       headers: {
         'X-CSRFToken': '{{ csrf_token }}'
-      }
+      },
+      body: JSON.stringify({ notification_id: null })
     });
     
     if (response.ok) {
@@ -282,7 +271,7 @@ async function deleteAllNotifications() {
 
 async function sendTestNotification() {
   try {
-    const response = await fetch('/api/notifications/test/', {
+    const response = await fetch('/api/admin/notifications/test/', {
       method: 'POST',
       headers: {
         'X-CSRFToken': '{{ csrf_token }}'

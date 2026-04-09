@@ -207,4 +207,30 @@ path('api/employee/stats/', views.api_employee_stats, name='api_employee_stats')
 path('api/reservations/<str:reservation_id>/qr/', views.api_reservation_qr, name='api_reservation_qr'),
 path('api/reservations/<str:reservation_id>/duplicate/', views.api_reservation_duplicate, name='api_reservation_duplicate'),
 path('api/bureaux/<str:bureau_id>/schedule/', views.api_bureau_schedule, name='api_bureau_schedule'),
-path('api/bureaux/<str:bureau_id>/suggestions/', views.api_bureau_suggestions, name='api_bureau_suggestions'),]
+path('api/bureaux/<str:bureau_id>/suggestions/', views.api_bureau_suggestions, name='api_bureau_suggestions'),
+# Chatbot
+path('api/chatbot/message/', views.api_chatbot_message, name='api_chatbot_message'),
+path('api/chatbot/conversations/', views.api_chatbot_conversations, name='api_chatbot_conversations'),
+path('api/chatbot/conversation/<int:conversation_id>/', views.api_chatbot_conversation_detail, name='api_chatbot_conversation_detail'),
+# dashboard/urls.py
+# dashboard/urls.py - Ajoutez ces routes
+
+path('employe/notifications/', views.employe_notifications, name='employe_notifications'),
+path('api/notifications/mark-read/', views.api_mark_notification_read, name='api_mark_notification_read'),
+path('api/notifications/delete/', views.api_delete_notification, name='api_delete_notification'),
+path('api/notifications/delete-all/', views.api_delete_all_notifications, name='api_delete_all_notifications'),
+path('api/notifications/test/', views.api_send_test_notification, name='api_send_test_notification'),
+path('api/notifications/unread-count/', views.api_notifications_unread_count, name='api_notifications_unread_count'),
+path('api/reservations/<str:reservation_id>/qr/', views.api_reservation_qr, name='api_reservation_qr'),
+
+# dashboard/urls.py
+
+# Notifications Admin - Utilisez le préfixe dashboard/
+# dashboard/urls.py - Extrait
+
+# Notifications Admin (après avoir changé le chemin)
+path('dashboard/notifications/', views.admin_notifications, name='admin_notifications'),
+path('api/admin/notifications/unread-count/', views.api_admin_notifications_unread_count, name='api_admin_notifications_unread_count'),
+path('api/admin/notifications/mark-read/', views.api_admin_mark_notification_read, name='api_admin_mark_notification_read'),
+path('api/admin/notifications/delete/', views.api_admin_delete_notification, name='api_admin_delete_notification'),
+path('api/admin/notifications/test/', views.api_admin_send_test_notification, name='api_admin_send_test_notification'),]

@@ -4,6 +4,9 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
+from django.conf import settings
+
+
 
 
 class Utilisateur(AbstractUser):
@@ -285,47 +288,79 @@ class Reservation(models.Model):
         self.cancelled_by = cancelled_by
         self.save()
 
+# dashboard/models.py
+from django.db import models
+from django.conf import settings
+from django.utils import timezone
 
 class Notification(models.Model):
-    """Notification envoyée"""
+    """Notification envoyée aux utilisateurs"""
     TYPE_CHOICES = [
         ('email', 'Email'),
         ('sms', 'SMS'),
-        ('webhook', 'Webhook'),
         ('push', 'Push'),
-    ]
-    CATEGORY_CHOICES = [
-        ('confirmation', 'Confirmation'),
-        ('rappel', 'Rappel'),
-        ('annulation', 'Annulation'),
-        ('alerte', 'Alerte'),
-        ('maintenance', 'Maintenance'),
-        ('info', 'Information'),
-    ]
-    STATUS_CHOICES = [
-        ('envoyee', 'Envoyée'),
-        ('echouee', 'Échouée'),
-        ('en_attente', 'En attente'),
+        ('system', 'Système'),
     ]
     
-    destinataire = models.CharField(max_length=200)
-    type_notification = models.CharField(max_length=10, choices=TYPE_CHOICES)
-    categorie = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
-    sujet = models.CharField(max_length=200)
+    CATEGORY_CHOICES = [
+        ('reservation', 'Réservation'),
+        ('rappel', 'Rappel'),
+        ('alerte', 'Alerte'),
+        ('info', 'Information'),
+        ('confirmation', 'Confirmation'),
+        ('annulation', 'Annulation'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('non_lu', 'Non lu'),
+        ('lu', 'Lu'),
+        ('archive', 'Archivé'),
+    ]
+    
+    # Champs
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')
+    type_notification = models.CharField(max_length=20, choices=TYPE_CHOICES, default='system')
+    categorie = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='info')
+    titre = models.CharField(max_length=200)
     message = models.TextField()
-    statut = models.CharField(max_length=20, choices=STATUS_CHOICES, default='envoyee')
-    reservation_id = models.CharField(max_length=50, blank=True)
-    sent_at = models.DateTimeField(auto_now_add=True)
-    error_message = models.TextField(blank=True)
+    icon = models.CharField(max_length=10, default='🔔')
+    action_url = models.CharField(max_length=500, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='non_lu')
+    reservation_id = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
-        db_table = 'notifications'
-        verbose_name = 'Notification'
-        verbose_name_plural = 'Notifications'
-        ordering = ['-sent_at']
+        ordering = ['-created_at']  # ← Changé de 'sent_at' à 'created_at'
+        db_table = 'notifications_django'
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['-created_at']),
+        ]
     
     def __str__(self):
-        return f"{self.sujet} - {self.destinataire} - {self.sent_at.strftime('%d/%m/%Y %H:%M')}"
+        return f"{self.titre} - {self.user.username}"
+    
+    def mark_as_read(self):
+        """Marque la notification comme lue"""
+        self.status = 'lu'
+        self.read_at = timezone.now()
+        self.save()
+    
+    @classmethod
+    def create_notification(cls, user, titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
+        """Crée une notification pour un utilisateur"""
+        return cls.objects.create(
+            user=user,
+            type_notification='system',
+            categorie=categorie,
+            titre=titre,
+            message=message,
+            icon=icon,
+            action_url=action_url,
+            reservation_id=reservation_id
+        )
+
 
 
 class SystemConfig(models.Model):
@@ -362,3 +397,70 @@ class AdminProfile(models.Model):
     
     def __str__(self):
         return f"Profil de {self.user.username}"
+        # dashboard/models.py - Ajoutez ces classes
+
+class ChatbotConversation(models.Model):
+    """Historique des conversations avec le chatbot"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_conversations')
+    session_id = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        ordering = ['-updated_at']
+    
+    def __str__(self):
+        return f"Conversation {self.id} - {self.user.username}"
+
+
+class ChatbotMessage(models.Model):
+    """Messages de la conversation"""
+    ROLE_CHOICES = [
+        ('user', 'Utilisateur'),
+        ('assistant', 'Assistant IA'),
+        ('system', 'Système'),
+    ]
+    
+    conversation = models.ForeignKey(ChatbotConversation, on_delete=models.CASCADE, related_name='messages')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    content = models.TextField()
+    intent = models.CharField(max_length=100, blank=True)
+    entities = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"{self.role}: {self.content[:50]}"
+        # dashboard/models.py - Ajoutez cette classe si vous voulez utiliser Django ORM
+# Ou utilisez directement MongoDB comme pour les employés
+
+class AdminNotification(models.Model):
+    """Notification pour les administrateurs"""
+    CATEGORY_CHOICES = [
+        ('reservation', 'Réservation'),
+        ('alerte', 'Alerte'),
+        ('systeme', 'Système'),
+        ('info', 'Information'),
+        ('maintenance', 'Maintenance'),
+    ]
+    
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='admin_notifications')
+    categorie = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='info')
+    titre = models.CharField(max_length=200)
+    message = models.TextField()
+    icon = models.CharField(max_length=10, default='🔔')
+    action_url = models.CharField(max_length=500, blank=True, null=True)
+    status = models.CharField(max_length=20, default='non_lu')
+    reservation_id = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        db_table = 'admin_notifications'
+    
+    def __str__(self):
+        return f"{self.titre} - {self.admin.username}"

@@ -25,6 +25,14 @@ import base64
 import logging
 from dashboard.models import UserSession, SessionLog
 from .models import Utilisateur, UserSession
+import json
+import re
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.db import models
+from .models import ChatbotConversation, ChatbotMessage
+from dashboard.models import Notification
+from django.contrib.auth import get_user_model
 
 db = settings.MONGO_DB
 User = get_user_model()
@@ -318,7 +326,9 @@ def employe_mes_reservations(request):
     from datetime import datetime
     from bson import ObjectId
     import json
+    from django.contrib.auth import get_user_model
     
+    User = get_user_model()
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
@@ -384,10 +394,15 @@ def employe_mes_reservations(request):
                 if chevauchement:
                     messages.error(request, "Cette salle est déjà réservée sur ce créneau.")
                 else:
+                    # Récupérer la salle pour les notifications
+                    bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+                    bureau_nom = bureau['nom'] if bureau else 'Salle inconnue'
+                    
                     reservation_data = {
                         'titre': request.POST.get('titre', '').strip(),
                         'description': request.POST.get('description', '').strip(),
                         'bureau_id': ObjectId(bureau_id),
+                        'bureau_nom': bureau_nom,
                         'employe_id': str(employe['_id']),
                         'employe_nom': f"{employe.get('nom', '')} {employe.get('prenom', '')}",
                         'date_debut': date_debut,
@@ -398,9 +413,69 @@ def employe_mes_reservations(request):
                         'created_at': datetime.now(),
                         'created_by': request.user.username,
                     }
-                    db.reservations.insert_one(reservation_data)
+                    result = db.reservations.insert_one(reservation_data)
+                    reservation_id = str(result.inserted_id)
+                    
+                    # === NOTIFICATION À L'EMPLOYÉ ===
+                    notification_employe = {
+                        'employe_id': str(employe['_id']),
+                        'titre': '📝 Réservation créée',
+                        'message': f"Votre réservation '{reservation_data.get('titre')}' a été créée et est en attente de validation.",
+                        'categorie': 'reservation',
+                        'icon': '📝',
+                        'status': 'non_lu',
+                        'action_url': '/employe/reservations/',
+                        'reservation_id': reservation_id,
+                        'created_at': datetime.now()
+                    }
+                    db.notifications.insert_one(notification_employe)
+                    
+                    # === NOTIFICATION AUX ADMINISTRATEURS ===
+                    admins = User.objects.filter(is_staff=True, is_active=True)
+                    admin_message = f"""
+🆕 NOUVELLE RÉSERVATION EN ATTENTE
+
+👤 Employé: {employe.get('prenom', '')} {employe.get('nom', '')}
+📋 Titre: {reservation_data.get('titre')}
+🚪 Salle: {bureau_nom}
+📅 Date: {date_debut.strftime('%d/%m/%Y')}
+⏰ Horaire: {date_debut.strftime('%H:%M')} → {date_fin.strftime('%H:%M')}
+👥 Participants: {reservation_data.get('nb_participants', 1)}
+
+🔗 Cliquez pour traiter cette réservation: /reservations/
+"""
+                    
+                    for admin in admins:
+                        admin_notification = {
+                            'admin_id': admin.id,
+                            'titre': '🆕 Nouvelle réservation en attente',
+                            'message': f"{employe.get('prenom', '')} {employe.get('nom', '')} a demandé une réservation pour '{reservation_data.get('titre')}' le {date_debut.strftime('%d/%m/%Y à %H:%M')} dans la salle {bureau_nom}.",
+                            'categorie': 'reservation',
+                            'icon': '🆕',
+                            'status': 'non_lu',
+                            'action_url': f'/reservations/{reservation_id}/',
+                            'reservation_id': reservation_id,
+                            'created_at': datetime.now()
+                        }
+                        db.admin_notifications.insert_one(admin_notification)
+                        
+                        # Envoi d'email optionnel
+                        if admin.email:
+                            try:
+                                from django.core.mail import send_mail
+                                send_mail(
+                                    f"🆕 Nouvelle réservation - {reservation_data.get('titre')}",
+                                    admin_message,
+                                    settings.DEFAULT_FROM_EMAIL,
+                                    [admin.email],
+                                    fail_silently=True,
+                                )
+                            except:
+                                pass
+                    
                     messages.success(request, "Réservation créée avec succès ! En attente de validation.")
                     return redirect('employe_mes_reservations')
+                    
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
     
@@ -412,13 +487,19 @@ def employe_mes_reservations(request):
         'actives': actives,
         'a_venir': a_venir,
         'en_attente': en_attente,
-        'reservations_json': reservations_json,  # ← IMPORTANT: cette variable doit être passée
+        'reservations_json': reservations_json,
     })
+
 @login_required
 def employe_annuler_reservation(request, reservation_id):
     if request.user.is_staff:
         return redirect('dashboard')
     
+    from datetime import datetime
+    from bson import ObjectId
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
@@ -434,10 +515,49 @@ def employe_annuler_reservation(request, reservation_id):
             })
             
             if resa:
+                # Récupérer la salle
+                bureau = db.bureaux.find_one({'_id': resa.get('bureau_id')})
+                bureau_nom = bureau['nom'] if bureau else 'Salle inconnue'
+                
                 db.reservations.update_one(
                     {'_id': ObjectId(reservation_id)},
-                    {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now(), 'cancelled_by': request.user.username}}
+                    {'$set': {
+                        'statut': 'annulee', 
+                        'cancelled_at': datetime.now(), 
+                        'cancelled_by': request.user.username
+                    }}
                 )
+                
+                # === NOTIFICATION À L'EMPLOYÉ ===
+                notification_employe = {
+                    'employe_id': str(employe['_id']),
+                    'titre': '🗑️ Réservation annulée',
+                    'message': f"Votre réservation '{resa.get('titre', 'Sans titre')}' a été annulée.",
+                    'categorie': 'annulation',
+                    'icon': '🗑️',
+                    'status': 'non_lu',
+                    'action_url': '/employe/reservations/',
+                    'reservation_id': reservation_id,
+                    'created_at': datetime.now()
+                }
+                db.notifications.insert_one(notification_employe)
+                
+                # === NOTIFICATION AUX ADMINISTRATEURS ===
+                admins = User.objects.filter(is_staff=True, is_active=True)
+                for admin in admins:
+                    admin_notification = {
+                        'admin_id': admin.id,
+                        'titre': '🗑️ Réservation annulée',
+                        'message': f"{employe.get('prenom', '')} {employe.get('nom', '')} a annulé sa réservation '{resa.get('titre', 'Sans titre')}' pour la salle {bureau_nom}.",
+                        'categorie': 'reservation',
+                        'icon': '🗑️',
+                        'status': 'non_lu',
+                        'action_url': f'/reservations/{reservation_id}/',
+                        'reservation_id': reservation_id,
+                        'created_at': datetime.now()
+                    }
+                    db.admin_notifications.insert_one(admin_notification)
+                
                 messages.success(request, "Réservation annulée avec succès.")
             else:
                 messages.error(request, "Réservation introuvable ou non autorisée.")
@@ -446,48 +566,6 @@ def employe_annuler_reservation(request, reservation_id):
     
     return redirect('employe_mes_reservations')
 
-def notify_admin_new_reservation(employe, reservation_data):
-    """Notifie les administrateurs d'une nouvelle réservation"""
-    admins = Utilisateur.objects.filter(is_staff=True, is_active=True)
-    
-    message = f"""
-    🆕 NOUVELLE RÉSERVATION EN ATTENTE
-    
-    Employé: {employe.get('prenom', '')} {employe.get('nom', '')}
-    Titre: {reservation_data.get('titre')}
-    Salle: {reservation_data.get('bureau_id')}
-    Date: {reservation_data['date_debut'].strftime('%d/%m/%Y %H:%M')} → {reservation_data['date_fin'].strftime('%H:%M')}
-    Participants: {reservation_data.get('nb_participants', 1)}
-    
-    Connectez-vous à l'interface admin pour confirmer ou refuser cette réservation.
-    """
-    
-    for admin in admins:
-        db.notifications.insert_one({
-            'destinataire': admin.email,
-            'type_notification': 'email',
-            'categorie': 'reservation_attente',
-            'sujet': f"Nouvelle réservation en attente - {reservation_data.get('titre')}",
-            'message': message,
-            'statut': 'envoyee',
-            'reservation_id': str(reservation_data.get('_id')),
-            'created_at': datetime.now(),
-        })
-        
-        if admin.email:
-            try:
-                from django.core.mail import send_mail
-                send_mail(
-                    f"Nouvelle réservation en attente - {reservation_data.get('titre')}",
-                    message,
-                    settings.DEFAULT_FROM_EMAIL,
-                    [admin.email],
-                    fail_silently=True,
-                )
-            except:
-                pass
-
-
 @login_required
 def employe_annuler_reservation(request, reservation_id):
     if request.user.is_staff:
@@ -513,10 +591,14 @@ def employe_annuler_reservation(request, reservation_id):
                     {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now(), 'cancelled_by': request.user.username}}
                 )
                 messages.success(request, "Réservation annulée avec succès.")
+                from dashboard.views import notify_admins_reservation_cancelled
+                notify_admins_reservation_cancelled(employe, resa)
             else:
                 messages.error(request, "Réservation introuvable ou non autorisée.")
+            
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
+        
     
     return redirect('employe_mes_reservations')
 
@@ -2952,8 +3034,14 @@ def api_verify_access(request):
         access_method = data.get('method', 'RFID')
         
         employe = db.employees.find_one({'badge_id': badge_id, 'statut': 'actif'})
+        
         if not employe:
             log_access(None, zone_code, 'REFUSE', 'Badge inconnu', access_method)
+            
+            # Notifier les admins d'une tentative avec badge inconnu
+            from dashboard.views import notify_admins_security_alert
+            notify_admins_security_alert(zone_code, badge_id, "Tentative d'accès avec badge non reconnu")
+            
             return JsonResponse({'autorise': False, 'message': 'Badge non reconnu'})
         
         now = datetime.now()
@@ -2978,26 +3066,54 @@ def api_verify_access(request):
         
         current_hour = now.strftime('%H:%M')
         acces_autorise = False
+        motif_refus = ""
         
         if access_rule:
             if access_rule.get('acces_autorise', True):
                 if access_rule.get('heure_debut', '00:00') <= current_hour <= access_rule.get('heure_fin', '23:59'):
                     acces_autorise = True
+                else:
+                    motif_refus = "Horaire non autorisé"
+            else:
+                motif_refus = "Règle d'accès restreinte"
         elif reservation_valide:
             acces_autorise = True
+        else:
+            motif_refus = "Aucune réservation active"
         
         emergency = db.system_config.find_one({'type': 'emergency'})
         if emergency and emergency.get('active', False):
             acces_autorise = True
         
+        # Log l'accès
         log_access(employe['_id'], zone_code, 'AUTORISE' if acces_autorise else 'REFUSE',
                   'Accès ' + ('autorisé' if acces_autorise else 'refusé'), access_method)
         
+        # Si accès refusé, notifier les admins (après 3 refus dans la même heure)
+        if not acces_autorise:
+            # Compter les refus récents
+            one_hour_ago = now - timedelta(hours=1)
+            recent_refus = db.acces_logs.count_documents({
+                'utilisateur_id': employe['_id'],
+                'resultat': 'REFUSE',
+                'timestamp': {'$gte': one_hour_ago}
+            })
+            
+            if recent_refus >= 3:
+                from dashboard.views import notify_admins_security_alert
+                zone_nom = zone.get('nom', zone_code) if zone else zone_code
+                notify_admins_security_alert(
+                    zone_nom, 
+                    badge_id, 
+                    f"Tentatives d'accès multiples refusées ({recent_refus} fois en 1h) - {motif_refus}"
+                )
+        
         return JsonResponse({
             'autorise': acces_autorise,
-            'message': 'Accès autorisé' if acces_autorise else 'Accès refusé',
+            'message': 'Accès autorisé' if acces_autorise else f'Accès refusé: {motif_refus}',
             'employe_nom': f"{employe.get('nom', '')} {employe.get('prenom', '')}",
         })
+        
     except Exception as e:
         return JsonResponse({'autorise': False, 'error': str(e)})
 
@@ -3892,7 +4008,6 @@ def reservation_list(request):
         'reservations_json': reservations_json,
         'bureaux': bureaux_list,
     })
-
 @login_required
 def reservation_confirmer(request, reservation_id):
     """Confirmer une réservation et générer un QR code"""
@@ -3900,10 +4015,21 @@ def reservation_confirmer(request, reservation_id):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     try:
+        from bson import ObjectId
+        from datetime import datetime
+        import qrcode
+        from io import BytesIO
+        import base64
+        
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
         if not reservation:
             messages.error(request, "Réservation non trouvée")
             return redirect('reservation_list')
+        
+        # Vérifier si déjà confirmée
+        if reservation.get('statut') == 'confirmee':
+            messages.warning(request, "Cette réservation est déjà confirmée")
+            return redirect('reservation_detail', reservation_id=reservation_id)
         
         if request.method == 'POST':
             # Générer le QR code
@@ -3920,7 +4046,6 @@ def reservation_confirmer(request, reservation_id):
             
             img = qr.make_image(fill_color="black", back_color="white")
             
-            # Convertir l'image en base64 pour stockage MongoDB
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
@@ -3936,7 +4061,7 @@ def reservation_confirmer(request, reservation_id):
                 }}
             )
             
-            # Récupérer l'employé pour la notification
+            # Récupérer l'employé
             employe_id = reservation.get('employe_id')
             employe = None
             try:
@@ -3947,18 +4072,75 @@ def reservation_confirmer(request, reservation_id):
             except:
                 pass
             
-            # Envoyer notification à l'employé
-            if employe and employe.get('email'):
-                send_reservation_confirmation_email(employe, reservation, qr_base64)
+            # Récupérer la salle
+            bureau = None
+            bureau_id = reservation.get('bureau_id')
+            if bureau_id:
+                try:
+                    bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+                except:
+                    pass
+            bureau_nom = bureau['nom'] if bureau else 'Salle'
+            
+            # === NOTIFICATION À L'EMPLOYÉ (UNE SEULE FOIS) ===
+            if employe:
+                # Vérifier si une notification a déjà été envoyée
+                existing_notification = db.notifications.find_one({
+                    'employe_id': str(employe['_id']),
+                    'reservation_id': str(reservation['_id']),
+                    'categorie': 'confirmation'
+                })
+                
+                if not existing_notification:
+                    notification = {
+                        'employe_id': str(employe['_id']),
+                        'titre': '✅ Réservation confirmée',
+                        'message': f"Votre réservation '{reservation.get('titre', 'Sans titre')}' a été confirmée pour le {reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')} dans la salle {bureau_nom}.",
+                        'categorie': 'confirmation',
+                        'icon': '✅',
+                        'status': 'non_lu',
+                        'action_url': '/employe/reservations/',
+                        'reservation_id': str(reservation['_id']),
+                        'created_at': datetime.now()
+                    }
+                    db.notifications.insert_one(notification)
+                    
+                    # Envoi d'email (une seule fois)
+                    if employe.get('email'):
+                        try:
+                            from django.core.mail import send_mail
+                            send_mail(
+                                f"Réservation confirmée - {reservation.get('titre', 'Sans titre')}",
+                                f"""
+Bonjour {employe.get('prenom', '')} {employe.get('nom', '')},
+
+✅ Votre réservation a été CONFIRMÉE !
+
+Détails:
+- Titre: {reservation.get('titre', 'Sans titre')}
+- Date: {reservation['date_debut'].strftime('%d/%m/%Y %H:%M')} → {reservation['date_fin'].strftime('%H:%M')}
+- Salle: {bureau_nom}
+- Participants: {reservation.get('nb_participants', 1)}
+
+🔐 Présentez votre QR code au lecteur pour accéder à la salle.
+
+Cordialement,
+L'équipe SIGR-CA
+                                """,
+                                settings.DEFAULT_FROM_EMAIL,
+                                [employe['email']],
+                                fail_silently=True,
+                            )
+                        except:
+                            pass
             
             messages.success(request, f"Réservation '{reservation.get('titre')}' confirmée avec QR code généré.")
             
-            # Redirection selon la provenance
             if request.POST.get('redirect_to') == 'list':
                 return redirect('reservation_list')
             return redirect('reservation_detail', reservation_id=reservation_id)
         
-        # Récupérer les détails pour l'affichage
+        # GET: Récupérer les détails pour l'affichage
         employe = None
         employe_id = reservation.get('employe_id')
         if employe_id:
@@ -3987,45 +4169,114 @@ def reservation_confirmer(request, reservation_id):
     except Exception as e:
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('reservation_list')
-
-
 @login_required
 def reservation_refuser(request, reservation_id):
     """Refuser une réservation"""
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
+    from bson import ObjectId
+    from datetime import datetime
+    
     if request.method == 'POST':
         try:
             reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
-            if reservation:
-                motif = request.POST.get('motif', 'Non spécifié')
-                
-                db.reservations.update_one(
-                    {'_id': ObjectId(reservation_id)},
-                    {'$set': {
-                        'statut': 'annulee',
-                        'refused_at': datetime.now(),
-                        'refused_by': request.user.username,
-                        'refusal_reason': motif,
-                    }}
-                )
-                
-                # Notifier l'employé
-                employe_id = reservation.get('employe_id')
-                employe = None
+            if not reservation:
+                messages.error(request, "Réservation non trouvée")
+                return redirect('reservation_list')
+            
+            motif = request.POST.get('motif', 'Non spécifié')
+            
+            # Vérifier si la réservation est déjà refusée
+            if reservation.get('statut') == 'annulee':
+                messages.warning(request, "Cette réservation est déjà annulée")
+                return redirect('reservation_list')
+            
+            # Mettre à jour la réservation
+            db.reservations.update_one(
+                {'_id': ObjectId(reservation_id)},
+                {'$set': {
+                    'statut': 'annulee',
+                    'refused_at': datetime.now(),
+                    'refused_by': request.user.username,
+                    'refusal_reason': motif,
+                }}
+            )
+            
+            # Récupérer l'employé
+            employe_id = reservation.get('employe_id')
+            employe = None
+            try:
+                if isinstance(employe_id, str) and len(employe_id) == 24:
+                    employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+                else:
+                    employe = db.employees.find_one({'django_user_id': employe_id})
+            except:
+                pass
+            
+            # Récupérer la salle
+            bureau = None
+            bureau_id = reservation.get('bureau_id')
+            if bureau_id:
                 try:
-                    if isinstance(employe_id, str) and len(employe_id) == 24:
-                        employe = db.employees.find_one({'_id': ObjectId(employe_id)})
-                    else:
-                        employe = db.employees.find_one({'django_user_id': employe_id})
+                    bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
                 except:
                     pass
+            bureau_nom = bureau['nom'] if bureau else 'Salle'
+            
+            # === NOTIFICATION À L'EMPLOYÉ (UNE SEULE FOIS) ===
+            if employe:
+                # Vérifier si une notification a déjà été envoyée pour ce refus
+                existing_notification = db.notifications.find_one({
+                    'employe_id': str(employe['_id']),
+                    'reservation_id': str(reservation['_id']),
+                    'categorie': 'annulation'
+                })
                 
-                if employe and employe.get('email'):
-                    send_reservation_refusal_email(employe, reservation, motif)
+                if not existing_notification:
+                    notification = {
+                        'employe_id': str(employe['_id']),
+                        'titre': '❌ Réservation refusée',
+                        'message': f"Votre réservation '{reservation.get('titre', 'Sans titre')}' pour la salle {bureau_nom} du {reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')} a été refusée.\nMotif: {motif}",
+                        'categorie': 'annulation',
+                        'icon': '❌',
+                        'status': 'non_lu',
+                        'action_url': '/employe/reservations/',
+                        'reservation_id': str(reservation['_id']),
+                        'created_at': datetime.now()
+                    }
+                    db.notifications.insert_one(notification)
                 
-                messages.success(request, f"Réservation '{reservation.get('titre')}' refusée.")
+                # Envoi d'email (une seule fois)
+                if employe.get('email') and not existing_notification:
+                    try:
+                        from django.core.mail import send_mail
+                        send_mail(
+                            f"Réservation refusée - {reservation.get('titre', 'Sans titre')}",
+                            f"""
+Bonjour {employe.get('prenom', '')} {employe.get('nom', '')},
+
+❌ Votre réservation a été REFUSÉE.
+
+Détails:
+- Titre: {reservation.get('titre', 'Sans titre')}
+- Date: {reservation['date_debut'].strftime('%d/%m/%Y %H:%M')} → {reservation['date_fin'].strftime('%H:%M')}
+- Salle: {bureau_nom}
+
+Motif du refus: {motif}
+
+Cordialement,
+L'équipe SIGR-CA
+                            """,
+                            settings.DEFAULT_FROM_EMAIL,
+                            [employe['email']],
+                            fail_silently=True,
+                        )
+                    except:
+                        pass
+            
+            messages.warning(request, f"Réservation '{reservation.get('titre')}' refusée.")
+            
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
     
@@ -4037,6 +4288,8 @@ def reservation_detail(request, reservation_id):
     """Voir les détails d'une réservation (avec QR code si confirmée)"""
     if not request.user.is_staff:
         return redirect('employe_espace')
+    
+    from bson import ObjectId
     
     try:
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
@@ -4194,14 +4447,23 @@ def send_reservation_refusal_email(employe, reservation, motif):
        # })
     #except Exception as e:
      #   return JsonResponse({'error': str(e)}, status=500)
-        # ====================== NOTIFICATIONS EMPLOYÉ ======================
+        # dashboard/views.py
+
+
+# ====================== NOTIFICATIONS EMPLOYÉ ======================
+
+# dashboard/views.py - Remplacez la fonction employe_notifications par celle-ci
 
 @login_required
 def employe_notifications(request):
-    """Centre de notifications de l'employé"""
+    """Centre de notifications de l'employé - Version MongoDB"""
     if request.user.is_staff:
         return redirect('dashboard')
     
+    from bson import ObjectId
+    from datetime import datetime
+    
+    # Récupérer l'employé
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
@@ -4209,32 +4471,45 @@ def employe_notifications(request):
     if not employe:
         return redirect('login')
     
-    # Récupérer les notifications
+    employe['id'] = str(employe['_id'])
+    
+    # Récupérer les notifications depuis MongoDB
     notifications = list(db.notifications.find({
-        'destinataire': employe.get('email', ''),
         'employe_id': str(employe['_id'])
     }).sort('created_at', -1))
     
     for n in notifications:
         n['id'] = str(n['_id'])
+        if 'status' not in n:
+            n['status'] = 'non_lu'
+        if 'categorie' not in n:
+            n['categorie'] = n.get('type', 'info')
+        if 'icon' not in n:
+            n['icon'] = '🔔'
     
     # Compter les non lues
-    unread_count = sum(1 for n in notifications if not n.get('lu', False))
+    unread_count = sum(1 for n in notifications if n.get('status') == 'non_lu')
     
-    # Marquer comme lues si demandé
-    if request.method == 'POST' and request.POST.get('mark_read'):
-        notification_id = request.POST.get('notification_id')
-        if notification_id:
-            db.notifications.update_one(
-                {'_id': ObjectId(notification_id)},
-                {'$set': {'lu': True, 'lu_at': datetime.now()}}
-            )
-        else:
-            db.notifications.update_many(
-                {'employe_id': str(employe['_id']), 'lu': False},
-                {'$set': {'lu': True, 'lu_at': datetime.now()}}
-            )
-        return redirect('employe_notifications')
+    # Traitement POST pour marquer comme lu
+    if request.method == 'POST':
+        if 'mark_read' in request.POST:
+            notification_id = request.POST.get('notification_id')
+            if notification_id:
+                db.notifications.update_one(
+                    {'_id': ObjectId(notification_id), 'employe_id': str(employe['_id'])},
+                    {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+                )
+            else:
+                # Marquer toutes comme lues
+                db.notifications.update_many(
+                    {'employe_id': str(employe['_id']), 'status': 'non_lu'},
+                    {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+                )
+            return redirect('employe_notifications')
+        
+        elif 'delete_all' in request.POST:
+            db.notifications.delete_many({'employe_id': str(employe['_id'])})
+            return redirect('employe_notifications')
     
     return render(request, 'dashboard/employe_notifications.html', {
         'employe': employe,
@@ -4244,10 +4519,98 @@ def employe_notifications(request):
 
 
 @login_required
-def api_send_test_notification(request):
-    """API pour envoyer une notification de test"""
+def api_mark_notification_read(request):
+    """API pour marquer une notification comme lue (AJAX) - Version MongoDB"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        from bson import ObjectId
+        from datetime import datetime
+        
+        data = json.loads(request.body)
+        notification_id = data.get('notification_id')
+        
+        employe = db.employees.find_one({'django_user_id': request.user.id})
+        if not employe:
+            employe = db.employees.find_one({'django_username': request.user.username})
+        
+        if notification_id:
+            db.notifications.update_one(
+                {'_id': ObjectId(notification_id), 'employe_id': str(employe['_id'])},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+            )
+        else:
+            # Marquer toutes comme lues
+            db.notifications.update_many(
+                {'employe_id': str(employe['_id']), 'status': 'non_lu'},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+            )
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_delete_notification(request):
+    """API pour supprimer une notification (AJAX) - Version MongoDB"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        from bson import ObjectId
+        
+        data = json.loads(request.body)
+        notification_id = data.get('notification_id')
+        
+        employe = db.employees.find_one({'django_user_id': request.user.id})
+        if not employe:
+            employe = db.employees.find_one({'django_username': request.user.username})
+        
+        if notification_id:
+            db.notifications.delete_one({
+                '_id': ObjectId(notification_id), 
+                'employe_id': str(employe['_id'])
+            })
+        else:
+            db.notifications.delete_many({'employe_id': str(employe['_id'])})
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_delete_all_notifications(request):
+    """API pour supprimer toutes les notifications - Version MongoDB"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        employe = db.employees.find_one({'django_user_id': request.user.id})
+        if not employe:
+            employe = db.employees.find_one({'django_username': request.user.username})
+        
+        db.notifications.delete_many({'employe_id': str(employe['_id'])})
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_send_test_notification(request):
+    """API pour envoyer une notification de test - Version MongoDB"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    from datetime import datetime
     
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
@@ -4255,14 +4618,13 @@ def api_send_test_notification(request):
     
     notification = {
         'employe_id': str(employe['_id']),
-        'destinataire': employe.get('email', ''),
-        'type': 'info',
-        'categorie': 'rappel',
-        'titre': 'Notification de test',
+        'titre': '🔔 Notification de test',
         'message': 'Ceci est une notification de test pour vérifier le bon fonctionnement du centre de notifications.',
-        'lu': False,
-        'created_at': datetime.now(),
-        'icon': '🔔'
+        'categorie': 'info',
+        'icon': '🔔',
+        'status': 'non_lu',
+        'action_url': '/employe/notifications/',
+        'created_at': datetime.now()
     }
     
     db.notifications.insert_one(notification)
@@ -4272,53 +4634,75 @@ def api_send_test_notification(request):
 
 def send_reservation_notification(employe_id, reservation_data, action='created'):
     """Fonction utilitaire pour envoyer une notification de réservation"""
-    notifications = []
+    from datetime import datetime
     
-    if action == 'created':
-        notifications.append({
-            'employe_id': employe_id,
-            'type': 'info',
-            'categorie': 'reservation',
-            'titre': 'Réservation créée',
+    notifications_data = {
+        'created': {
+            'titre': '📝 Réservation créée',
             'message': f"Votre réservation '{reservation_data.get('titre')}' a été créée et est en attente de validation.",
-            'icon': '📝',
-            'action_url': '/employe/reservations/'
-        })
-    elif action == 'confirmed':
-        notifications.append({
-            'employe_id': employe_id,
-            'type': 'success',
             'categorie': 'reservation',
-            'titre': 'Réservation confirmée',
+            'icon': '📝'
+        },
+        'confirmed': {
+            'titre': '✅ Réservation confirmée',
             'message': f"Votre réservation '{reservation_data.get('titre')}' a été confirmée.",
-            'icon': '✅',
-            'action_url': '/employe/reservations/'
-        })
-    elif action == 'refused':
-        notifications.append({
-            'employe_id': employe_id,
-            'type': 'error',
-            'categorie': 'reservation',
-            'titre': 'Réservation refusée',
+            'categorie': 'confirmation',
+            'icon': '✅'
+        },
+        'refused': {
+            'titre': '❌ Réservation refusée',
             'message': f"Votre réservation '{reservation_data.get('titre')}' a été refusée.",
-            'icon': '❌',
-            'action_url': '/employe/reservations/'
-        })
-    elif action == 'reminder':
-        notifications.append({
-            'employe_id': employe_id,
-            'type': 'warning',
-            'categorie': 'rappel',
-            'titre': 'Rappel de réservation',
+            'categorie': 'annulation',
+            'icon': '❌'
+        },
+        'reminder': {
+            'titre': '⏰ Rappel de réservation',
             'message': f"Rappel: Votre réservation '{reservation_data.get('titre')}' commence dans 30 minutes.",
-            'icon': '⏰',
-            'action_url': '/employe/reservations/'
-        })
+            'categorie': 'rappel',
+            'icon': '⏰'
+        },
+        'cancelled': {
+            'titre': '🗑️ Réservation annulée',
+            'message': f"Votre réservation '{reservation_data.get('titre')}' a été annulée.",
+            'categorie': 'annulation',
+            'icon': '🗑️'
+        }
+    }
     
-    for notif in notifications:
-        notif['lu'] = False
-        notif['created_at'] = datetime.now()
-        db.notifications.insert_one(notif)
+    data = notifications_data.get(action, notifications_data['created'])
+    
+    db.notifications.insert_one({
+        'employe_id': str(employe_id),
+        'titre': data['titre'],
+        'message': data['message'],
+        'categorie': data['categorie'],
+        'icon': data['icon'],
+        'status': 'non_lu',
+        'action_url': '/employe/reservations/',
+        'reservation_id': reservation_data.get('id'),
+        'created_at': datetime.now()
+    })
+    
+@login_required
+def api_notifications_unread_count(request):
+    """API pour récupérer le nombre de notifications non lues"""
+    try:
+        employe = db.employees.find_one({'django_user_id': request.user.id})
+        if not employe:
+            employe = db.employees.find_one({'django_username': request.user.username})
+        
+        if not employe:
+            return JsonResponse({'count': 0})
+        
+        count = db.notifications.count_documents({
+            'employe_id': str(employe['_id']),
+            'status': 'non_lu'
+        })
+        
+        return JsonResponse({'count': count})
+        
+    except Exception as e:
+        return JsonResponse({'count': 0, 'error': str(e)}, status=500)
         # ====================== STATISTIQUES GESTION DES RESSOURCES ======================
 # Ajoutez ces fonctions à la fin de votre fichier views.py
 
@@ -4765,21 +5149,47 @@ def employe_aide(request):
 
 
 # Assurez-vous que ces fonctions sont au bon niveau d'indentation (sans espace avant def)
-
 @login_required
 def api_reservation_qr(request, reservation_id):
     """API pour récupérer le QR code d'une réservation"""
+    from bson import ObjectId
+    
     try:
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
         if not reservation:
             return JsonResponse({'error': 'Réservation non trouvée'}, status=404)
         
+        # Vérifier que l'utilisateur a le droit d'accéder à ce QR code
+        employe = db.employees.find_one({'django_user_id': request.user.id})
+        if not employe:
+            employe = db.employees.find_one({'django_username': request.user.username})
+        
+        if employe and str(employe['_id']) != reservation.get('employe_id'):
+            if not request.user.is_staff:
+                return JsonResponse({'error': 'Non autorisé'}, status=403)
+        
         return JsonResponse({
             'qr_code': reservation.get('qr_code'),
+            'titre': reservation.get('titre', 'Sans titre'),
+            'bureau_nom': get_bureau_name(reservation.get('bureau_id')),
             'date_debut': reservation.get('date_debut').isoformat() if reservation.get('date_debut') else None,
+            'date_fin': reservation.get('date_fin').isoformat() if reservation.get('date_fin') else None,
+            'statut': reservation.get('statut'),
         })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+def get_bureau_name(bureau_id):
+    """Récupère le nom du bureau à partir de son ID"""
+    from bson import ObjectId
+    if not bureau_id:
+        return 'Salle inconnue'
+    try:
+        bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+        return bureau['nom'] if bureau else 'Salle inconnue'
+    except:
+        return 'Salle inconnue'
 
 
 @login_required
@@ -4849,3 +5259,848 @@ def api_bureau_suggestions(request, bureau_id):
         {'date': 'Jeudi', 'debut': '14:00', 'fin': '15:00', 'taux': 10, 'disponibilite': 'Peu fréquenté'},
     ]
     return JsonResponse({'suggestions': suggestions})
+        # ====================== Chatbot IA ======================
+# dashboard/views.py - Ajoutez ces fonctions
+
+
+@login_required
+def api_chatbot_message(request):
+    """API pour le chatbot employé"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        user_message = data.get('message', '').strip().lower()
+        conversation_id = data.get('conversation_id', '')
+        
+        if not user_message:
+            return JsonResponse({'error': 'Message vide'}, status=400)
+        
+        # Récupérer ou créer la conversation
+        if conversation_id:
+            try:
+                conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
+            except ChatbotConversation.DoesNotExist:
+                conversation = ChatbotConversation.objects.create(user=request.user)
+        else:
+            conversation = ChatbotConversation.objects.create(user=request.user)
+        
+        # Sauvegarder le message utilisateur
+        ChatbotMessage.objects.create(
+            conversation=conversation,
+            role='user',
+            content=user_message
+        )
+        
+        # Analyser l'intention et générer la réponse
+        response_data = process_chatbot_message(request.user, user_message, conversation)
+        
+        # Sauvegarder la réponse
+        ChatbotMessage.objects.create(
+            conversation=conversation,
+            role='assistant',
+            content=response_data['message'],
+            intent=response_data.get('intent', ''),
+            entities=response_data.get('entities', {})
+        )
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': response_data['message'],
+            'intent': response_data.get('intent', ''),
+            'data': response_data.get('data', {}),
+            'conversation_id': conversation.id,
+            'suggestions': response_data.get('suggestions', [])
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def process_chatbot_message(user, message, conversation):
+    """Traite le message et génère une réponse intelligente"""
+    
+    # Intentions et mots-clés
+    intents = {
+        'reserver': ['réserver', 'reserver', 'booking', 'book', 'nouvelle réservation', 'créer réservation'],
+        'disponibilite': ['disponible', 'libre', 'créneau', 'horaire', 'quand', 'date', 'jour'],
+        'annuler': ['annuler', 'cancel', 'supprimer réservation'],
+        'mes_reservations': ['mes réservations', 'mes reservations', 'liste réservations', 'voir réservations'],
+        'salles': ['salle', 'salles', 'ressource', 'bureau', 'zone'],
+        'aide': ['aide', 'help', 'comment', 'fonctionne', 'tutoriel'],
+        'horaire_optimal': ['meilleur créneau', 'moins occupé', 'calme', 'optimal', 'recommandé'],
+        'bonjour': ['bonjour', 'salut', 'hello', 'coucou', 'hey'],
+    }
+    
+    # Déterminer l'intention
+    detected_intent = 'general'
+    for intent, keywords in intents.items():
+        for keyword in keywords:
+            if keyword in message:
+                detected_intent = intent
+                break
+        if detected_intent != 'general':
+            break
+    
+    # Traitement selon l'intention
+    if detected_intent == 'bonjour':
+        return {
+            'intent': 'bonjour',
+            'message': f"Bonjour {user.first_name or user.username} ! 👋\n\nJe suis votre assistant SIGR-CA. Je peux vous aider à :\n• 📅 Réserver une salle\n• 🔍 Vérifier la disponibilité\n• 📋 Voir vos réservations\n• ❌ Annuler une réservation\n\nComment puis-je vous aider aujourd'hui ?",
+            'suggestions': ["📅 Réserver une salle", "🔍 Voir mes réservations", "❓ Comment ça fonctionne ?"]
+        }
+    
+    elif detected_intent == 'reserver':
+        # Extraire la date et l'heure si possible
+        date_info = extract_date_from_message(message)
+        
+        # Récupérer les salles disponibles
+        salles = get_available_rooms(date_info)
+        
+        if salles:
+            salles_text = "\n".join([f"• {s['nom']} (Cap. {s['capacite']} pers)" for s in salles[:5]])
+            return {
+                'intent': 'reserver',
+                'message': f"Je trouve {len(salles)} salle(s) disponible(s) pour {date_info if date_info else 'aujourd\'hui'} :\n\n{salles_text}\n\nSouhaitez-vous réserver l'une de ces salles ?",
+                'data': {'salles': salles, 'date': date_info},
+                'suggestions': [f"✅ Réserver {salles[0]['nom']}" if salles else "➕ Nouvelle réservation", "📅 Autre date"]
+            }
+        else:
+            return {
+                'intent': 'reserver',
+                'message': f"Je n'ai trouvé aucune salle disponible pour {date_info if date_info else 'aujourd\'hui'}.\n\nSouhaitez-vous voir les disponibilités pour une autre date ?",
+                'suggestions': ["📅 Voir demain", "📅 Voir cette semaine", "➕ Nouvelle réservation"]
+            }
+    
+    elif detected_intent == 'disponibilite':
+        date_info = extract_date_from_message(message)
+        disponibilites = get_availability_summary(date_info)
+        
+        return {
+            'intent': 'disponibilite',
+            'message': f"📊 Disponibilités des salles {date_info if date_info else 'aujourd\'hui'} :\n\n{disponibilites['text']}\n\nTaux d'occupation moyen: {disponibilites['taux_moyen']}%",
+            'data': disponibilites,
+            'suggestions': ["📅 Réserver", "⏰ Meilleur créneau", "🚪 Voir toutes les salles"]
+        }
+    
+    elif detected_intent == 'mes_reservations':
+        # Récupérer les réservations de l'utilisateur
+        from bson import ObjectId
+        employe = db.employees.find_one({'django_user_id': user.id})
+        if employe:
+            reservations = list(db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1).limit(5))
+            
+            if reservations:
+                resa_text = ""
+                for r in reservations[:3]:
+                    bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+                    nom_bureau = bureau['nom'] if bureau else 'Salle'
+                    date_str = r['date_debut'].strftime('%d/%m %H:%M') if r.get('date_debut') else 'Date inconnue'
+                    statut = "✅" if r.get('statut') == 'confirmee' else "⏳" if r.get('statut') == 'en_attente' else "❌"
+                    resa_text += f"\n{statut} {r.get('titre', 'Sans titre')} - {nom_bureau} - {date_str}"
+                
+                return {
+                    'intent': 'mes_reservations',
+                    'message': f"📋 Vos dernières réservations :{resa_text}\n\nVoulez-vous voir toutes vos réservations ?",
+                    'suggestions': ["📋 Voir toutes", "➕ Nouvelle réservation", "❌ Annuler une réservation"]
+                }
+            else:
+                return {
+                    'intent': 'mes_reservations',
+                    'message': "Vous n'avez aucune réservation pour le moment.\n\nSouhaitez-vous en créer une ?",
+                    'suggestions': ["📅 Réserver une salle", "🔍 Voir les disponibilités"]
+                }
+        else:
+            return {
+                'intent': 'mes_reservations',
+                'message': "Impossible de récupérer vos réservations. Veuillez réessayer.",
+                'suggestions': ["📅 Réserver une salle", "❓ Aide"]
+            }
+    
+    elif detected_intent == 'horaire_optimal':
+        horaire_optimal = get_optimal_time_slot()
+        
+        return {
+            'intent': 'horaire_optimal',
+            'message': f"⏰ **Meilleurs créneaux recommandés :**\n\n{horaire_optimal['text']}\n\n💡 Ces créneaux sont généralement les moins occupés. Voulez-vous réserver l'un d'eux ?",
+            'data': horaire_optimal,
+            'suggestions': [f"📅 Réserver à {h['debut']}" for h in horaire_optimal['slots'][:2]]
+        }
+    
+    elif detected_intent == 'aide':
+        return {
+            'intent': 'aide',
+            'message': "📚 **Centre d'aide SIGR-CA**\n\n"
+                       "• 📅 **Réserver** : Dites 'Je veux réserver une salle'\n"
+                       "• 🔍 **Disponibilité** : Dites 'Salle disponible à 14h'\n"
+                       "• 📋 **Mes réservations** : Dites 'Voir mes réservations'\n"
+                       "• ❌ **Annuler** : Dites 'Annuler ma réservation'\n"
+                       "• ⏰ **Meilleurs créneaux** : Dites 'Quel est le meilleur créneau ?'\n\n"
+                       "Que souhaitez-vous faire ?",
+            'suggestions': ["📅 Réserver", "🔍 Disponibilité", "📋 Mes réservations"]
+        }
+    
+    else:
+        return {
+            'intent': 'general',
+            'message': "Je n'ai pas bien compris votre demande. 😅\n\n"
+                       "Voici ce que je peux faire pour vous :\n"
+                       "• 📅 Réserver une salle\n"
+                       "• 🔍 Vérifier la disponibilité\n"
+                       "• 📋 Voir vos réservations\n"
+                       "• ❌ Annuler une réservation\n\n"
+                       "Comment puis-je vous aider ?",
+            'suggestions': ["📅 Réserver une salle", "🔍 Voir disponibilités", "📋 Mes réservations"]
+        }
+
+
+def extract_date_from_message(message):
+    """Extraire une date du message utilisateur"""
+    today = datetime.now()
+    
+    if 'aujourd\'hui' in message or "aujourd'hui" in message:
+        return today.strftime('%d/%m/%Y')
+    elif 'demain' in message:
+        return (today + timedelta(days=1)).strftime('%d/%m/%Y')
+    elif 'ce soir' in message or 'soir' in message:
+        return "ce soir"
+    elif 'après-midi' in message:
+        return "cet après-midi"
+    elif 'matin' in message:
+        return "ce matin"
+    
+    # Recherche de date au format JJ/MM ou JJ/MM/AAAA
+    date_pattern = r'(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?'
+    match = re.search(date_pattern, message)
+    if match:
+        day = int(match.group(1))
+        month = int(match.group(2))
+        year = int(match.group(3)) if match.group(3) else today.year
+        if year < 100:
+            year += 2000
+        return f"{day:02d}/{month:02d}/{year}"
+    
+    return None
+
+
+def get_available_rooms(date_info=None):
+    """Récupérer les salles disponibles"""
+    from bson import ObjectId
+    
+    bureaux = list(db.bureaux.find())
+    available = []
+    
+    for bureau in bureaux:
+        available.append({
+            'id': str(bureau['_id']),
+            'nom': bureau.get('nom', 'Salle'),
+            'capacite': bureau.get('capacite_max', 10),
+            'niveau': bureau.get('niveau_securite', 'standard'),
+            'disponible': True
+        })
+    
+    return available[:8]
+
+
+def get_availability_summary(date_info=None):
+    """Résumé des disponibilités"""
+    bureaux = list(db.bureaux.find())
+    
+    total = len(bureaux)
+    taux_moyen = 35  # Valeur par défaut
+    
+    text = f"• {total} salle(s) disponible(s)\n• Taux d'occupation moyen: {taux_moyen}%\n"
+    
+    return {
+        'text': text,
+        'taux_moyen': taux_moyen,
+        'total_salles': total
+    }
+
+
+def get_optimal_time_slot():
+    """Meilleurs créneaux recommandés"""
+    slots = [
+        {'debut': '09:00', 'fin': '10:00', 'taux': 25, 'disponibilite': 'Très disponible'},
+        {'debut': '10:00', 'fin': '11:00', 'taux': 45, 'disponibilite': 'Disponible'},
+        {'debut': '14:00', 'fin': '15:00', 'taux': 30, 'disponibilite': 'Disponible'},
+        {'debut': '15:00', 'fin': '16:00', 'taux': 28, 'disponibilite': 'Disponible'},
+    ]
+    
+    text = ""
+    for s in slots[:3]:
+        text += f"• {s['debut']} → {s['fin']} : {s['disponibilite']} ({s['taux']}% d'occupation)\n"
+    
+    return {
+        'text': text,
+        'slots': slots
+    }
+
+
+@login_required
+def api_chatbot_conversations(request):
+    """Récupérer l'historique des conversations"""
+    conversations = ChatbotConversation.objects.filter(user=request.user, is_active=True).order_by('-updated_at')[:10]
+    
+    data = []
+    for conv in conversations:
+        last_message = conv.messages.filter(role='assistant').last()
+        data.append({
+            'id': conv.id,
+            'created_at': conv.created_at.strftime('%d/%m/%Y %H:%M'),
+            'last_message': last_message.content[:100] if last_message else '',
+            'message_count': conv.messages.count()
+        })
+    
+    return JsonResponse({'conversations': data})
+
+
+@login_required
+def api_chatbot_conversation_detail(request, conversation_id):
+    """Détail d'une conversation"""
+    try:
+        conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
+        messages = []
+        for msg in conversation.messages.all():
+            messages.append({
+                'role': msg.role,
+                'content': msg.content,
+                'created_at': msg.created_at.strftime('%H:%M')
+            })
+        
+        return JsonResponse({'messages': messages, 'conversation_id': conversation.id})
+    except ChatbotConversation.DoesNotExist:
+        return JsonResponse({'error': 'Conversation non trouvée'}, status=404)
+        # dashboard/views.py - Ajoutez ces fonctions
+
+# ====================== NOTIFICATIONS ADMINISTRATEUR ======================
+
+@login_required
+def admin_notifications(request):
+    """Centre de notifications pour les administrateurs"""
+    if not request.user.is_staff:
+        return redirect('employe_espace')
+    
+    from bson import ObjectId
+    from datetime import datetime
+    
+    # Récupérer les notifications depuis MongoDB
+    notifications = list(db.admin_notifications.find({
+        'admin_id': request.user.id
+    }).sort('created_at', -1))
+    
+    for n in notifications:
+        n['id'] = str(n['_id'])
+        if 'status' not in n:
+            n['status'] = 'non_lu'
+        if 'categorie' not in n:
+            n['categorie'] = n.get('type', 'info')
+        if 'icon' not in n:
+            n['icon'] = '🔔'
+    
+    # Compter les non lues
+    unread_count = sum(1 for n in notifications if n.get('status') == 'non_lu')
+    
+    # Traitement POST pour marquer comme lu
+    if request.method == 'POST':
+        if 'mark_read' in request.POST:
+            notification_id = request.POST.get('notification_id')
+            if notification_id:
+                db.admin_notifications.update_one(
+                    {'_id': ObjectId(notification_id), 'admin_id': request.user.id},
+                    {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+                )
+            else:
+                # Marquer toutes comme lues
+                db.admin_notifications.update_many(
+                    {'admin_id': request.user.id, 'status': 'non_lu'},
+                    {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+                )
+            return redirect('admin_notifications')
+        
+        elif 'delete_all' in request.POST:
+            db.admin_notifications.delete_many({'admin_id': request.user.id})
+            return redirect('admin_notifications')
+    
+    return render(request, 'dashboard/admin_notifications.html', {
+        'notifications': notifications,
+        'unread_count': unread_count,
+    })
+
+
+@login_required
+def api_admin_notifications_unread_count(request):
+    """API pour récupérer le nombre de notifications admin non lues"""
+    try:
+        if not request.user.is_staff:
+            return JsonResponse({'count': 0})
+        
+        count = db.admin_notifications.count_documents({
+            'admin_id': request.user.id,
+            'status': 'non_lu'
+        })
+        
+        return JsonResponse({'count': count})
+        
+    except Exception as e:
+        return JsonResponse({'count': 0})
+
+
+@login_required
+def api_admin_mark_notification_read(request):
+    """API pour marquer une notification admin comme lue"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    try:
+        import json
+        from bson import ObjectId
+        from datetime import datetime
+        
+        data = json.loads(request.body)
+        notification_id = data.get('notification_id')
+        
+        if notification_id:
+            db.admin_notifications.update_one(
+                {'_id': ObjectId(notification_id), 'admin_id': request.user.id},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+            )
+        else:
+            # Marquer toutes comme lues
+            db.admin_notifications.update_many(
+                {'admin_id': request.user.id, 'status': 'non_lu'},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+            )
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_admin_delete_notification(request):
+    """API pour supprimer une notification admin"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    try:
+        import json
+        from bson import ObjectId
+        
+        data = json.loads(request.body)
+        notification_id = data.get('notification_id')
+        
+        if notification_id:
+            db.admin_notifications.delete_one({
+                '_id': ObjectId(notification_id),
+                'admin_id': request.user.id
+            })
+        else:
+            db.admin_notifications.delete_many({'admin_id': request.user.id})
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_admin_send_test_notification(request):
+    """API pour envoyer une notification de test à l'admin"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    from datetime import datetime
+    
+    notification = {
+        'admin_id': request.user.id,
+        'titre': '🔔 Notification de test',
+        'message': 'Ceci est une notification de test pour le centre d\'administration.',
+        'categorie': 'info',
+        'icon': '🔔',
+        'status': 'non_lu',
+        'action_url': '/admin/notifications/',
+        'created_at': datetime.now()
+    }
+    
+    db.admin_notifications.insert_one(notification)
+    
+    return JsonResponse({'status': 'success', 'message': 'Notification envoyée'})
+
+
+# ====================== FONCTIONS D'ENVOI DE NOTIFICATIONS ADMIN ======================
+
+def send_admin_notification(admin_id, titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
+    """Envoie une notification à un administrateur"""
+    from datetime import datetime
+    
+    notification = {
+        'admin_id': admin_id,
+        'titre': titre,
+        'message': message,
+        'categorie': categorie,
+        'icon': icon,
+        'status': 'non_lu',
+        'action_url': action_url,
+        'reservation_id': reservation_id,
+        'created_at': datetime.now()
+    }
+    
+    db.admin_notifications.insert_one(notification)
+
+
+def send_notification_to_all_admins(titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
+    """Envoie une notification à tous les administrateurs"""
+    from datetime import datetime
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
+    admins = User.objects.filter(is_staff=True, is_active=True)
+    
+    notifications = []
+    for admin in admins:
+        notifications.append({
+            'admin_id': admin.id,
+            'titre': titre,
+            'message': message,
+            'categorie': categorie,
+            'icon': icon,
+            'status': 'non_lu',
+            'action_url': action_url,
+            'reservation_id': reservation_id,
+            'created_at': datetime.now()
+        })
+    
+    if notifications:
+        db.admin_notifications.insert_many(notifications)
+
+
+# ====================== ÉVÉNEMENTS DÉCLENCHANT DES NOTIFICATIONS ADMIN ======================
+
+# 1. Nouvelle réservation créée par un employé
+def notify_admins_new_reservation(employe, reservation_data):
+    """Notifie tous les admins d'une nouvelle réservation"""
+    titre = f"🆕 Nouvelle réservation en attente"
+    message = f"{employe.get('prenom', '')} {employe.get('nom', '')} a demandé une réservation pour '{reservation_data.get('titre')}' le {reservation_data['date_debut'].strftime('%d/%m/%Y à %H:%M')}."
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message,
+        categorie='reservation',
+        icon='🆕',
+        action_url=f'/reservations/{reservation_data.get("id")}/',
+        reservation_id=reservation_data.get('id')
+    )
+
+
+# 2. Alerte de sécurité (tentative d'accès non autorisée)
+def notify_admins_security_alert(zone, badge_id, message):
+    """Notifie les admins d'une alerte de sécurité"""
+    titre = f"⚠️ ALERTE SÉCURITÉ"
+    message_complet = f"Tentative d'accès non autorisée détectée.\nZone: {zone}\nBadge: {badge_id}\nDétails: {message}"
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message_complet,
+        categorie='alerte',
+        icon='⚠️'
+    )
+
+
+# 3. Équipement hors ligne / maintenance
+def notify_admins_equipment_offline(equipement_nom, equipement_id):
+    """Notifie les admins qu'un équipement est hors ligne"""
+    titre = f"🔧 Équipement hors ligne"
+    message = f"L'équipement '{equipement_nom}' est actuellement hors ligne. Une intervention est nécessaire."
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message,
+        categorie='maintenance',
+        icon='🔧',
+        action_url=f'/equipements/{equipement_id}/'
+    )
+
+
+# 4. Réservation modifiée/annulée par un employé
+def notify_admins_reservation_cancelled(employe, reservation):
+    """Notifie les admins qu'une réservation a été annulée"""
+    titre = f"🗑️ Réservation annulée"
+    message = f"{employe.get('prenom', '')} {employe.get('nom', '')} a annulé sa réservation '{reservation.get('titre')}'."
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message,
+        categorie='reservation',
+        icon='🗑️',
+        action_url=f'/reservations/{reservation.get("id")}/'
+    )
+
+
+# 5. Réservation bientôt pleine (alerte occupation)
+def notify_admins_high_occupation(zone_nom, occupation_rate):
+    """Notifie les admins qu'une zone a un taux d'occupation élevé"""
+    if occupation_rate >= 80:
+        titre = f"📊 Taux d'occupation critique"
+        message = f"La zone '{zone_nom}' a atteint {occupation_rate}% d'occupation. Une attention particulière est recommandée."
+        send_notification_to_all_admins(
+            titre=titre,
+            message=message,
+            categorie='alerte',
+            icon='📊'
+        )
+        # dashboard/views.py - Ajoutez ces fonctions
+
+# ====================== NOTIFICATIONS ADMINISTRATEUR ======================
+
+def send_admin_notification(admin_id, titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
+    """Envoie une notification à un administrateur spécifique"""
+    from datetime import datetime
+    
+    notification = {
+        'admin_id': admin_id,
+        'titre': titre,
+        'message': message,
+        'categorie': categorie,
+        'icon': icon,
+        'status': 'non_lu',
+        'action_url': action_url,
+        'reservation_id': reservation_id,
+        'created_at': datetime.now()
+    }
+    
+    db.admin_notifications.insert_one(notification)
+
+
+def send_notification_to_all_admins(titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
+    """Envoie une notification à tous les administrateurs"""
+    from datetime import datetime
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
+    admins = User.objects.filter(is_staff=True, is_active=True)
+    
+    if not admins:
+        return
+    
+    notifications = []
+    for admin in admins:
+        notifications.append({
+            'admin_id': admin.id,
+            'titre': titre,
+            'message': message,
+            'categorie': categorie,
+            'icon': icon,
+            'status': 'non_lu',
+            'action_url': action_url,
+            'reservation_id': reservation_id,
+            'created_at': datetime.now()
+        })
+    
+    if notifications:
+        db.admin_notifications.insert_many(notifications)
+
+
+def notify_admins_new_reservation(employe, reservation_data):
+    """Notifie tous les admins d'une nouvelle réservation"""
+    titre = f"🆕 Nouvelle réservation en attente"
+    message = f"{employe.get('prenom', '')} {employe.get('nom', '')} a demandé une réservation pour '{reservation_data.get('titre')}' le {reservation_data['date_debut'].strftime('%d/%m/%Y à %H:%M')}."
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message,
+        categorie='reservation',
+        icon='🆕',
+        action_url=f'/reservations/{reservation_data.get("id")}/',
+        reservation_id=reservation_data.get('id')
+    )
+
+
+def notify_admins_security_alert(zone, badge_id, message):
+    """Notifie les admins d'une alerte de sécurité"""
+    titre = f"⚠️ ALERTE SÉCURITÉ"
+    message_complet = f"Tentative d'accès non autorisée détectée.\nZone: {zone}\nBadge: {badge_id}\nDétails: {message}"
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message_complet,
+        categorie='alerte',
+        icon='⚠️'
+    )
+
+
+def notify_admins_equipment_offline(equipement_nom, equipement_id):
+    """Notifie les admins qu'un équipement est hors ligne"""
+    titre = f"🔧 Équipement hors ligne"
+    message = f"L'équipement '{equipement_nom}' est actuellement hors ligne. Une intervention est nécessaire."
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message,
+        categorie='maintenance',
+        icon='🔧',
+        action_url=f'/equipements/{equipement_id}/'
+    )
+
+
+def notify_admins_reservation_cancelled(employe, reservation):
+    """Notifie les admins qu'une réservation a été annulée"""
+    titre = f"🗑️ Réservation annulée"
+    message = f"{employe.get('prenom', '')} {employe.get('nom', '')} a annulé sa réservation '{reservation.get('titre')}'."
+    send_notification_to_all_admins(
+        titre=titre,
+        message=message,
+        categorie='reservation',
+        icon='🗑️',
+        action_url=f'/reservations/{reservation.get("id")}/'
+    )
+
+
+def notify_admins_high_occupation(zone_nom, occupation_rate):
+    """Notifie les admins qu'une zone a un taux d'occupation élevé"""
+    if occupation_rate >= 80:
+        titre = f"📊 Taux d'occupation critique"
+        message = f"La zone '{zone_nom}' a atteint {occupation_rate}% d'occupation. Une attention particulière est recommandée."
+        send_notification_to_all_admins(
+            titre=titre,
+            message=message,
+            categorie='alerte',
+            icon='📊'
+        )
+
+
+# ====================== APIS POUR NOTIFICATIONS ADMIN ======================
+
+@login_required
+def api_admin_notifications_unread_count(request):
+    """API pour récupérer le nombre de notifications admin non lues"""
+    try:
+        if not request.user.is_staff:
+            return JsonResponse({'count': 0})
+        
+        count = db.admin_notifications.count_documents({
+            'admin_id': request.user.id,
+            'status': 'non_lu'
+        })
+        
+        return JsonResponse({'count': count})
+        
+    except Exception as e:
+        return JsonResponse({'count': 0})
+
+
+@login_required
+def api_admin_mark_notification_read(request):
+    """API pour marquer une notification admin comme lue"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    try:
+        import json
+        from bson import ObjectId
+        from datetime import datetime
+        
+        data = json.loads(request.body)
+        notification_id = data.get('notification_id')
+        
+        if notification_id:
+            db.admin_notifications.update_one(
+                {'_id': ObjectId(notification_id), 'admin_id': request.user.id},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+            )
+        else:
+            # Marquer toutes comme lues
+            db.admin_notifications.update_many(
+                {'admin_id': request.user.id, 'status': 'non_lu'},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+            )
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_admin_delete_notification(request):
+    """API pour supprimer une notification admin"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    try:
+        import json
+        from bson import ObjectId
+        
+        data = json.loads(request.body)
+        notification_id = data.get('notification_id')
+        
+        if notification_id:
+            db.admin_notifications.delete_one({
+                '_id': ObjectId(notification_id),
+                'admin_id': request.user.id
+            })
+        else:
+            db.admin_notifications.delete_many({'admin_id': request.user.id})
+        
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_admin_send_test_notification(request):
+    """API pour envoyer une notification de test à l'admin"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+    
+    from datetime import datetime
+    
+    notification = {
+        'admin_id': request.user.id,
+        'titre': '🔔 Notification de test',
+        'message': 'Ceci est une notification de test pour le centre d\'administration.',
+        'categorie': 'info',
+        'icon': '🔔',
+        'status': 'non_lu',
+        'action_url': '/admin/notifications/',
+        'created_at': datetime.now()
+    }
+    
+    db.admin_notifications.insert_one(notification)
+    
+    return JsonResponse({'status': 'success', 'message': 'Notification envoyée'})
+def notify_admin_new_reservation(employe, reservation_data, reservation_id):
+    """Notifie les administrateurs d'une nouvelle réservation"""
+    from django.contrib.auth import get_user_model
+    from datetime import datetime
+    
+    User = get_user_model()
+    admins = User.objects.filter(is_staff=True, is_active=True)
+    
+    for admin in admins:
+        admin_notification = {
+            'admin_id': admin.id,
+            'titre': '🆕 Nouvelle réservation en attente',
+            'message': f"{employe.get('prenom', '')} {employe.get('nom', '')} a demandé une réservation pour '{reservation_data.get('titre')}'.",
+            'categorie': 'reservation',
+            'icon': '🆕',
+            'status': 'non_lu',
+            'action_url': f'/reservations/{reservation_id}/',
+            'reservation_id': reservation_id,
+            'created_at': datetime.now()
+        }
+        db.admin_notifications.insert_one(admin_notification)

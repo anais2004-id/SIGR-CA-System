@@ -167,13 +167,25 @@
   white-space: nowrap;
 }
 .modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: var(--bg2);
+    border-radius: 12px;
+    width: 550px;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 .modal {
   background: var(--bg2);
@@ -298,17 +310,30 @@
 </div>
 
 <!-- Modal Détails -->
-<div id="detailsModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>📋 Détails réservation</h3>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+<!-- Modal Détails - Assurez-vous que l'ID est correct -->
+<div id="detailsModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)window.closeModal()">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>📋 Détails réservation</h3>
+<button class="modal-close" onclick="window.closeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="modalDetailsContent"></div>
+        <div class="modal-footer">
+<button class="btn btn-primary" onclick="window.closeModal()">Fermer</button>
+        </div>
     </div>
-    <div class="modal-body" id="modalDetailsContent"></div>
-    <div class="modal-footer">
-      <button class="btn btn-primary" onclick="closeModal()">Fermer</button>
+</div><!-- Utilisez closeModal() au lieu de window.closeModal() -->
+<div id="detailsModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>📋 Détails réservation</h3>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="modalDetailsContent"></div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeModal()">Fermer</button>
+        </div>
     </div>
-  </div>
 </div>
 
 <!-- Modal Refus -->
@@ -509,47 +534,56 @@ function toggleView() {
   }
 }
 
-function showDetails(id) {
-  fetch('/api/reservations/' + id + '/details/')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var debut = data.date_debut ? new Date(data.date_debut).toLocaleString('fr-FR') : '—';
-      var fin = data.date_fin ? new Date(data.date_fin).toLocaleString('fr-FR') : '—';
-      var statusText = '';
-      var statusClass = '';
-      if (data.statut === 'confirmee') {
-        statusText = '✅ Confirmée';
-        statusClass = 'b-green';
-      } else if (data.statut === 'annulee') {
-        statusText = '❌ Annulée';
-        statusClass = 'b-red';
-      } else {
-        statusText = '⏳ En attente';
-        statusClass = 'b-amber';
-      }
-      
-      var html = '<div class="field-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px">';
-      html += '<div class="field-box"><div class="field-lbl">📋 Titre</div><div class="field-val">' + (data.titre || '—') + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">🚪 Salle</div><div class="field-val">' + (data.bureau_nom || '—') + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">👤 Réservé par</div><div class="field-val">' + (data.employe_nom || '—') + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">👥 Participants</div><div class="field-val">' + (data.nb_participants || 1) + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">📅 Début</div><div class="field-val">' + debut + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">⏰ Fin</div><div class="field-val">' + fin + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">📊 Statut</div><div class="field-val"><span class="badge ' + statusClass + '">' + statusText + '</span></div></div>';
-      html += '</div>';
-      if (data.description) html += '<div class="field-box" style="margin-top:12px"><div class="field-lbl">📝 Description</div><div class="field-val">' + data.description + '</div></div>';
-      
-      document.getElementById('modalDetailsContent').innerHTML = html;
-      document.getElementById('detailsModal').style.display = 'flex';
-    })
-    .catch(function(err) {
-      document.getElementById('modalDetailsContent').innerHTML = '<div style="color:var(--red)">❌ Erreur: ' + err.message + '</div>';
-      document.getElementById('detailsModal').style.display = 'flex';
-    });
+// Assurez-vous que showDetails est aussi globale
+window.showDetails = function(id) {
+    fetch('/api/reservations/' + id + '/details/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var debut = data.date_debut ? new Date(data.date_debut).toLocaleString('fr-FR') : '—';
+            var fin = data.date_fin ? new Date(data.date_fin).toLocaleString('fr-FR') : '—';
+            var statusText = '';
+            var statusClass = '';
+            if (data.statut === 'confirmee') {
+                statusText = '✅ Confirmée';
+                statusClass = 'b-green';
+            } else if (data.statut === 'annulee') {
+                statusText = '❌ Annulée';
+                statusClass = 'b-red';
+            } else {
+                statusText = '⏳ En attente';
+                statusClass = 'b-amber';
+            }
+            
+            var html = '<div class="field-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px">';
+            html += '<div class="field-box"><div class="field-lbl">📋 Titre</div><div class="field-val">' + (data.titre || '—') + '</div></div>';
+            html += '<div class="field-box"><div class="field-lbl">🚪 Salle</div><div class="field-val">' + (data.bureau_nom || '—') + '</div></div>';
+            html += '<div class="field-box"><div class="field-lbl">👤 Réservé par</div><div class="field-val">' + (data.employe_nom || '—') + '</div></div>';
+            html += '<div class="field-box"><div class="field-lbl">👥 Participants</div><div class="field-val">' + (data.nb_participants || 1) + '</div></div>';
+            html += '<div class="field-box"><div class="field-lbl">📅 Début</div><div class="field-val">' + debut + '</div></div>';
+            html += '<div class="field-box"><div class="field-lbl">⏰ Fin</div><div class="field-val">' + fin + '</div></div>';
+            html += '<div class="field-box"><div class="field-lbl">📊 Statut</div><div class="field-val"><span class="badge ' + statusClass + '">' + statusText + '</span></div></div>';
+            html += '</div>';
+            if (data.description) html += '<div class="field-box" style="margin-top:12px"><div class="field-lbl">📝 Description</div><div class="field-val">' + data.description + '</div></div>';
+            
+            document.getElementById('modalDetailsContent').innerHTML = html;
+            document.getElementById('detailsModal').style.display = 'flex';
+        })
+        .catch(function(err) {
+            document.getElementById('modalDetailsContent').innerHTML = '<div style="color:var(--red)">❌ Erreur: ' + err.message + '</div>';
+            document.getElementById('detailsModal').style.display = 'flex';
+        });
 }
 
+// Remplacez votre fonction closeModal par celle-ci
 function closeModal() {
-  document.getElementById('detailsModal').style.display = 'none';
+    console.log("closeModal appelée"); // Pour déboguer
+    var modal = document.getElementById('detailsModal');
+    if (modal) {
+        modal.style.display = 'none';
+        console.log("Modal fermé");
+    } else {
+        console.log("Modal non trouvé");
+    }
 }
 
 function showRefuseModal(id, titre) {
@@ -669,10 +703,10 @@ document.addEventListener('DOMContentLoaded', function() {
   renderCalendar();
 });
 function closeModal() {
-  var modal = document.getElementById('detailsModal');
-  if (modal) {
-    modal.style.display = 'none';
-  }
+    const modal = document.getElementById('detailsModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
 }
 // Fermeture des modaux
 window.closeModal = function() {
@@ -687,6 +721,34 @@ window.closeRefuseModal = function() {
 window.closeQRModal = function() {
   document.getElementById('qrModal').style.display = 'none';
 };
+// Attacher les événements après le chargement du DOM
+document.addEventListener('DOMContentLoaded', function() {
+    // Bouton de fermeture (X)
+    const closeBtn = document.querySelector('#detailsModal .modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            document.getElementById('detailsModal').style.display = 'none';
+        });
+    }
+    
+    // Bouton Fermer dans le footer
+    const footerBtn = document.querySelector('#detailsModal .modal-footer .btn-primary');
+    if (footerBtn) {
+        footerBtn.addEventListener('click', function() {
+            document.getElementById('detailsModal').style.display = 'none';
+        });
+    }
+    
+    // Clic sur l'overlay
+    const modalOverlay = document.getElementById('detailsModal');
+    if (modalOverlay) {
+        modalOverlay.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+    }
+});
 </script>
 
 {% endblock %}
