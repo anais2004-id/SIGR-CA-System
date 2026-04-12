@@ -233,4 +233,8 @@ path('dashboard/notifications/', views.admin_notifications, name='admin_notifica
 path('api/admin/notifications/unread-count/', views.api_admin_notifications_unread_count, name='api_admin_notifications_unread_count'),
 path('api/admin/notifications/mark-read/', views.api_admin_mark_notification_read, name='api_admin_mark_notification_read'),
 path('api/admin/notifications/delete/', views.api_admin_delete_notification, name='api_admin_delete_notification'),
-path('api/admin/notifications/test/', views.api_admin_send_test_notification, name='api_admin_send_test_notification'),]
+path('api/admin/notifications/test/', views.api_admin_send_test_notification, name='api_admin_send_test_notification'),
+
+path('api/materiel/ajouter/', views.api_materiel_ajouter, name='api_materiel_ajouter'),
+path('api/materiel/<str:materiel_id>/supprimer/', views.api_materiel_supprimer, name='api_materiel_supprimer'),
+path('api/export/ressources/csv/', views.api_export_ressources_csv, name='api_export_ressources_csv'),]

@@ -6,7 +6,7 @@
 
 {% block topbar_actions %}
 <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
-<button class="btn btn-ghost btn-sm" onclick="exportResources()">⬇️ Exporter</button>
+<button class="btn btn-ghost btn-sm" onclick="exportResourcesCSV()">⬇️ Exporter CSV</button>
 <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Ajouter</button>
 {% endblock %}
 
@@ -20,12 +20,17 @@
   gap: 14px;
   margin-bottom: 24px;
 }
+@media (max-width: 768px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
 .kpi {
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
+  transition: all 0.2s;
 }
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 .kpi-header {
   display: flex;
   justify-content: space-between;
@@ -92,6 +97,10 @@
   transform: translateY(-3px);
   box-shadow: var(--shadow);
   border-color: var(--blue);
+}
+.zone-card.selected {
+  border-color: var(--blue);
+  background: var(--blue3);
 }
 .zone-header {
   padding: 14px;
@@ -164,6 +173,21 @@
   box-shadow: var(--shadow);
   border-color: var(--blue);
 }
+.materiel-img {
+  width: 100%;
+  height: 160px;
+  background: var(--bg4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  overflow: hidden;
+}
+.materiel-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .materiel-header {
   padding: 14px;
   background: var(--bg3);
@@ -173,7 +197,7 @@
   align-items: center;
 }
 .materiel-name { font-size: 15px; font-weight: 600; }
-.materiel-category { font-size: 10px; padding: 2px 8px; border-radius: 12px; }
+.materiel-category { font-size: 10px; padding: 2px 8px; border-radius: 12px; background: var(--blue3); color: var(--blue2); }
 .materiel-body { padding: 14px; }
 .materiel-info { font-size: 12px; color: var(--text2); line-height: 1.5; }
 .materiel-info div { margin-bottom: 6px; }
@@ -310,7 +334,7 @@
   </div>
   <div class="zones-grid" id="zonesGrid">
     {% for bureau in bureaux %}
-    <div class="zone-card" data-id="{{ bureau.id }}" data-name="{{ bureau.nom|lower }}" data-etage="{{ bureau.etage|default:0 }}">
+    <div class="zone-card" data-id="{{ bureau.id }}" data-name="{{ bureau.nom|lower }}" data-etage="{{ bureau.etage|default:0 }}" onclick="selectZone('{{ bureau.id }}', '{{ bureau.nom }}')">
       <div class="zone-header">
         <span class="zone-name">{{ bureau.nom }}</span>
         <span class="zone-code">{{ bureau.code_bureau|default:"—" }}</span>
@@ -327,13 +351,25 @@
         <div class="zone-capacity" style="margin-top:8px"><span>📍 Étage {{ bureau.etage|default:"RDC" }}</span><span>🔒 {{ bureau.niveau_securite|default:"standard"|title }}</span></div>
       </div>
       <div class="zone-footer">
-        <button class="btn btn-edit btn-sm" onclick="editZone('{{ bureau.id }}')">✏️</button>
-        <button class="btn btn-del btn-sm" onclick="deleteZone('{{ bureau.id }}', '{{ bureau.nom }}')">🗑️</button>
+        <button class="btn btn-edit btn-sm" onclick="event.stopPropagation(); editZone('{{ bureau.id }}')">✏️</button>
+        <button class="btn btn-del btn-sm" onclick="event.stopPropagation(); deleteZone('{{ bureau.id }}', '{{ bureau.nom }}')">🗑️</button>
       </div>
     </div>
     {% empty %}
     <div style="text-align:center; padding:60px; grid-column:1/-1">🚪 Aucune zone<br><button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('zone')">+ Ajouter</button></div>
     {% endfor %}
+  </div>
+</div>
+
+<!-- Détail zone (affiché après clic) -->
+<div id="zoneDetail" class="card" style="margin-top:20px; display:none">
+  <div class="card-head">
+    <span>📊</span>
+    <span class="card-title" id="detailTitle">Détail de la zone</span>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="closeDetail()">✕ Fermer</button>
+  </div>
+  <div class="card-body">
+    <div id="detailContent"></div>
   </div>
 </div>
 
@@ -361,9 +397,21 @@
   <div class="materiel-grid" id="materielGrid">
     {% for mat in materiels %}
     <div class="materiel-card" data-categorie="{{ mat.categorie }}" data-statut="{{ mat.statut }}" data-nom="{{ mat.nom|lower }}">
+      <div class="materiel-img">
+        {% if mat.photo %}
+          <img src="{{ mat.photo }}" alt="{{ mat.nom }}">
+        {% else %}
+          {% if mat.categorie == 'informatique' %}💻
+          {% elif mat.categorie == 'mobilier' %}🪑
+          {% elif mat.categorie == 'audiovisuel' %}📽️
+          {% elif mat.categorie == 'imprimante' %}🖨️
+          {% elif mat.categorie == 'securite' %}🔒
+          {% else %}📦{% endif %}
+        {% endif %}
+      </div>
       <div class="materiel-header">
         <span class="materiel-name">{{ mat.nom }}</span>
-        <span class="materiel-category" style="background:var(--blue3);color:var(--blue2)">{{ mat.categorie|title }}</span>
+        <span class="materiel-category">{{ mat.categorie|title }}</span>
       </div>
       <div class="materiel-body">
         <div class="materiel-info">
@@ -432,6 +480,7 @@
             <div class="form-group"><label class="form-label">Statut</label><select class="form-select" id="matStatut"><option value="disponible">✅ Disponible</option><option value="utilise">🔄 Utilisé</option><option value="maintenance">🔧 Maintenance</option><option value="hors_service">❌ Hors service</option></select></div>
             <div class="form-group"><label class="form-label">Zone assignée</label><select class="form-select" id="matZone"><option value="">— Aucune —</option>{% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}</select></div>
           </div>
+          <div class="form-group"><label class="form-label">Photo (URL)</label><input type="text" class="form-input" id="matPhoto" placeholder="https://..."></div>
           <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="matDesc" rows="2"></textarea></div>
           <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button><button type="button" class="btn btn-primary" onclick="saveMateriel()">💾 Enregistrer</button></div>
         </form>
@@ -444,6 +493,7 @@
 // Variables
 let currentTab = 'zones';
 let materielsData = {{ materiels_json|safe|default:'[]' }};
+let selectedZoneId = null;
 
 // Changer d'onglet principal
 function switchTab(tab) {
@@ -485,6 +535,46 @@ function filterMateriel() {
 }
 
 // Zones
+function selectZone(id, name) {
+  // Retirer la sélection précédente
+  if (selectedZoneId) {
+    var prevCard = document.querySelector('.zone-card[data-id="' + selectedZoneId + '"]');
+    if (prevCard) prevCard.classList.remove('selected');
+  }
+  selectedZoneId = id;
+  var card = document.querySelector('.zone-card[data-id="' + id + '"]');
+  if (card) card.classList.add('selected');
+  
+  document.getElementById('detailTitle').textContent = name;
+  document.getElementById('zoneDetail').style.display = 'block';
+  
+  // Charger les détails de la zone
+  fetch('/api/bureau/' + id + '/stats/')
+    .then(r => r.json())
+    .then(data => {
+      var html = '<div class="g2"><div><strong>📊 Statistiques des 7 derniers jours</strong><div class="bars" style="height:100px;margin-top:12px">';
+      data.acces_par_jour.forEach((v, i) => {
+        html += '<div class="bar-wrap"><div class="bar ok" style="height:' + Math.min(100, v * 2) + 'px"></div><div style="font-size:10px">' + data.dates[i] + '</div></div>';
+      });
+      html += '</div></div><div><strong>📍 Informations</strong><div class="field-grid" style="margin-top:12px">';
+      html += '<div class="field-box"><div class="field-lbl">Capacité</div><div class="field-val">' + (card.querySelector('.zone-capacity strong')?.textContent || '—') + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">Étage</div><div class="field-val">' + (card.querySelector('.zone-capacity:last-child span:first-child')?.textContent?.replace('📍 Étage ', '') || '—') + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">Sécurité</div><div class="field-val">' + (card.querySelector('.zone-capacity:last-child span:last-child')?.textContent?.replace('🔒 ', '') || '—') + '</div></div>';
+      html += '<div class="field-box"><div class="field-lbl">Occupation</div><div class="field-val">' + (card.querySelector('#pct-' + id)?.textContent || '0') + '%</div></div>';
+      html += '</div></div></div>';
+      document.getElementById('detailContent').innerHTML = html;
+    });
+}
+
+function closeDetail() {
+  document.getElementById('zoneDetail').style.display = 'none';
+  if (selectedZoneId) {
+    var card = document.querySelector('.zone-card[data-id="' + selectedZoneId + '"]');
+    if (card) card.classList.remove('selected');
+    selectedZoneId = null;
+  }
+}
+
 function editZone(id) {
   var card = document.querySelector('.zone-card[data-id="' + id + '"]');
   if (!card) return;
@@ -518,6 +608,7 @@ function editMateriel(id) {
   document.getElementById('matSerie').value = materiel.numero_serie || '';
   document.getElementById('matStatut').value = materiel.statut || 'disponible';
   document.getElementById('matZone').value = materiel.zone || '';
+  document.getElementById('matPhoto').value = materiel.photo || '';
   document.getElementById('matDesc').value = materiel.description || '';
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab('materiel');
@@ -538,6 +629,7 @@ function saveMateriel() {
     numero_serie: document.getElementById('matSerie').value,
     statut: document.getElementById('matStatut').value,
     zone: document.getElementById('matZone').value,
+    photo: document.getElementById('matPhoto').value,
     description: document.getElementById('matDesc').value
   };
   if (!data.nom) { alert('Le nom est obligatoire'); return; }
@@ -564,6 +656,7 @@ function openAddModal(type) {
   document.getElementById('matSerie').value = '';
   document.getElementById('matStatut').value = 'disponible';
   document.getElementById('matZone').value = '';
+  document.getElementById('matPhoto').value = '';
   document.getElementById('matDesc').value = '';
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab(type || 'zone');
@@ -598,7 +691,10 @@ function refreshOccupation() {
 }
 
 function refreshPage() { location.reload(); }
-function exportResources() { alert("Export CSV à implémenter"); }
+
+function exportResourcesCSV() {
+  window.location.href = '/api/export/ressources/csv/';
+}
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', function() {
