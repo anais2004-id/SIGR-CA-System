@@ -937,19 +937,39 @@ def employe_ajouter(request):
             messages.error(request, f"Erreur lors de l'ajout: {str(e)}")
             return render(request, 'dashboard/employe_form.html', {'employe': request.POST})
     return render(request, 'dashboard/employe_form.html', {'employe': {}})
-
-
 @login_required
 def employe_modifier(request, employe_id):
+    """Modifier un employé"""
+    from bson import ObjectId
+    from datetime import datetime
+    
+    # Vérifier les droits admin
+    if not request.user.is_staff and not request.user.is_superuser:
+        messages.error(request, "Accès non autorisé")
+        return redirect('employe_list')
+    
     try:
-        employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+        # Convertir l'ID en ObjectId
+        try:
+            obj_id = ObjectId(employe_id)
+        except:
+            messages.error(request, "ID d'employé invalide")
+            return redirect('employe_list')
+        
+        # Chercher l'employé
+        employe = db.employees.find_one({'_id': obj_id})
         if not employe:
             messages.error(request, "Employé non trouvé")
             return redirect('employe_list')
+        
+        # Ajouter l'ID string pour le template
         employe['id'] = str(employe['_id'])
+        
+        # Traitement POST (sauvegarde)
         if request.method == 'POST':
+            # Récupérer les données du formulaire
             update_data = {
-                'badge_id': request.POST.get('badge_id'),
+                'badge_id': request.POST.get('badge_id', '').strip(),
                 'nom': request.POST.get('nom', '').strip(),
                 'prenom': request.POST.get('prenom', '').strip(),
                 'email': request.POST.get('email', '').strip(),
@@ -960,17 +980,40 @@ def employe_modifier(request, employe_id):
                 'statut': request.POST.get('statut', 'actif'),
                 'updated_at': datetime.now()
             }
+            
+            # Date d'embauche
             date_embauche = request.POST.get('date_embauche')
-            update_data['date_embauche'] = datetime.strptime(date_embauche, '%Y-%m-%d') if date_embauche else None
-            db.employees.update_one({'_id': ObjectId(employe_id)}, {'$set': update_data})
-            messages.success(request, f"Employé modifié avec succès!")
+            if date_embauche:
+                try:
+                    update_data['date_embauche'] = datetime.strptime(date_embauche, '%Y-%m-%d')
+                except:
+                    pass
+            
+            # Mettre à jour dans MongoDB
+            result = db.employees.update_one(
+                {'_id': obj_id}, 
+                {'$set': update_data}
+            )
+            
+            if result.modified_count > 0:
+                messages.success(request, f"Employé '{update_data['nom']} {update_data['prenom']}' modifié avec succès!")
+            else:
+                messages.info(request, "Aucune modification effectuée")
+            
+            # Rediriger vers la page de détail
             return redirect('employe_detail', employe_id=employe_id)
-        return render(request, 'dashboard/employe_form.html', {'employe': employe, 'is_edit': True})
+        
+        # GET: Afficher le formulaire
+        return render(request, 'dashboard/employe_form.html', {
+            'employe': employe,
+            'is_edit': True
+        })
+        
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('employe_list')
-
-
 @login_required
 def employe_supprimer(request, employe_id):
     if request.method == 'POST':
@@ -2755,27 +2798,61 @@ def reservation_annuler(request, reservation_id):
 
 
 # ====================== API HISTORIQUE EMPLOYÉ ======================
-
 @login_required
 def api_employee_history(request, employe_id):
+    """API pour récupérer l'historique d'un employé"""
+    from bson import ObjectId
+    from datetime import datetime
+    
     try:
-        employe = db.employees.find_one({'_id': ObjectId(employe_id)})
+        # Essayer de convertir l'ID en ObjectId
+        try:
+            emp_id = ObjectId(employe_id)
+        except:
+            # Si ce n'est pas un ObjectId valide, chercher par string
+            emp_id = employe_id
+        
+        # Chercher l'employé
+        employe = db.employees.find_one({'_id': emp_id})
+        if not employe and isinstance(emp_id, str):
+            employe = db.employees.find_one({'_id': ObjectId(emp_id)})
+        
         if not employe:
-            return JsonResponse({'error': 'Employé non trouvé'}, status=404)
-        logs = list(db.acces_logs.find({'utilisateur_id': ObjectId(employe_id)}).sort('timestamp', -1).limit(50))
+            return JsonResponse({'error': 'Employé non trouvé', 'total_acces': 0, 'logs': []}, status=404)
+        
+        # Récupérer les logs
+        logs = list(db.acces_logs.find({'utilisateur_id': employe['_id']}).sort('timestamp', -1).limit(100))
+        
         logs_data = []
         for log in logs:
-            bureau = db.bureaux.find_one({'_id': log.get('bureau_id')})
+            # Récupérer le nom du bureau
+            bureau_nom = 'Inconnu'
+            if log.get('bureau_id'):
+                try:
+                    bureau = db.bureaux.find_one({'_id': log['bureau_id']})
+                    if bureau:
+                        bureau_nom = bureau.get('nom', 'Inconnu')
+                except:
+                    pass
+            
             logs_data.append({
                 'date': log['timestamp'].strftime('%d/%m/%Y %H:%M:%S') if log.get('timestamp') else '',
-                'zone': bureau['nom'] if bureau else 'Inconnu',
+                'zone': bureau_nom,
                 'resultat': log.get('resultat', ''),
             })
-        return JsonResponse({'total_acces': len(logs), 'logs': logs_data})
+        
+        return JsonResponse({
+            'total_acces': len(logs),
+            'logs': logs_data
+        })
+        
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-
+        logger.error(f"Erreur dans api_employee_history: {str(e)}")
+        return JsonResponse({
+            'error': str(e),
+            'total_acces': 0,
+            'logs': []
+        }, status=500)
 # ====================== API PROFIL ADMIN ======================
 
 @login_required

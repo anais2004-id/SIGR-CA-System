@@ -53,6 +53,7 @@
           <div class="form-row">
             <label class="form-label">Département</label>
             <select class="form-select" name="departement">
+              <option value="">Sélectionner</option>
               <option value="Informatique" {% if employe.departement == 'Informatique' %}selected{% endif %}>Informatique</option>
               <option value="Ressources Humaines" {% if employe.departement == 'Ressources Humaines' %}selected{% endif %}>Ressources Humaines</option>
               <option value="Finance" {% if employe.departement == 'Finance' %}selected{% endif %}>Finance</option>
@@ -103,13 +104,15 @@
         <div class="form-row">
           <label class="form-label">Jours travaillés</label>
           <div style="display:flex;gap:12px;flex-wrap:wrap">
-            {% for jour in "Lun Mar Mer Jeu Ven Sam Dim".split %}
+            {% with jours_list="Lun,Mar,Mer,Jeu,Ven,Sam,Dim" %}
+            {% for jour in jours_list.split %}
             <label style="display:flex;align-items:center;gap:6px">
               <input type="checkbox" name="jours_travailles" value="{{ jour }}" 
                      {% if jour in employe.jours_travailles %}checked{% endif %}>
               {{ jour }}
             </label>
             {% endfor %}
+            {% endwith %}
           </div>
         </div>
 

@@ -5,8 +5,7 @@
 {% block page_sub %}{{ employe.nom }} {{ employe.prenom }}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{% url 'employe_modifier' employe.id %}" class="btn btn-edit btn-sm">✏️ Modifier</a>
-<a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
+<button class="btn btn-edit btn-sm" onclick="openEditModalInDetail('{{ employe.id }}')">✏️ Modifier</button><a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
 <button class="btn btn-info btn-sm" onclick="exportEmployeeHistory()" style="background:var(--blue3);color:var(--blue2)">⬇️ Exporter historique</button>
 {% endblock %}
 
@@ -206,6 +205,72 @@
 </div>
 
 <script>
+  function openEditModalInDetail(employeId) {
+    // Récupérer les données actuelles de l'employé depuis la page
+    const nom = "{{ employe.nom|escapejs }}";
+    const prenom = "{{ employe.prenom|escapejs }}";
+    const email = "{{ employe.email|default:''|escapejs }}";
+    const telephone = "{{ employe.telephone|default:''|escapejs }}";
+    const badge_id = "{{ employe.badge_id|default:''|escapejs }}";
+    const departement = "{{ employe.departement|default:''|escapejs }}";
+    const poste = "{{ employe.poste|default:''|escapejs }}";
+    const niveau = "{{ employe.niveau|default:'Staff'|escapejs }}";
+    const statut = "{{ employe.statut|default:'actif'|escapejs }}";
+    
+    const modalContent = `
+        <div class="modal-title">✏️ Modifier l'employé</div>
+        <div class="modal-sub">${prenom} ${nom}</div>
+        <form method="post" action="/employes/${employeId}/modifier/" id="editEmployeeForm">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-row"><label class="form-label">Nom *</label><input class="form-input" name="nom" value="${nom}" required></div>
+                <div class="form-row"><label class="form-label">Prénom</label><input class="form-input" name="prenom" value="${prenom}"></div>
+            </div>
+            <div class="form-row"><label class="form-label">Badge RFID *</label><input class="form-input" name="badge_id" value="${badge_id}" required></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-row"><label class="form-label">Email</label><input class="form-input" name="email" value="${email}"></div>
+                <div class="form-row"><label class="form-label">Téléphone</label><input class="form-input" name="telephone" value="${telephone}"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-row"><label class="form-label">Département</label>
+                    <select class="form-select" name="departement">
+                        <option value="">Sélectionner</option>
+                        <option value="Informatique" ${departement === 'Informatique' ? 'selected' : ''}>Informatique</option>
+                        <option value="Ressources Humaines" ${departement === 'Ressources Humaines' ? 'selected' : ''}>Ressources Humaines</option>
+                        <option value="Finance" ${departement === 'Finance' ? 'selected' : ''}>Finance</option>
+                        <option value="Production" ${departement === 'Production' ? 'selected' : ''}>Production</option>
+                        <option value="Commercial" ${departement === 'Commercial' ? 'selected' : ''}>Commercial</option>
+                        <option value="Maintenance" ${departement === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
+                        <option value="Direction" ${departement === 'Direction' ? 'selected' : ''}>Direction</option>
+                    </select>
+                </div>
+                <div class="form-row"><label class="form-label">Poste</label><input class="form-input" name="poste" value="${poste}"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-row"><label class="form-label">Niveau d'accès</label>
+                    <select class="form-select" name="niveau">
+                        <option value="Staff" ${niveau === 'Staff' ? 'selected' : ''}>Staff</option>
+                        <option value="Admin" ${niveau === 'Admin' ? 'selected' : ''}>Admin</option>
+                        <option value="Maintenance" ${niveau === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
+                        <option value="Visiteur" ${niveau === 'Visiteur' ? 'selected' : ''}>Visiteur</option>
+                    </select>
+                </div>
+                <div class="form-row"><label class="form-label">Statut</label>
+                    <select class="form-select" name="statut">
+                        <option value="actif" ${statut === 'actif' ? 'selected' : ''}>Actif</option>
+                        <option value="inactif" ${statut === 'inactif' ? 'selected' : ''}>Archivé</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+            </div>
+        </form>
+    `;
+    document.getElementById('modal-content').innerHTML = modalContent;
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
 function filterLogs(filter) {
   const rows = document.querySelectorAll('.log-row');
   rows.forEach(row => {
