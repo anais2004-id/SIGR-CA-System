@@ -3,133 +3,448 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GE — Créer mon compte</title>
+  <title>SIGR-CA — Créer mon compte</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     :root {
-      --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --bg4:#21262d;
-      --border:rgba(48,54,61,0.8); --border2:rgba(255,255,255,0.06);
-      --blue:#1f6feb; --blue2:#388bfd; --blue3:rgba(31,111,235,0.12);
-      --cyan:#39d0f0; --green:#2dba6f; --green2:rgba(45,186,111,0.12);
-      --red:#f85149; --red2:rgba(248,81,73,0.12);
-      --amber:#e3b341; --amber2:rgba(227,179,65,0.12);
-      --text:#e6edf3; --text2:#8b949e; --text3:#484f58;
+      --bg:#0a0c10; --bg2:#111318; --bg3:#181b23; --bg4:#1f222c;
+      --border:rgba(48,54,61,0.6); --border2:rgba(255,255,255,0.04);
+      --blue:#1f6feb; --blue2:#3b82f6; --blue3:rgba(31,111,235,0.12);
+      --cyan:#06b6d4; --green:#10b981; --green2:rgba(16,185,129,0.12);
+      --red:#ef4444; --red2:rgba(239,68,68,0.12);
+      --amber:#f59e0b; --amber2:rgba(245,158,11,0.12);
+      --purple:#8b5cf6;
+      --text:#f3f4f6; --text2:#9ca3af; --text3:#6b7280;
       --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
-      --radius:8px;
+      --radius:12px;
+      --gradient-1:linear-gradient(135deg, #1f6feb, #06b6d4);
+      --gradient-2:linear-gradient(135deg, #8b5cf6, #1f6feb);
     }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
       font-family:var(--font); background:var(--bg); color:var(--text);
-      min-height:100vh; display:flex; align-items:flex-start; justify-content:center;
+      min-height:100vh; display:flex; align-items:center; justify-content:center;
       padding:32px 20px;
+      position:relative;
+      overflow-x:hidden;
     }
+    
+    /* Animation de fond */
     body::before {
       content:''; position:fixed; inset:0; z-index:0;
-      background: radial-gradient(ellipse at 20% 50%, rgba(31,111,235,.08) 0%, transparent 60%),
-                  radial-gradient(ellipse at 80% 20%, rgba(57,208,240,.05) 0%, transparent 50%);
+      background: radial-gradient(ellipse at 20% 50%, rgba(31,111,235,.12) 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 20%, rgba(6,182,212,.08) 0%, transparent 50%),
+                  radial-gradient(ellipse at 40% 80%, rgba(139,92,246,.06) 0%, transparent 50%);
       pointer-events:none;
     }
-    .wrap { position:relative; z-index:1; width:100%; max-width:480px; }
+    
+    /* Particules animées */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .particle {
+      position: absolute;
+      background: rgba(31,111,235,0.3);
+      border-radius: 50%;
+      animation: float linear infinite;
+    }
+    @keyframes float {
+      0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+    }
+    
+    .wrap { 
+      position: relative; 
+      z-index: 1; 
+      width: 100%; 
+      max-width: 520px; 
+      animation: fadeInUp 0.6s ease-out;
+    }
+    
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
 
-    .logo-zone { text-align:center; margin-bottom:28px; }
+    /* Logo Zone */
+    .logo-zone { 
+      text-align: center; 
+      margin-bottom: 24px;
+    }
     .logo-circle {
-      width:64px; height:64px; margin:0 auto 14px;
-      background:linear-gradient(135deg,var(--blue),var(--cyan));
-      border-radius:18px; display:flex; align-items:center; justify-content:center;
-      font-size:26px; box-shadow:0 0 36px rgba(31,111,235,.35);
+      width: 70px; 
+      height: 70px; 
+      margin: 0 auto 14px;
+      background: var(--gradient-1);
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      box-shadow: 0 20px 40px rgba(31,111,235,0.3);
+      transition: transform 0.3s ease;
+      animation: pulseGlow 2s infinite;
     }
-    .logo-title { font-size:20px; font-weight:700; }
-    .logo-sub   { font-size:11px; color:var(--text3); font-family:var(--mono); margin-top:3px; }
+    .logo-circle:hover {
+      transform: scale(1.05);
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 20px 40px rgba(31,111,235,0.3); }
+      50% { box-shadow: 0 25px 55px rgba(31,111,235,0.5); }
+    }
+    .logo-title { 
+      font-size: 24px; 
+      font-weight: 700; 
+      background: var(--gradient-1);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .logo-sub { 
+      font-size: 11px; 
+      color: var(--text2); 
+      font-family: var(--mono); 
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
 
+    /* Carte principale */
     .card {
-      background:var(--bg2); border:1px solid var(--border);
-      border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.5);
+      background: rgba(17, 19, 24, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      transition: transform 0.3s ease;
     }
-    .card-tabs { display:flex; border-bottom:1px solid var(--border); }
+    .card:hover {
+      transform: translateY(-2px);
+    }
+    
+    /* Onglets */
+    .card-tabs { 
+      display: flex; 
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.2);
+    }
     .card-tab {
-      flex:1; padding:14px; text-align:center; font-size:13px;
-      font-weight:500; cursor:pointer; color:var(--text2);
-      border:none; background:transparent; font-family:var(--font);
-      transition:all .15s; text-decoration:none; display:block;
+      flex: 1; 
+      padding: 16px; 
+      text-align: center; 
+      font-size: 13px;
+      font-weight: 600; 
+      cursor: pointer; 
+      color: var(--text2);
+      border: none; 
+      background: transparent; 
+      font-family: var(--font);
+      transition: all .2s ease; 
+      text-decoration: none; 
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: 0.5px;
     }
-    .card-tab.active { color:var(--blue2); border-bottom:2px solid var(--blue2); background:var(--blue3); }
-    .card-tab:hover:not(.active) { color:var(--text); background:var(--bg3); }
-    .card-body { padding:28px 34px 36px; }
+    .card-tab i {
+      font-size: 14px;
+    }
+    .card-tab.active { 
+      color: var(--blue2); 
+      border-bottom: 2px solid var(--blue2); 
+      background: var(--blue3); 
+    }
+    .card-tab:hover:not(.active) { 
+      color: var(--text); 
+      background: var(--bg3); 
+    }
+    
+    /* Corps de la carte */
+    .card-body { 
+      padding: 32px 36px; 
+    }
 
+    /* Sections */
     .section-title {
-      font-size:10px; font-weight:700; color:var(--text3);
-      text-transform:uppercase; letter-spacing:.8px;
-      margin:20px 0 12px; padding-bottom:8px;
-      border-bottom:1px solid var(--border2);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 24px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .section-title:first-child { margin-top:0; }
+    .section-title:first-child { margin-top: 0; }
+    .section-title i {
+      color: var(--blue2);
+      font-size: 12px;
+    }
 
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .form-row { margin-bottom:16px; }
-    .form-label { font-size:10.5px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:7px; display:block; }
+    /* Grille */
+    .grid-2 { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 16px; 
+    }
+    
+    /* Formulaire */
+    .form-row { 
+      margin-bottom: 18px; 
+    }
+    .form-label { 
+      font-size: 11px; 
+      font-weight: 700; 
+      color: var(--text2); 
+      text-transform: uppercase; 
+      letter-spacing: 1px; 
+      margin-bottom: 8px; 
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .form-label i {
+      font-size: 11px;
+      color: var(--text3);
+    }
+    .input-group {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .input-icon {
+      position: absolute;
+      left: 14px;
+      color: var(--text3);
+      font-size: 14px;
+    }
     .form-input {
-      width:100%; background:var(--bg3); border:1px solid var(--border);
-      border-radius:var(--radius); padding:10px 13px; font-size:13px;
-      color:var(--text); font-family:var(--font); outline:none; transition:all .15s;
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 14px 12px 42px;
+      font-size: 13.5px;
+      color: var(--text);
+      font-family: var(--font);
+      outline: none;
+      transition: all 0.2s ease;
     }
-    .form-input:focus { border-color:var(--blue2); box-shadow:0 0 0 3px rgba(31,111,235,.12); }
-    .form-input::placeholder { color:var(--text3); }
+    .form-input:focus { 
+      border-color: var(--blue2); 
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+      background: var(--bg4);
+    }
+    .form-input::placeholder { 
+      color: var(--text3); 
+      font-weight: 400;
+    }
+    input[type="password"] {
+      font-family: var(--mono);
+      letter-spacing: 2px;
+    }
 
+    /* Indicateur de mot de passe */
+    .pwd-meter { 
+      height: 4px; 
+      background: var(--bg4); 
+      border-radius: 2px; 
+      margin-top: 8px; 
+      overflow: hidden; 
+    }
+    .pwd-fill { 
+      height: 100%; 
+      border-radius: 2px; 
+      transition: width .3s, background .3s; 
+    }
+
+    /* Messages */
+    .msg { 
+      display: flex; 
+      align-items: center;
+      gap: 12px; 
+      padding: 12px 16px; 
+      border-radius: 16px; 
+      margin-bottom: 24px; 
+      font-size: 13px; 
+      font-weight: 500;
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    .msg.err  { 
+      background: var(--red2);   
+      border: 1px solid rgba(239,68,68,0.3);  
+      color: var(--red); 
+    }
+    .msg.succ { 
+      background: var(--green2); 
+      border: 1px solid rgba(16,185,129,0.3); 
+      color: var(--green); 
+    }
+    .msg i {
+      font-size: 16px;
+    }
+
+    /* Info box */
     .info-box {
-      background:var(--amber2); border:1px solid rgba(227,179,65,.3);
-      border-radius:var(--radius); padding:11px 14px;
-      font-size:12px; color:var(--amber); margin-bottom:18px;
-      display:flex; gap:10px; align-items:flex-start;
+      background: var(--amber2); 
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 16px; 
+      padding: 14px 16px;
+      font-size: 12.5px; 
+      color: var(--amber); 
+      margin-bottom: 24px;
+      display: flex; 
+      gap: 12px; 
+      align-items: flex-start;
+    }
+    .info-box i {
+      font-size: 18px;
+      margin-top: 2px;
+    }
+    .info-box strong {
+      font-weight: 700;
+      color: var(--amber);
     }
 
-    .msg { display:flex; gap:10px; padding:11px 14px; border-radius:var(--radius); margin-bottom:16px; font-size:12.5px; }
-    .msg.err  { background:var(--red2);   border:1px solid rgba(248,81,73,.3);  color:var(--red); }
-    .msg.succ { background:var(--green2); border:1px solid rgba(45,186,111,.3); color:var(--green); }
-
-    .pwd-meter { height:4px; background:var(--bg4); border-radius:2px; margin-top:6px; overflow:hidden; }
-    .pwd-fill  { height:100%; border-radius:2px; transition:width .3s,background .3s; }
-
+    /* Bouton d'inscription */
     .btn-submit {
-      width:100%; padding:13px; background:var(--blue); color:white;
-      border:none; border-radius:var(--radius); font-size:14px;
-      font-weight:600; cursor:pointer; font-family:var(--font);
-      transition:all .2s; margin-top:10px;
+      width: 100%;
+      padding: 14px;
+      background: var(--gradient-1);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all 0.2s ease;
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: 0.5px;
     }
-    .btn-submit:hover { background:var(--blue2); transform:translateY(-1px); box-shadow:0 6px 20px rgba(31,111,235,.4); }
+    .btn-submit:hover { 
+      transform: translateY(-2px); 
+      box-shadow: 0 8px 25px rgba(31,111,235,0.4);
+    }
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+    .btn-submit i {
+      font-size: 14px;
+    }
 
-    .bottom-link { text-align:center; margin-top:20px; font-size:12px; color:var(--text3); }
-    .bottom-link a { color:var(--blue2); text-decoration:none; font-weight:500; }
-    .bottom-link a:hover { text-decoration:underline; }
+    /* Lien bas de page */
+    .bottom-link { 
+      text-align: center; 
+      margin-top: 24px; 
+      font-size: 12.5px; 
+      color: var(--text3); 
+    }
+    .bottom-link a { 
+      color: var(--blue2); 
+      text-decoration: none; 
+      font-weight: 600;
+      transition: color 0.2s ease;
+    }
+    .bottom-link a:hover { 
+      text-decoration: underline;
+      color: var(--cyan);
+    }
+
+    /* Responsive */
+    @media (max-width: 520px) {
+      .card-body { 
+        padding: 24px 20px; 
+      }
+      .grid-2 {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+      .logo-title {
+        font-size: 20px;
+      }
+      .logo-circle {
+        width: 60px;
+        height: 60px;
+        font-size: 28px;
+      }
+    }
   </style>
 </head>
 <body>
+
+<!-- Particules animées -->
+<div class="particles" id="particles"></div>
+
 <div class="wrap">
   <div class="logo-zone">
-    <div class="logo-circle">🏭</div>
-    <div class="logo-title">Général Emballage</div>
-    <div class="logo-sub">SIGR-CA · Créer mon compte employé</div>
+    <div class="logo-circle">
+      <i class="fas fa-id-card"></i>
+    </div>
+    <div class="logo-title">SIGR-CA</div>
+    <div class="logo-sub">Système Intelligent de Gestion des Ressources</div>
   </div>
 
   <div class="card">
     <div class="card-tabs">
-      <a href="{% url 'login_employe' %}" class="card-tab">🔑 Connexion</a>
-      <a href="{% url 'register_employe' %}" class="card-tab active">📝 Créer un compte</a>
+      <a href="{% url 'login_employe' %}" class="card-tab">
+        <i class="fas fa-key"></i> Connexion
+      </a>
+      <a href="{% url 'register_employe' %}" class="card-tab active">
+        <i class="fas fa-user-plus"></i> Créer un compte
+      </a>
     </div>
     <div class="card-body">
 
       {% if messages %}
       {% for message in messages %}
       <div class="msg {% if message.tags == 'error' %}err{% else %}succ{% endif %}">
-        {% if message.tags == 'error' %}⚠️{% else %}✅{% endif %} {{ message }}
+        <i class="{% if message.tags == 'error' %}fas fa-exclamation-triangle{% else %}fas fa-check-circle{% endif %}"></i>
+        {{ message }}
       </div>
       {% endfor %}
       {% endif %}
 
       <div class="info-box">
-        <span>🪪</span>
+        <i class="fas fa-id-card"></i>
         <div>
-          <strong>Votre badge est requis.</strong><br>
-          Votre numéro de badge RFID doit déjà exister dans le système.
+          <strong>Votre badge RFID est requis</strong><br>
+          Votre numéro de badge doit déjà exister dans le système.
           Si vous ne le connaissez pas, contactez votre administrateur.
         </div>
       </div>
@@ -137,88 +452,175 @@
       <form method="post" id="reg-form">
         {% csrf_token %}
 
-        <div class="section-title">👤 Identité</div>
+        <div class="section-title">
+          <i class="fas fa-user-circle"></i> Identité
+        </div>
         <div class="grid-2">
           <div class="form-row">
-            <label class="form-label">Nom *</label>
-            <input class="form-input" type="text" name="nom"
-                   value="{{ form_data.nom|default:'' }}" placeholder="Nom de famille" required>
+            <label class="form-label">
+              <i class="fas fa-user"></i> Nom *
+            </label>
+            <div class="input-group">
+              <i class="fas fa-user input-icon"></i>
+              <input class="form-input" type="text" name="nom"
+                     value="{{ form_data.nom|default:'' }}" placeholder="Nom de famille" required>
+            </div>
           </div>
           <div class="form-row">
-            <label class="form-label">Prénom *</label>
-            <input class="form-input" type="text" name="prenom"
-                   value="{{ form_data.prenom|default:'' }}" placeholder="Prénom" required>
+            <label class="form-label">
+              <i class="fas fa-user"></i> Prénom *
+            </label>
+            <div class="input-group">
+              <i class="fas fa-user input-icon"></i>
+              <input class="form-input" type="text" name="prenom"
+                     value="{{ form_data.prenom|default:'' }}" placeholder="Prénom" required>
+            </div>
           </div>
         </div>
+        
         <div class="form-row">
-          <label class="form-label">Email professionnel</label>
-          <input class="form-input" type="email" name="email"
-                 value="{{ form_data.email|default:'' }}" placeholder="prenom.nom@ge.dz">
+          <label class="form-label">
+            <i class="fas fa-envelope"></i> Email professionnel
+          </label>
+          <div class="input-group">
+            <i class="fas fa-envelope input-icon"></i>
+            <input class="form-input" type="email" name="email"
+                   value="{{ form_data.email|default:'' }}" placeholder="prenom.nom@ge.dz">
+          </div>
         </div>
 
-        <div class="section-title">🪪 Badge d'accès</div>
+        <div class="section-title">
+          <i class="fas fa-id-card"></i> Badge d'accès
+        </div>
         <div class="form-row">
-          <label class="form-label">Numéro de badge RFID *</label>
-          <input class="form-input" type="text" name="badge_id"
-                 value="{{ form_data.badge_id|default:'' }}"
-                 placeholder="RF-2024-XXXX" required
-                 style="font-family:var(--mono)">
+          <label class="form-label">
+            <i class="fas fa-microchip"></i> Numéro de badge RFID *
+          </label>
+          <div class="input-group">
+            <i class="fas fa-microchip input-icon"></i>
+            <input class="form-input" type="text" name="badge_id"
+                   value="{{ form_data.badge_id|default:'' }}"
+                   placeholder="RFID-XXXX" required
+                   style="font-family:var(--mono); letter-spacing: 0.5px;">
+          </div>
         </div>
 
-        <div class="section-title">🔐 Identifiants de connexion</div>
-        <div class="form-row">
-          <label class="form-label">Nom d'utilisateur *</label>
-          <input class="form-input" type="text" name="username"
-                 value="{{ form_data.username|default:'' }}"
-                 placeholder="ex: benali.mohamed" required>
+        <div class="section-title">
+          <i class="fas fa-lock"></i> Identifiants de connexion
         </div>
         <div class="form-row">
-          <label class="form-label">Mot de passe * <span style="color:var(--text3);font-size:9px">(min. 6 caractères)</span></label>
-          <input class="form-input" type="password" name="password1"
-                 id="pwd1" placeholder="••••••••" required
-                 oninput="checkPwd(this.value)">
-          <div class="pwd-meter"><div class="pwd-fill" id="pwd-fill" style="width:0%"></div></div>
+          <label class="form-label">
+            <i class="fas fa-user-tag"></i> Nom d'utilisateur *
+          </label>
+          <div class="input-group">
+            <i class="fas fa-user-tag input-icon"></i>
+            <input class="form-input" type="text" name="username"
+                   value="{{ form_data.username|default:'' }}"
+                   placeholder="ex: benali.mohamed" required>
+          </div>
         </div>
+        
         <div class="form-row">
-          <label class="form-label">Confirmer le mot de passe *</label>
-          <input class="form-input" type="password" name="password2"
-                 id="pwd2" placeholder="••••••••" required
-                 oninput="checkMatch()">
-          <div id="pwd-match" style="font-size:10.5px;margin-top:5px"></div>
+          <label class="form-label">
+            <i class="fas fa-key"></i> Mot de passe *
+            <span style="color:var(--text3); font-size:9px; font-weight:400;">(min. 6 caractères)</span>
+          </label>
+          <div class="input-group">
+            <i class="fas fa-key input-icon"></i>
+            <input class="form-input" type="password" name="password1"
+                   id="pwd1" placeholder="••••••••" required
+                   oninput="checkPwd(this.value)">
+          </div>
+          <div class="pwd-meter">
+            <div class="pwd-fill" id="pwd-fill" style="width:0%"></div>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <label class="form-label">
+            <i class="fas fa-check-circle"></i> Confirmer le mot de passe *
+          </label>
+          <div class="input-group">
+            <i class="fas fa-check-circle input-icon"></i>
+            <input class="form-input" type="password" name="password2"
+                   id="pwd2" placeholder="••••••••" required
+                   oninput="checkMatch()">
+          </div>
+          <div id="pwd-match" style="font-size:11px; margin-top:6px;"></div>
         </div>
 
-        <button type="submit" class="btn-submit">📝 Créer mon compte</button>
+        <button type="submit" class="btn-submit">
+          <i class="fas fa-user-plus"></i> Créer mon compte
+          <i class="fas fa-arrow-right"></i>
+        </button>
       </form>
 
       <div class="bottom-link">
-        Déjà un compte ? <a href="{% url 'login_employe' %}">Se connecter</a>
+        <i class="fas fa-sign-in-alt"></i> Déjà un compte ?
+        <a href="{% url 'login_employe' %}">Se connecter</a>
       </div>
     </div>
   </div>
 </div>
 
 <script>
+// Génération des particules
+function createParticles() {
+  const particlesContainer = document.getElementById('particles');
+  const particleCount = 30;
+  
+  for (let i = 0; i < particleCount; i++) {
+    const particle = document.createElement('div');
+    particle.classList.add('particle');
+    
+    const size = Math.random() * 4 + 2;
+    const duration = Math.random() * 15 + 8;
+    const delay = Math.random() * 5;
+    const left = Math.random() * 100;
+    const opacity = Math.random() * 0.4 + 0.1;
+    
+    particle.style.width = size + 'px';
+    particle.style.height = size + 'px';
+    particle.style.left = left + '%';
+    particle.style.animationDuration = duration + 's';
+    particle.style.animationDelay = delay + 's';
+    particle.style.opacity = opacity;
+    particle.style.background = Math.random() > 0.7 ? 'rgba(6, 182, 212, 0.4)' : 'rgba(31, 111, 235, 0.3)';
+    
+    particlesContainer.appendChild(particle);
+  }
+}
+
 function checkPwd(v) {
   var fill = document.getElementById("pwd-fill");
   var len = v.length;
-  var pct = Math.min(len * 10, 100);
-  var color = len < 4 ? "#f85149" : len < 8 ? "#e3b341" : "#2dba6f";
+  var pct = Math.min(len * 16, 100);
+  var color = len < 4 ? "#ef4444" : len < 8 ? "#f59e0b" : "#10b981";
   fill.style.width = pct + "%";
   fill.style.background = color;
 }
+
 function checkMatch() {
   var p1 = document.getElementById("pwd1").value;
   var p2 = document.getElementById("pwd2").value;
   var el = document.getElementById("pwd-match");
-  if (!p2) { el.textContent = ""; return; }
+  if (!p2) { 
+    el.textContent = ""; 
+    return; 
+  }
   if (p1 === p2) {
-    el.style.color = "#2dba6f";
-    el.textContent = "✅ Les mots de passe correspondent";
+    el.style.color = "#10b981";
+    el.innerHTML = '<i class="fas fa-check-circle" style="margin-right:4px"></i> Les mots de passe correspondent';
   } else {
-    el.style.color = "#f85149";
-    el.textContent = "❌ Les mots de passe ne correspondent pas";
+    el.style.color = "#ef4444";
+    el.innerHTML = '<i class="fas fa-times-circle" style="margin-right:4px"></i> Les mots de passe ne correspondent pas';
   }
 }
+
+// Animation du logo au chargement
+document.addEventListener('DOMContentLoaded', function() {
+  createParticles();
+});
 </script>
 </body>
 </html>

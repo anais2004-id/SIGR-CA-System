@@ -350,75 +350,272 @@ function showHistoryModal(empId, empName) {
     });
 }
      
-
-function showStatsModal() {
-  const modalContent = `
-    <div class="modal-title">📊 Statistiques globales</div>
-    <div class="modal-sub">Indicateurs clés du système</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
-      <div style="background:var(--bg3);padding:15px;border-radius:10px;text-align:center;">
-        <div style="font-size:28px;font-weight:300;">{{ total_employes }}</div>
-        <div style="font-size:11px;color:var(--text2);">Employés</div>
-      </div>
-      <div style="background:var(--bg3);padding:15px;border-radius:10px;text-align:center;">
-        <div style="font-size:28px;font-weight:300;">{{ acces_aujourdhui|default:0 }}</div>
-        <div style="font-size:11px;color:var(--text2);">Accès aujourd'hui</div>
-      </div>
-      <div style="background:var(--bg3);padding:15px;border-radius:10px;text-align:center;">
-        <div style="font-size:28px;font-weight:300;">{{ taux_global|default:0 }}%</div>
-        <div style="font-size:11px;color:var(--text2);">Taux de succès</div>
-      </div>
-      <div style="background:var(--bg3);padding:15px;border-radius:10px;text-align:center;">
-        <div style="font-size:28px;font-weight:300;">{{ total_departements }}</div>
-        <div style="font-size:11px;color:var(--text2);">Départements</div>
-      </div>
-    </div>
-    <div class="modal-actions"><button class="btn btn-primary" onclick="closeModal()">Fermer</button></div>
-  `;
-  document.getElementById('modal-content').innerHTML = modalContent;
-  document.getElementById('modal-overlay').style.display = 'flex';
-}
-
 function openAddModal() {
   const modalContent = `
-    <div class="modal-title">➕ Nouvel employé</div>
-    <div class="modal-sub">Créer un profil d'accès</div>
+    <div class="modal-title" style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+      <i class="fas fa-user-plus" style="color: var(--blue2); font-size: 22px;"></i>
+      <span>➕ Nouvel employé</span>
+    </div>
+    <div class="modal-sub" style="color: var(--text2); font-size: 13px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+      Créer un nouveau profil d'accès
+    </div>
+    
     <form method="post" action="/employes/ajouter/" id="addEmployeeForm">
       <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-        <div class="form-row"><label class="form-label">Nom *</label><input class="form-input" name="nom" required></div>
-        <div class="form-row"><label class="form-label">Prénom</label><input class="form-input" name="prenom"></div>
+      
+      <!-- Section Identité -->
+      <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+        <i class="fas fa-user-circle" style="color: var(--blue2); font-size: 14px;"></i>
+        <span>Informations personnelles</span>
       </div>
-      <div class="form-row"><label class="form-label">Badge RFID *</label><input class="form-input" name="badge_id" placeholder="RF-2026-XXXX" required></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-        <div class="form-row"><label class="form-label">Email</label><input class="form-input" name="email" type="email"></div>
-        <div class="form-row"><label class="form-label">Téléphone</label><input class="form-input" name="telephone"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-        <div class="form-row"><label class="form-label">Département</label>
-          <select class="form-select" name="departement">
-            <option>Informatique</option><option>Ressources Humaines</option><option>Finance</option>
-            <option>Production</option><option>Commercial</option><option>Maintenance</option><option>Direction</option>
-          </select>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-user" style="font-size: 11px;"></i> Nom <span style="color: var(--red);">*</span>
+          </label>
+          <div class="input-group">
+            <i class="fas fa-user input-icon"></i>
+            <input class="form-input" type="text" name="nom" placeholder="Nom de famille" required style="padding-left: 38px;">
+          </div>
         </div>
-        <div class="form-row"><label class="form-label">Poste</label><input class="form-input" name="poste"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-        <div class="form-row"><label class="form-label">Date d'embauche</label><input class="form-input" name="date_embauche" type="date"></div>
-        <div class="form-row"><label class="form-label">Niveau d'accès</label>
-          <select class="form-select" name="niveau">
-            <option value="Staff">Staff</option><option value="Admin">Admin</option>
-            <option value="Maintenance">Maintenance</option><option value="Visiteur">Visiteur</option>
-          </select>
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-user" style="font-size: 11px;"></i> Prénom
+          </label>
+          <div class="input-group">
+            <i class="fas fa-user input-icon"></i>
+            <input class="form-input" type="text" name="prenom" placeholder="Prénom" style="padding-left: 38px;">
+          </div>
         </div>
       </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
-        <button type="submit" class="btn btn-primary">➕ Créer l'employé</button>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-envelope" style="font-size: 11px;"></i> Email
+          </label>
+          <div class="input-group">
+            <i class="fas fa-envelope input-icon"></i>
+            <input class="form-input" type="email" name="email" placeholder="prenom.nom@ge.dz" style="padding-left: 38px;">
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-phone" style="font-size: 11px;"></i> Téléphone
+          </label>
+          <div class="input-group">
+            <i class="fas fa-phone input-icon"></i>
+            <input class="form-input" type="tel" name="telephone" placeholder="+213 XX XX XX XX" style="padding-left: 38px;">
+          </div>
+        </div>
+      </div>
+      
+      <!-- Section Badge -->
+      <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin: 20px 0 16px;">
+        <i class="fas fa-id-card" style="color: var(--blue2); font-size: 14px;"></i>
+        <span>Badge d'accès</span>
+      </div>
+      <div class="form-row" style="margin-bottom: 20px;">
+        <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+          <i class="fas fa-microchip" style="font-size: 11px;"></i> Badge RFID <span style="color: var(--red);">*</span>
+        </label>
+        <div class="input-group">
+          <i class="fas fa-microchip input-icon"></i>
+          <input class="form-input" type="text" name="badge_id" placeholder="RFID-XXXX" required style="padding-left: 38px; font-family: var(--mono);">
+        </div>
+      </div>
+      
+      <!-- Section Professionnelle -->
+      <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin: 20px 0 16px;">
+        <i class="fas fa-briefcase" style="color: var(--blue2); font-size: 14px;"></i>
+        <span>Informations professionnelles</span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-building" style="font-size: 11px;"></i> Département
+          </label>
+          <div class="input-group">
+            <i class="fas fa-building input-icon"></i>
+            <select class="form-select" name="departement" style="padding-left: 38px; appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%239ca3af\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>'); background-repeat: no-repeat; background-position: right 12px center;">
+              <option value="">Sélectionner</option>
+              <option value="Informatique">Informatique</option>
+              <option value="Ressources Humaines">Ressources Humaines</option>
+              <option value="Finance">Finance</option>
+              <option value="Production">Production</option>
+              <option value="Commercial">Commercial</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Direction">Direction</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-briefcase" style="font-size: 11px;"></i> Poste
+          </label>
+          <div class="input-group">
+            <i class="fas fa-briefcase input-icon"></i>
+            <input class="form-input" type="text" name="poste" placeholder="Ex: Développeur" style="padding-left: 38px;">
+          </div>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-calendar" style="font-size: 11px;"></i> Date d'embauche
+          </label>
+          <div class="input-group">
+            <i class="fas fa-calendar input-icon"></i>
+            <input class="form-input" type="date" name="date_embauche" style="padding-left: 38px;">
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-shield-alt" style="font-size: 11px;"></i> Niveau d'accès
+          </label>
+          <div class="input-group">
+            <i class="fas fa-shield-alt input-icon"></i>
+            <select class="form-select" name="niveau" style="padding-left: 38px; appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%239ca3af\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>'); background-repeat: no-repeat; background-position: right 12px center;">
+              <option value="Staff">👤 Staff</option>
+              <option value="Admin">👑 Admin</option>
+              <option value="Maintenance">🔧 Maintenance</option>
+              <option value="Visiteur">🚪 Visiteur</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Actions du modal -->
+      <div class="modal-actions" style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border);">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="display: flex; align-items: center; gap: 6px; padding: 10px 20px;">
+          <i class="fas fa-times"></i> Annuler
+        </button>
+        <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; padding: 10px 24px; background: linear-gradient(135deg, var(--blue), var(--cyan));">
+          <i class="fas fa-save"></i> Créer l'employé
+        </button>
       </div>
     </form>
   `;
-  document.getElementById('modal-content').innerHTML = modalContent;
+  
+  const modal = document.getElementById('modal-content');
+  modal.innerHTML = modalContent;
+  
+  // Ajouter les styles spécifiques pour le modal
+  const style = document.createElement('style');
+  style.textContent = `
+    .input-group {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      color: var(--text3);
+      font-size: 14px;
+      z-index: 1;
+    }
+    .form-select {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 12px 11px 38px;
+      font-size: 13px;
+      color: var(--text);
+      font-family: var(--font);
+      outline: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .form-select:hover {
+      background: var(--bg4);
+    }
+    .form-select:focus {
+      border-color: var(--blue2);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+    .form-input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 12px 11px 38px;
+      font-size: 13px;
+      color: var(--text);
+      font-family: var(--font);
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .form-input:focus {
+      border-color: var(--blue2);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+      background: var(--bg4);
+    }
+    .form-input::placeholder {
+      color: var(--text3);
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 6px;
+      display: block;
+    }
+    .btn-ghost {
+      background: var(--bg3);
+      color: var(--text2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: var(--font);
+      font-weight: 500;
+    }
+    .btn-ghost:hover {
+      background: var(--bg4);
+      color: var(--text);
+      border-color: var(--blue2);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: var(--font);
+      font-weight: 600;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(31,111,235,0.4);
+    }
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .modal-sub {
+      font-size: 13px;
+      color: var(--text2);
+    }
+  `;
+  
+  // Ajouter le style s'il n'existe pas déjà
+  if (!document.querySelector('#modal-styles')) {
+    style.id = 'modal-styles';
+    document.head.appendChild(style);
+  }
+  
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 

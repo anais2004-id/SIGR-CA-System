@@ -9,18 +9,25 @@
 
 <style>
 .badge-container {
-  max-width: 500px;
+  max-width: 1200px;
   margin: 0 auto;
 }
+
+/* Carte badge principale */
 .badge-card {
   background: linear-gradient(135deg, var(--bg2), var(--bg3));
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 32px;
   padding: 32px;
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   position: relative;
   overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.badge-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
 .badge-card::before {
   content: '';
@@ -28,113 +35,392 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  height: 5px;
+  background: linear-gradient(90deg, var(--blue), var(--cyan), var(--purple));
+  animation: shimmer 3s infinite;
 }
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.badge-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(115deg, transparent, rgba(255,255,255,0.05), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+.badge-card:hover::after {
+  transform: translateX(100%);
+}
+
+/* Zone QR Code */
 .badge-qr {
   background: white;
-  padding: 20px;
-  border-radius: 16px;
+  padding: 16px;
+  border-radius: 24px;
   display: inline-block;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 .badge-qr:hover {
-  transform: scale(1.02);
+  transform: scale(1.05);
+  box-shadow: 0 12px 30px rgba(31,111,235,0.3);
 }
+.badge-qr canvas {
+  border-radius: 12px;
+}
+
+/* Informations badge */
 .badge-info {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 .badge-name {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--text), var(--blue2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 8px;
 }
 .badge-id {
-  font-family: monospace;
-  font-size: 18px;
+  font-family: var(--mono);
+  font-size: 20px;
   letter-spacing: 2px;
-  background: var(--bg4);
-  padding: 8px 16px;
-  border-radius: 12px;
+  background: linear-gradient(135deg, var(--bg4), var(--bg3));
+  padding: 10px 24px;
+  border-radius: 40px;
   display: inline-block;
-  margin: 8px 0;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  font-weight: 600;
 }
 .badge-company {
   font-size: 12px;
-  color: var(--text3);
+  color: var(--text2);
+  letter-spacing: 1px;
 }
 .badge-status {
-  margin-top: 16px;
-  padding: 8px;
-  background: rgba(45,186,111,0.12);
-  border-radius: 12px;
-  color: #2dba6f;
-  font-size: 12px;
+  margin-top: 20px;
+  padding: 10px;
+  background: linear-gradient(135deg, rgba(45,186,111,0.12), rgba(45,186,111,0.05));
+  border-radius: 40px;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+.badge-status i {
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Zones accessibles */
 .zones-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
   margin-top: 16px;
 }
 .zone-tag {
   background: var(--bg3);
   border: 1px solid var(--border2);
-  border-radius: 8px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.zone-tag:hover {
+  transform: translateX(4px);
+  border-color: var(--blue2);
+  background: var(--blue3);
 }
 .zone-tag.active {
   border-color: var(--green);
-  background: rgba(45,186,111,0.12);
+  background: linear-gradient(135deg, rgba(45,186,111,0.12), rgba(45,186,111,0.05));
 }
+.zone-icon {
+  font-size: 18px;
+}
+.zone-name {
+  flex: 1;
+  font-weight: 500;
+}
+.zone-level {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+.level-critical {
+  background: rgba(239,68,68,0.2);
+  color: #ef4444;
+}
+.level-standard {
+  background: rgba(59,130,246,0.2);
+  color: #3b82f6;
+}
+.level-public {
+  background: rgba(16,185,129,0.2);
+  color: #10b981;
+}
+
+/* Tableau horaires */
 .horaire-table {
   width: 100%;
   margin-top: 16px;
   border-collapse: collapse;
 }
+.horaire-table tr {
+  transition: all 0.2s ease;
+}
+.horaire-table tr:hover {
+  background: var(--bg3);
+}
 .horaire-table td {
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--border2);
 }
 .horaire-table td:first-child {
-  font-weight: 500;
+  font-weight: 600;
+  width: 100px;
 }
 .horaire-table td:last-child {
   text-align: right;
-  font-family: monospace;
+  font-family: var(--mono);
+  font-weight: 500;
 }
+
+/* Simulation NFC */
 .nfc-simulator {
-  background: var(--bg3);
-  border-radius: 12px;
-  padding: 16px;
+  background: linear-gradient(135deg, var(--bg3), var(--bg4));
+  border-radius: 20px;
+  padding: 24px;
   text-align: center;
   margin-top: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid var(--border);
+}
+.nfc-simulator:hover {
+  transform: scale(1.02);
+  border-color: var(--blue2);
+  box-shadow: 0 10px 30px rgba(31,111,235,0.2);
 }
 .nfc-icon {
-  font-size: 48px;
+  font-size: 56px;
+  margin-bottom: 12px;
+  animation: nfcPulse 1.5s infinite;
+}
+@keyframes nfcPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); text-shadow: 0 0 10px var(--blue2); }
+}
+.nfc-title {
+  font-size: 16px;
+  font-weight: 600;
   margin-bottom: 8px;
+}
+.nfc-desc {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+/* Statistiques rapides */
+.stats-mini {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--blue2);
+}
+.stat-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Modal QR amélioré */
+.modal-qr {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-qr-content {
+  background: var(--bg2);
+  border-radius: 32px;
+  width: 450px;
+  max-width: 90%;
+  text-align: center;
+  border: 1px solid var(--border);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.modal-qr-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-qr-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.modal-qr-close {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s;
+}
+.modal-qr-close:hover {
+  background: var(--red2);
+  color: var(--red);
+  border-color: var(--red);
+}
+.modal-qr-body {
+  padding: 32px;
+}
+.modal-qr-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.btn-download, .btn-print {
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-download {
+  background: var(--blue3);
+  color: var(--blue2);
+  border: 1px solid rgba(31,111,235,0.3);
+}
+.btn-download:hover {
+  background: var(--blue);
+  color: white;
+}
+.btn-print {
+  background: var(--bg3);
+  color: var(--text2);
+  border: 1px solid var(--border);
+}
+.btn-print:hover {
+  background: var(--bg4);
+  color: var(--text);
 }
 </style>
 
 <div class="badge-container">
-  <!-- Carte badge -->
+  
+  <!-- Statistiques rapides -->
+  <div class="stats-mini">
+    <div class="stat-card">
+      <div class="stat-icon">🔑</div>
+      <div class="stat-value">{{ total_acces|default:"0" }}</div>
+      <div class="stat-label">Accès totaux</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">✅</div>
+      <div class="stat-value">{{ taux_succes|default:"0" }}%</div>
+      <div class="stat-label">Taux succès</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">🚪</div>
+      <div class="stat-value">{{ zones_accessibles|length }}</div>
+      <div class="stat-label">Zones accessibles</div>
+    </div>
+  </div>
+
+  <!-- Carte badge principale -->
   <div class="badge-card">
     <div class="badge-qr" onclick="showFullQR()">
-      <canvas id="badge-qr-canvas" width="180" height="180"></canvas>
+      <canvas id="badge-qr-canvas" width="200" height="200"></canvas>
     </div>
     <div class="badge-info">
       <div class="badge-name">{{ employe.prenom }} {{ employe.nom }}</div>
-      <div class="badge-id">{{ employe.badge_id|default:"En attente" }}</div>
-      <div class="badge-company">SIGR-CA - Contrôle d'accès</div>
+      <div class="badge-id">
+        <i class="fas fa-microchip" style="font-size: 14px;"></i> {{ employe.badge_id|default:"En attente" }}
+      </div>
+      <div class="badge-company">
+        <i class="fas fa-building"></i> SIGR-CA - Système Intelligent de Gestion des Ressources
+      </div>
     </div>
     <div class="badge-status">
-      🟢 Badge actif - Valide pour les accès
+      <i class="fas fa-circle"></i> Badge actif - Valide pour les accès
     </div>
   </div>
 
@@ -142,21 +428,25 @@
     <!-- Zones accessibles -->
     <div class="card">
       <div class="card-head">
-        <div class="card-title">🚪 Zones accessibles</div>
+        <i class="fas fa-door-open" style="color: var(--blue2);"></i>
+        <span class="card-title">Zones accessibles</span>
+        <span class="card-sub">{{ zones_accessibles|length }} zone(s)</span>
       </div>
       <div class="card-body">
         <div class="zones-grid">
           {% for zone in zones_accessibles %}
-          <div class="zone-tag {% if zone.niveau_securite == 'public' %}active{% endif %}">
-            <span>🚪</span>
-            <span>{{ zone.nom }}</span>
-            {% if zone.niveau_securite == 'critique' %}
-            <span class="badge b-red" style="margin-left: auto;">Restreint</span>
-            {% elif zone.niveau_securite == 'standard' %}
-            <span class="badge b-blue" style="margin-left: auto;">Standard</span>
-            {% else %}
-            <span class="badge b-green" style="margin-left: auto;">Public</span>
-            {% endif %}
+          <div class="zone-tag" title="Cliquez pour voir les détails">
+            <div class="zone-icon">
+              {% if zone.niveau_securite == 'critique' %}🔒
+              {% elif zone.niveau_securite == 'standard' %}🚪
+              {% else %}🌐{% endif %}
+            </div>
+            <div class="zone-name">{{ zone.nom }}</div>
+            <div class="zone-level level-{{ zone.niveau_securite }}">
+              {% if zone.niveau_securite == 'critique' %}Restreint
+              {% elif zone.niveau_securite == 'standard' %}Standard
+              {% else %}Public{% endif %}
+            </div>
           </div>
           {% endfor %}
         </div>
@@ -166,18 +456,25 @@
     <!-- Horaires d'accès -->
     <div class="card">
       <div class="card-head">
-        <div class="card-title">⏰ Horaires d'accès</div>
+        <i class="fas fa-clock" style="color: var(--cyan);"></i>
+        <span class="card-title">Horaires d'accès</span>
+        <span class="card-sub">Semaine type</span>
       </div>
       <div class="card-body">
         <table class="horaire-table">
           {% for jour, horaire in horaires_acces.items %}
           <tr>
-            <td>{{ jour|capfirst }}</td>
+            <td>
+              <i class="fas fa-calendar-day" style="margin-right: 8px; color: var(--text3);"></i>
+              {{ jour|capfirst }}
+            </td>
             <td>
               {% if horaire.debut == 'Fermé' %}
-              <span class="badge b-red">Fermé</span>
+              <span class="badge b-red"><i class="fas fa-ban"></i> Fermé</span>
               {% else %}
-              {{ horaire.debut }} → {{ horaire.fin }}
+              <span class="badge b-green">
+                <i class="fas fa-hourglass-start"></i> {{ horaire.debut }} → <i class="fas fa-hourglass-end"></i> {{ horaire.fin }}
+              </span>
               {% endif %}
             </td>
           </tr>
@@ -190,33 +487,48 @@
   <!-- Simulation NFC -->
   <div class="card">
     <div class="card-head">
-      <div class="card-title">📱 NFC Virtuel</div>
+      <i class="fas fa-wifi" style="color: var(--purple);"></i>
+      <span class="card-title">NFC Virtuel</span>
+      <span class="card-sub">Simulation d'accès</span>
     </div>
     <div class="card-body">
       <div class="nfc-simulator" onclick="simulateNFC()">
-        <div class="nfc-icon">📱</div>
-        <div style="font-weight: 500;">Tapez pour simuler un badge NFC</div>
-        <div style="font-size: 11px; color: var(--text3); margin-top: 8px;">Présentez votre téléphone près du lecteur</div>
+        <div class="nfc-icon">
+          <i class="fas fa-mobile-alt"></i>
+        </div>
+        <div class="nfc-title">📱 Simulation NFC</div>
+        <div class="nfc-desc">Tapez pour simuler un passage de badge</div>
+        <div class="nfc-desc" style="margin-top: 8px;">
+          <i class="fas fa-info-circle"></i> En environnement réel, approchez votre téléphone du lecteur
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Modal QR Code -->
-<div id="qrModal" class="modal" style="display:none" onclick="if(event.target===this)closeQRModal()">
-  <div class="modal-content" style="width: 400px; text-align: center;">
-    <div class="modal-header">
-      <h3>📱 Mon QR Code d'accès</h3>
-      <button class="modal-close" onclick="closeQRModal()">✕</button>
+<!-- Modal QR Code amélioré -->
+<div id="qrModal" class="modal-qr" style="display:none" onclick="if(event.target===this)closeQRModal()">
+  <div class="modal-qr-content">
+    <div class="modal-qr-header">
+      <h3><i class="fas fa-qrcode"></i> Mon QR Code d'accès</h3>
+      <button class="modal-qr-close" onclick="closeQRModal()">✕</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-qr-body">
       <div id="full-qr-container" style="display: flex; justify-content: center;"></div>
-      <p style="margin-top: 16px;">Présentez ce code au lecteur</p>
-      <p class="badge-id" style="font-family: monospace;">{{ employe.badge_id }}</p>
+      <div class="badge-id" style="margin-top: 20px; font-size: 14px;">
+        <i class="fas fa-id-card"></i> {{ employe.badge_id }}
+      </div>
+      <p style="margin-top: 16px; font-size: 12px; color: var(--text2);">
+        <i class="fas fa-info-circle"></i> Présentez ce code au lecteur pour accéder aux zones autorisées
+      </p>
     </div>
-    <div class="modal-footer">
-      <button class="btn-primary" onclick="downloadQR()">⬇️ Télécharger</button>
-      <button class="btn-secondary" onclick="printQR()">🖨️ Imprimer</button>
+    <div class="modal-qr-footer">
+      <button class="btn-download" onclick="downloadQR()">
+        <i class="fas fa-download"></i> Télécharger
+      </button>
+      <button class="btn-print" onclick="printQR()">
+        <i class="fas fa-print"></i> Imprimer
+      </button>
     </div>
   </div>
 </div>
@@ -226,7 +538,7 @@
 let qrCode = null;
 let fullQR = null;
 
-// QR Code
+// Données du QR Code
 const badgeData = JSON.stringify({
   badge_id: "{{ employe.badge_id }}",
   nom: "{{ employe.prenom }} {{ employe.nom }}",
@@ -235,15 +547,17 @@ const badgeData = JSON.stringify({
   timestamp: new Date().toISOString()
 });
 
+// Génération du QR Code
 qrCode = new QRCode(document.getElementById("badge-qr-canvas"), {
   text: badgeData,
-  width: 180,
-  height: 180,
-  colorDark: "#000000",
+  width: 200,
+  height: 200,
+  colorDark: "#1a1a2e",
   colorLight: "#ffffff",
   correctLevel: QRCode.CorrectLevel.H
 });
 
+// Afficher le QR Code en grand
 function showFullQR() {
   const modal = document.getElementById('qrModal');
   modal.style.display = 'flex';
@@ -252,47 +566,87 @@ function showFullQR() {
   container.innerHTML = '';
   fullQR = new QRCode(container, {
     text: badgeData,
-    width: 250,
-    height: 250,
-    colorDark: "#000000",
+    width: 280,
+    height: 280,
+    colorDark: "#1a1a2e",
     colorLight: "#ffffff",
     correctLevel: QRCode.CorrectLevel.H
   });
 }
 
+// Fermer le modal QR
 function closeQRModal() {
   document.getElementById('qrModal').style.display = 'none';
 }
 
+// Télécharger le QR Code
 function downloadQR() {
   const canvas = document.querySelector('#full-qr-container canvas');
   const link = document.createElement('a');
-  link.download = 'badge_qr.png';
+  link.download = 'badge_qr_{{ employe.badge_id }}.png';
   link.href = canvas.toDataURL();
   link.click();
 }
 
+// Imprimer le QR Code
 function printQR() {
   const canvas = document.querySelector('#full-qr-container canvas');
   const win = window.open();
   win.document.write(`
     <html>
-      <head><title>Badge QR</title></head>
-      <body style="display:flex; justify-content:center; align-items:center; height:100vh;">
-        <div style="text-align:center">
-          <img src="${canvas.toDataURL()}" style="width:250px; height:250px">
-          <p><strong>{{ employe.prenom }} {{ employe.nom }}</strong></p>
-          <p>{{ employe.badge_id }}</p>
+      <head>
+        <title>Badge QR - {{ employe.prenom }} {{ employe.nom }}</title>
+        <style>
+          body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+          }
+          .print-container {
+            text-align: center;
+          }
+          img {
+            width: 250px;
+            height: 250px;
+          }
+          h3 {
+            margin-top: 20px;
+            margin-bottom: 5px;
+          }
+          p {
+            margin: 5px 0;
+            color: #666;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-container">
+          <img src="${canvas.toDataURL()}" />
+          <h3>{{ employe.prenom }} {{ employe.nom }}</h3>
+          <p><strong>{{ employe.badge_id }}</strong></p>
+          <p>SIGR-CA - Contrôle d'accès</p>
         </div>
+        <script>window.print();<\/script>
       </body>
     </html>
   `);
   win.print();
 }
 
+// Simulation NFC
 function simulateNFC() {
-  alert(`📱 Simulation NFC\n\nBadge: ${"{{ employe.badge_id }}"}\nNom: {{ employe.prenom }} {{ employe.nom }}\n\nEn environnement réel, approchez votre téléphone du lecteur.`);
+  alert(`📱 SIMULATION NFC\n\n━━━━━━━━━━━━━━━━━━━━━━\n🔑 Badge: {{ employe.badge_id }}\n👤 Nom: {{ employe.prenom }} {{ employe.nom }}\n🏢 Entreprise: SIGR-CA\n━━━━━━━━━━━━━━━━━━━━━━\n\n✅ Accès autorisé\n\nEn environnement réel, approchez votre téléphone du lecteur.`);
 }
+
+// Animation d'entrée
+document.addEventListener('DOMContentLoaded', function() {
+  const cards = document.querySelectorAll('.card, .badge-card, .stat-card');
+  cards.forEach((card, index) => {
+    card.style.animation = `fadeIn 0.5s ease ${index * 0.1}s both`;
+  });
+});
 </script>
 
 {% endblock %}
