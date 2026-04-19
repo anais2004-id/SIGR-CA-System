@@ -237,4 +237,8 @@ path('api/admin/notifications/test/', views.api_admin_send_test_notification, na
 
 path('api/materiel/ajouter/', views.api_materiel_ajouter, name='api_materiel_ajouter'),
 path('api/materiel/<str:materiel_id>/supprimer/', views.api_materiel_supprimer, name='api_materiel_supprimer'),
-path('api/export/ressources/csv/', views.api_export_ressources_csv, name='api_export_ressources_csv'),]
+path('api/export/ressources/csv/', views.api_export_ressources_csv, name='api_export_ressources_csv'),
+# ── Mot de passe oublié ──────────────────────────────────────────────────────
+path('password-forgot/', views.password_forgot, name='password_forgot'),
+path('password-reset/<str:token>/', views.password_reset, name='password_reset'),
+path('password-reset-done/', views.password_reset_done, name='password_reset_done'),]

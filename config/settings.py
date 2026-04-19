@@ -99,6 +99,22 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
 
+# ── Configuration email (SMTP Gmail) ────────────────────────────────────────
+# Remplacez par vos vraies informations avant le déploiement.
+# Pour Gmail : activez "Mots de passe d'application" dans votre compte Google
+# (Sécurité > Validation en 2 étapes > Mots de passe d'application).
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'votre.email@gmail.com'        # <-- à remplacer
+EMAIL_HOST_PASSWORD = 'xxxx xxxx xxxx xxxx'       # <-- mot de passe d'application Gmail
+DEFAULT_FROM_EMAIL = 'SIGR-CA <votre.email@gmail.com>'  # <-- à remplacer
+
+# En développement, pour tester sans vrai serveur SMTP,
+# commentez les lignes ci-dessus et décommentez la ligne suivante :
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
 # MongoDB Configuration
 MONGO_CLIENT = MongoClient('localhost', 27017)
 MONGO_DB = MONGO_CLIENT['general_emballage']
@@ -118,3 +134,21 @@ CACHES = {
         }
     }
 }
+# ── Configuration Email (SMTP Gmail) ────────────────────────────────────────
+# Pour utiliser Gmail : activez "Mots de passe d'application" dans votre compte Google
+# puis remplacez les valeurs ci-dessous.
+# Tutoriel : https://support.google.com/accounts/answer/185833
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_SSL = True
+EMAIL_USE_TLS = False
+EMAIL_HOST_USER = 'souhla.ghanem@gmail.com'
+EMAIL_HOST_PASSWORD = 'vkql vguf wvqc ykph'   # mot de passe d'application
+DEFAULT_FROM_EMAIL = 'SIGR-CA <souhla.ghanem@gmail.com>'
+
+ 
+# ── Pour tester en développement (écrit les emails dans la console) ──────────
+# Commentez les lignes EMAIL_BACKEND..DEFAULT_FROM_EMAIL ci-dessus
+# et décommentez la ligne suivante :
+#EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

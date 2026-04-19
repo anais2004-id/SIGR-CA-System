@@ -6439,3 +6439,209 @@ def notify_admin_new_reservation(employe, reservation_data, reservation_id):
             'created_at': datetime.now()
         }
         db.admin_notifications.insert_one(admin_notification)
+     # ====================== MOT DE PASSE OUBLIÉ ======================
+
+def password_forgot(request):
+    """Étape 1 : l'utilisateur saisit son email pour recevoir le lien de réinitialisation."""
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip().lower()
+        if not email:
+            messages.error(request, "Veuillez saisir une adresse email.")
+            return render(request, 'dashboard/password_forgot.html')
+
+        try:
+            user = User.objects.filter(email__iexact=email).first()
+            if user is None:
+                raise User.DoesNotExist
+        except User.DoesNotExist:
+            # On affiche le même message pour ne pas révéler si l'email existe
+            messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
+            return render(request, 'dashboard/password_forgot.html')
+
+        # Invalider les anciens tokens de cet utilisateur
+        from .models import PasswordResetToken
+        PasswordResetToken.objects.filter(user=user, used=False).update(used=True)
+
+        # Générer un nouveau token sécurisé
+        import secrets
+        token = secrets.token_urlsafe(48)
+        expires_at = timezone.now() + timedelta(hours=1)
+        reset_token = PasswordResetToken.objects.create(
+            user=user,
+            token=token,
+            expires_at=expires_at,
+        )
+
+        # Construire le lien de réinitialisation
+        reset_url = request.build_absolute_uri(f"/password-reset/{token}/")
+
+        # Envoyer l'email
+        from django.core.mail import send_mail
+        from django.conf import settings as django_settings
+        sujet = "SIGR-CA — Réinitialisation de votre mot de passe"
+        corps_texte = f"""Bonjour {user.first_name or user.username},
+
+Vous avez demandé la réinitialisation de votre mot de passe sur SIGR-CA.
+
+Cliquez sur le lien ci-dessous pour choisir un nouveau mot de passe (valable 1 heure) :
+
+{reset_url}
+
+Si vous n'avez pas fait cette demande, ignorez simplement cet email.
+
+— L'équipe SIGR-CA
+"""
+        corps_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#0a0c10;font-family:'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0c10;padding:40px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#111318;border-radius:16px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#1f6feb,#06b6d4);padding:32px;text-align:center;">
+            <div style="width:56px;height:56px;background:rgba(255,255,255,0.15);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;">
+              <span style="font-size:26px;">🔐</span>
+            </div>
+            <h1 style="margin:0;color:#fff;font-size:22px;font-weight:600;">Réinitialisation du mot de passe</h1>
+            <p style="margin:8px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">SIGR-CA — Système de Gestion des Ressources</p>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="color:#9ca3af;font-size:15px;margin:0 0 12px;">Bonjour <strong style="color:#f3f4f6;">{user.first_name or user.username}</strong>,</p>
+            <p style="color:#9ca3af;font-size:15px;margin:0 0 28px;line-height:1.6;">
+              Nous avons reçu une demande de réinitialisation de mot de passe pour votre compte.<br>
+              Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.
+            </p>
+            <div style="text-align:center;margin:0 0 28px;">
+              <a href="{reset_url}"
+                 style="display:inline-block;background:linear-gradient(135deg,#1f6feb,#06b6d4);color:#fff;text-decoration:none;
+                        padding:14px 36px;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:.3px;">
+                Réinitialiser mon mot de passe
+              </a>
+            </div>
+            <div style="background:rgba(31,111,235,0.08);border:1px solid rgba(31,111,235,0.2);border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+              <p style="margin:0;color:#6b7280;font-size:13px;">
+                ⏱ Ce lien est valable <strong style="color:#f59e0b;">1 heure</strong> uniquement.<br>
+                🔒 Si vous n'avez pas fait cette demande, ignorez cet email.
+              </p>
+            </div>
+            <p style="color:#6b7280;font-size:12px;margin:0;word-break:break-all;">
+              Lien alternatif : <a href="{reset_url}" style="color:#3b82f6;">{reset_url}</a>
+            </p>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="padding:20px 40px;border-top:1px solid rgba(255,255,255,0.05);text-align:center;">
+            <p style="color:#4b5563;font-size:12px;margin:0;">© SIGR-CA — Cet email a été envoyé automatiquement, ne pas y répondre.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+        try:
+            import ssl
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = sujet
+            msg['From']    = django_settings.DEFAULT_FROM_EMAIL
+            msg['To']      = user.email
+            msg.attach(MIMEText(corps_texte, 'plain', 'utf-8'))
+            msg.attach(MIMEText(corps_html,  'html',  'utf-8'))
+
+            # Port 587 + STARTTLS manuel — compatible Python 3.12
+            ctx = ssl.create_default_context()
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.ehlo()
+                server.starttls(context=ctx)   # context= au lieu de keyfile=/certfile=
+                server.ehlo()
+                server.login(django_settings.EMAIL_HOST_USER,
+                             django_settings.EMAIL_HOST_PASSWORD)
+                server.sendmail(django_settings.EMAIL_HOST_USER,
+                                user.email, msg.as_string())
+
+            logger.info(f"Email de réinitialisation envoyé à {user.email}")
+        except Exception as e:
+            logger.error(f"Erreur envoi email reset: {e}")
+            messages.error(request, "Erreur lors de l'envoi de l'email. Contactez l'administrateur.")
+            return render(request, 'dashboard/password_forgot.html')
+
+        messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
+        return render(request, 'dashboard/password_forgot.html')
+
+    return render(request, 'dashboard/password_forgot.html')
+
+def password_reset(request, token):
+    """Étape 2 : l'utilisateur saisit son nouveau mot de passe via le lien reçu."""
+    from .models import PasswordResetToken
+    
+    try:
+        reset_token = PasswordResetToken.objects.select_related('user').get(token=token)
+    except PasswordResetToken.DoesNotExist:
+        messages.error(request, "Lien invalide ou déjà utilisé.")
+        return redirect('password_forgot')
+
+    if not reset_token.is_valid():
+        messages.error(request, "Ce lien a expiré ou a déjà été utilisé. Veuillez en demander un nouveau.")
+        return redirect('password_forgot')
+
+    # TRAITEMENT POST - Changement du mot de passe
+    if request.method == 'POST':
+        password1 = request.POST.get('password1', '')
+        password2 = request.POST.get('password2', '')
+
+        errors = []
+        if not password1:
+            errors.append("Le nouveau mot de passe est obligatoire.")
+        if password1 != password2:
+            errors.append("Les deux mots de passe ne correspondent pas.")
+        if len(password1) < 8:
+            errors.append("Le mot de passe doit contenir au moins 8 caractères.")
+        if password1.isdigit():
+            errors.append("Le mot de passe ne peut pas être uniquement numérique.")
+        # Vérifier que le mot de passe n'est pas trop simple
+        if password1.lower() in ['password', 'motdepasse', '12345678', 'azertyuiop']:
+            errors.append("Ce mot de passe est trop commun. Veuillez en choisir un plus sécurisé.")
+
+        if errors:
+            for e in errors:
+                messages.error(request, e)
+            # Afficher à nouveau le formulaire avec les erreurs
+            return render(request, 'dashboard/password_reset_form.html', {'token': token})
+
+        # Changer le mot de passe
+        user = reset_token.user
+        user.set_password(password1)
+        user.save()
+
+        # Marquer le token comme utilisé
+        reset_token.used = True
+        reset_token.save()
+
+        # Invalider toutes les sessions actives de l'utilisateur
+        from django.contrib.sessions.models import Session
+        for session in Session.objects.all():
+            data = session.get_decoded()
+            if str(data.get('_auth_user_id')) == str(user.pk):
+                session.delete()
+
+        logger.info(f"Mot de passe réinitialisé pour {user.username}")
+        messages.success(request, "Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.")
+        return redirect('password_reset_done')
+
+    # GET - Afficher le formulaire de changement de mot de passe
+    return render(request, 'dashboard/password_reset_form.html', {'token': token})
+
+def password_reset_done(request):
+    """Étape 3 : page de confirmation après réinitialisation réussie."""
+    return render(request, 'dashboard/password_reset_done.html')

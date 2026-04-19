@@ -464,3 +464,23 @@ class AdminNotification(models.Model):
     
     def __str__(self):
         return f"{self.titre} - {self.admin.username}"
+
+class PasswordResetToken(models.Model):
+    """Token de réinitialisation du mot de passe"""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reset_tokens')
+    token = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'password_reset_tokens'
+        verbose_name = 'Token de réinitialisation'
+        verbose_name_plural = 'Tokens de réinitialisation'
+
+    def is_valid(self):
+        from django.utils import timezone
+        return not self.used and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"Token pour {self.user.username} — {'valide' if self.is_valid() else 'expiré/utilisé'}"
