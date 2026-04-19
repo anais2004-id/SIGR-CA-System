@@ -2,7 +2,8 @@
 import os
 from pathlib import Path
 from pymongo import MongoClient
-
+from dotenv import load_dotenv
+load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'your-secret-key-here'
@@ -143,8 +144,8 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_SSL = True
 EMAIL_USE_TLS = False
-EMAIL_HOST_USER = 'souhla.ghanem@gmail.com'
-EMAIL_HOST_PASSWORD = 'vkql vguf wvqc ykph'   # mot de passe d'application
+EMAIL_HOST_USER = os.getenv("EMAIL_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_PASSWORD", "")  # mot de passe d'application
 DEFAULT_FROM_EMAIL = 'SIGR-CA <souhla.ghanem@gmail.com>'
 
  
