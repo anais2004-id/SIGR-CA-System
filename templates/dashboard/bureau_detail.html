@@ -6,46 +6,442 @@
 
 {% block topbar_actions %}
 <a href="{% url 'ressources' %}" class="btn btn-ghost btn-sm">← Retour</a>
+<a href="{% url 'bureau_modifier' bureau.id %}" class="btn btn-edit btn-sm">✏️ Modifier</a>
+<button class="btn btn-del btn-sm" onclick="deleteZone()">🗑️ Supprimer</button>
 {% endblock %}
 
 {% block content %}
-<div class="card">
-  <div class="card-head">
-    <span>🚪</span>
-    <span class="card-title">{{ bureau.nom }}</span>
+
+<style>
+.hierarchy-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--bg3);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.hierarchy-breadcrumb span {
+  color: var(--text2);
+}
+.hierarchy-breadcrumb .level {
+  color: var(--blue2);
+  font-weight: 500;
+}
+.hierarchy-breadcrumb .separator {
+  color: var(--text3);
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+  margin-top: 8px;
+}
+.stat-card.blue .stat-value { color: var(--blue2); }
+.stat-card.green .stat-value { color: var(--green); }
+.stat-card.amber .stat-value { color: var(--amber); }
+.stat-card.red .stat-value { color: var(--red); }
+
+.info-row {
+  display: flex;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.info-label {
+  width: 140px;
+  font-weight: 600;
+  color: var(--text2);
+}
+.info-value {
+  flex: 1;
+  color: var(--text);
+}
+.badge-security {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.badge-public { background: rgba(16,185,129,0.12); color: #10b981; }
+.badge-standard { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.badge-restreint { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.badge-critique { background: rgba(248,81,73,0.12); color: #f85149; }
+
+.occupation-bar {
+  background: var(--bg4);
+  border-radius: 8px;
+  height: 8px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+.occupation-fill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s;
+}
+.occupation-fill.low { background: var(--green); }
+.occupation-fill.mid { background: var(--amber); }
+.occupation-fill.high { background: var(--red); }
+
+.chart-container {
+  margin-top: 20px;
+  height: 200px;
+}
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 180px;
+}
+.bar {
+  flex: 1;
+  background: linear-gradient(180deg, var(--blue2), var(--blue));
+  border-radius: 6px 6px 0 0;
+  min-height: 4px;
+  transition: height 0.3s;
+  cursor: pointer;
+}
+.bar:hover {
+  opacity: 0.8;
+}
+.bar-label {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 8px;
+}
+
+.equipment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.equipment-tag {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+</style>
+
+<!-- Fil d'Ariane Hiérarchique -->
+{% if hierarchie %}
+<div class="hierarchy-breadcrumb">
+  <span>📍 Localisation :</span>
+  {% for niveau, nom in hierarchie %}
+    {% if not forloop.first %}<span class="separator">→</span>{% endif %}
+    <span class="level">{{ niveau }}</span>
+    <span>{{ nom }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Cartes Statistiques -->
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-value">{{ total_acces_mois|default:0 }}</div>
+    <div class="stat-label">Accès ce mois</div>
   </div>
-  <div class="card-body">
-    <div class="g2">
-      <div>
-        <div><strong>Code:</strong> {{ bureau.code_bureau|default:"—" }}</div>
-        <div><strong>Étage:</strong> {{ bureau.etage|default:"0" }}</div>
-        <div><strong>Capacité:</strong> {{ bureau.capacite_max|default:"10" }} personnes</div>
-        <div><strong>Niveau sécurité:</strong> {{ bureau.niveau_securite|default:"standard"|title }}</div>
-      </div>
-      <div>
-        <div><strong>Occupation actuelle:</strong> {{ occupation_recente|default:0 }} personnes</div>
-        <div><strong>Taux d'occupation:</strong> {{ taux_occupation|default:0 }}%</div>
-        <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:{{ taux_occupation|default:0 }}%"></div></div>
-      </div>
-    </div>
-    {% if bureau.description %}
-    <div style="margin-top:16px"><strong>Description:</strong><br>{{ bureau.description }}</div>
-    {% endif %}
+  <div class="stat-card green">
+    <div class="stat-value">{{ taux_succes|default:0 }}%</div>
+    <div class="stat-label">Taux de succès</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-value">{{ reservations_count|default:0 }}</div>
+    <div class="stat-label">Réservations</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-value">{{ alertes_count|default:0 }}</div>
+    <div class="stat-label">Alertes</div>
   </div>
 </div>
 
-<div class="card">
-  <div class="card-head"><span>📊</span><span class="card-title">Historique des accès (7 derniers jours)</span></div>
+<div class="g2" style="gap: 24px;">
+  <!-- Colonne gauche : Informations -->
+  <div class="card">
+    <div class="card-head"><span>📋</span><span class="card-title">Informations générales</span></div>
+    <div class="card-body">
+      <div class="info-row">
+        <div class="info-label">Nom</div>
+        <div class="info-value">{{ bureau.nom }}</div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Code interne</div>
+        <div class="info-value">{{ bureau.code_bureau|default:"—" }}</div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Étage / Niveau</div>
+        <div class="info-value">
+          {% if bureau.etage == 0 %}RDC
+          {% elif bureau.etage == -1 %}Sous-sol
+          {% else %}Étage {{ bureau.etage }}{% endif %}
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Capacité maximale</div>
+        <div class="info-value">{{ bureau.capacite_max|default:"10" }} personnes</div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Niveau de sécurité</div>
+        <div class="info-value">
+          <span class="badge-security badge-{{ bureau.niveau_securite|default:'standard' }}">
+            {% if bureau.niveau_securite == 'public' %}🟢 Public
+            {% elif bureau.niveau_securite == 'standard' %}🔵 Standard
+            {% elif bureau.niveau_securite == 'restreint' %}🟠 Restreint
+            {% elif bureau.niveau_securite == 'critique' %}🔴 Critique
+            {% else %}🔵 Standard{% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Statut</div>
+        <div class="info-value">
+          {% if bureau.statut == 'actif' %}
+            <span style="color: var(--green);">✅ Actif</span>
+          {% else %}
+            <span style="color: var(--red);">❌ Inactif</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if bureau.description %}
+      <div class="info-row">
+        <div class="info-label">Description</div>
+        <div class="info-value">{{ bureau.description|linebreaks }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Colonne droite : Occupation -->
+  <div class="card">
+    <div class="card-head"><span>📊</span><span class="card-title">Occupation en temps réel</span></div>
+    <div class="card-body">
+      <div style="text-align: center; margin-bottom: 16px;">
+        <div style="font-size: 48px; font-weight: 700;">{{ occupation_recente|default:0 }}</div>
+        <div style="font-size: 14px; color: var(--text2);">personnes actuellement</div>
+      </div>
+      <div class="occupation-bar">
+        <div class="occupation-fill 
+          {% if taux_occupation < 30 %}low
+          {% elif taux_occupation < 70 %}mid
+          {% else %}high{% endif %}" 
+          style="width: {{ taux_occupation|default:0 }}%;">
+        </div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 12px;">
+        <span>🟢 Faible</span>
+        <span>🟡 Moyen</span>
+        <span>🔴 Élevé</span>
+      </div>
+      <div style="margin-top: 16px; text-align: center;">
+        <span style="font-size: 24px; font-weight: 600;">{{ taux_occupation|default:0 }}%</span>
+        <span style="color: var(--text2);"> d'occupation</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Graphique historique -->
+<div class="card" style="margin-top: 24px;">
+  <div class="card-head">
+    <span>📈</span>
+    <span class="card-title">Historique des accès (7 derniers jours)</span>
+    <button class="btn btn-ghost btn-sm" onclick="refreshChart()" style="margin-left: auto;">↻ Actualiser</button>
+  </div>
   <div class="card-body">
-    <div style="display:flex; align-items:flex-end; gap:8px; height:150px">
+    <div class="bar-chart" id="historyChart">
       {% for h in historique %}
       <div style="flex:1; text-align:center">
-        <div style="height:{{ h.acces|default:0|floatformat:0 }}px; background:var(--blue); border-radius:4px 4px 0 0; min-height:3px"></div>
-        <div style="font-size:10px; margin-top:4px">{{ h.date }}</div>
-        <div style="font-size:9px; color:var(--text3)">{{ h.acces }}</div>
+        <div class="bar" style="height: {{ h.acces|default:0|floatformat:0 }}px; min-height: 4px;" 
+             title="{{ h.date }} : {{ h.acces }} accès"></div>
+        <div class="bar-label">{{ h.date }}</div>
+        <div style="font-size: 9px; color: var(--text3);">{{ h.acces }}</div>
       </div>
       {% endfor %}
     </div>
   </div>
 </div>
+
+<!-- Équipements et réservations à venir -->
+<div class="g2" style="margin-top: 24px;">
+  <!-- Équipements dans la salle -->
+  <div class="card">
+    <div class="card-head"><span>🖥️</span><span class="card-title">Équipements disponibles</span></div>
+    <div class="card-body">
+      <div class="equipment-list" id="equipmentList">
+        <div style="color: var(--text3); text-align: center; width: 100%;">Chargement...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Réservations à venir -->
+  <div class="card">
+    <div class="card-head"><span>📅</span><span class="card-title">Réservations à venir</span></div>
+    <div class="card-body">
+      <div id="upcomingReservations">
+        <div style="color: var(--text3); text-align: center;">Chargement...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Indisponibilités planifiées -->
+<div class="card" style="margin-top: 24px;">
+  <div class="card-head"><span>⚠️</span><span class="card-title">Indisponibilités planifiées</span></div>
+  <div class="card-body">
+    <div id="indisponibilitesList">
+      <div style="color: var(--text3); text-align: center;">Chargement...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const bureauId = '{{ bureau.id }}';
+
+function deleteZone() {
+  if (confirm('⚠️ Êtes-vous sûr de vouloir supprimer cette zone ?\nCette action est irréversible.')) {
+    fetch(`/bureaux/${bureauId}/supprimer/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    })
+    .then(() => window.location.href = '{% url "ressources" %}');
+  }
+}
+
+function refreshChart() {
+  fetch(`/api/bureau/${bureauId}/stats/`)
+    .then(r => r.json())
+    .then(data => {
+      const chart = document.getElementById('historyChart');
+      chart.innerHTML = '';
+      data.acces_par_jour.forEach((value, index) => {
+        const barHeight = Math.min(150, value * 2);
+        chart.innerHTML += `
+          <div style="flex:1; text-align:center">
+            <div class="bar" style="height: ${barHeight}px; min-height: 4px;" title="${data.dates[index]} : ${value} accès"></div>
+            <div class="bar-label">${data.dates[index]}</div>
+            <div style="font-size: 9px; color: var(--text3);">${value}</div>
+          </div>
+        `;
+      });
+    });
+}
+
+// Charger les équipements
+fetch('/api/equipements/')
+  .then(r => r.json())
+  .then(data => {
+    const equipmentList = document.getElementById('equipmentList');
+    const bureauEquipments = data.equipements?.filter(e => e.bureau_id === bureauId) || [];
+    if (bureauEquipments.length > 0) {
+      equipmentList.innerHTML = bureauEquipments.map(e => `
+        <div class="equipment-tag">
+          ${e.type === 'RFID' ? '📡' : '📱'} ${e.nom}
+        </div>
+      `).join('');
+    } else {
+      equipmentList.innerHTML = '<div style="color: var(--text3); text-align: center; width: 100%;">Aucun équipement dans cette zone</div>';
+    }
+  })
+  .catch(() => {
+    document.getElementById('equipmentList').innerHTML = '<div style="color: var(--text3); text-align: center;">⚠️ Impossible de charger les équipements</div>';
+  });
+
+// Charger les réservations
+fetch(`/api/bureau/${bureauId}/schedule/`)
+  .then(r => r.json())
+  .then(data => {
+    const container = document.getElementById('upcomingReservations');
+    if (data.creneaux && data.creneaux.length > 0) {
+      container.innerHTML = data.creneaux.map(c => `
+        <div style="display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid var(--border2);">
+          <div><span style="font-family: monospace;">🕐 ${c.debut} → ${c.fin}</span></div>
+          <div><strong>${c.titre}</strong></div>
+          <div style="color: var(--text2);">👤 ${c.employe}</div>
+        </div>
+      `).join('');
+    } else {
+      container.innerHTML = '<div style="color: var(--green); text-align: center;">✅ Aucune réservation planifiée</div>';
+    }
+  })
+  .catch(() => {
+    document.getElementById('upcomingReservations').innerHTML = '<div style="color: var(--text3); text-align: center;">⚠️ Impossible de charger les réservations</div>';
+  });
+
+// Charger les indisponibilités
+fetch('/api/indisponibilites/')
+  .then(r => r.json())
+  .then(data => {
+    const container = document.getElementById('indisponibilitesList');
+    const indispos = data.indisponibilites?.filter(i => i.ressource_id === bureauId) || [];
+    if (indispos.length > 0) {
+      container.innerHTML = indispos.map(i => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border2);">
+          <div>
+            <div><strong>${i.titre}</strong></div>
+            <div style="font-size: 12px; color: var(--text2);">
+              📅 ${new Date(i.date_debut).toLocaleString()} → ${new Date(i.date_fin).toLocaleString()}
+            </div>
+            ${i.description ? `<div style="font-size: 12px; color: var(--text3);">${i.description}</div>` : ''}
+          </div>
+          <div>
+            <span class="badge-security ${i.type_indispo === 'maintenance' ? 'badge-restreint' : 'badge-standard'}">
+              ${i.type_indispo === 'maintenance' ? '🔧 Maintenance' : i.type_indispo === 'reservation_bloquee' ? '🚫 Bloqué' : '🚪 Fermeture'}
+            </span>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      container.innerHTML = '<div style="color: var(--green); text-align: center;">✅ Aucune indisponibilité planifiée</div>';
+    }
+  })
+  .catch(() => {
+    document.getElementById('indisponibilitesList').innerHTML = '<div style="color: var(--text3); text-align: center;">⚠️ Impossible de charger les indisponibilités</div>';
+  });
+
+// Rafraîchissement automatique toutes les 30 secondes
+setInterval(() => {
+  fetch(`/api/bureau/${bureauId}/stats/`)
+    .then(r => r.json())
+    .then(data => {
+      const occupationFill = document.querySelector('.occupation-fill');
+      const occupationValue = document.querySelector('.stat-value:first-child');
+      if (occupationFill && data.taux_occupation) {
+        occupationFill.style.width = data.taux_occupation + '%';
+        occupationFill.className = 'occupation-fill ' + 
+          (data.taux_occupation < 30 ? 'low' : data.taux_occupation < 70 ? 'mid' : 'high');
+      }
+      if (occupationValue && data.occupation_recente) {
+        occupationValue.textContent = data.occupation_recente;
+      }
+    });
+}, 30000);
+</script>
+
 {% endblock %}

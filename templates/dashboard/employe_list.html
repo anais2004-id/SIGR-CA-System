@@ -6,8 +6,7 @@
 
 {% block topbar_actions %}
 <div style="display:flex; gap:12px; align-items:center;">
-  <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Nouvel employé</button>
-  <button class="btn btn-ghost btn-sm" onclick="exportEmployeesCSV()">⬇️ Exporter CSV</button>
+<a href="/employes/ajouter/" class="btn btn-primary btn-sm" style="text-decoration:none;">+ Nouvel employé</a>  <button class="btn btn-ghost btn-sm" onclick="exportEmployeesCSV()">⬇️ Exporter CSV</button>
   <button class="btn btn-ghost btn-sm" onclick="showStatsModal()">📊 Statistiques globales</button>
 </div>
 {% endblock %}
@@ -123,9 +122,13 @@
             data-statut="{{ emp.statut|lower }}">
           <td>
             <div style="display:flex; align-items:center; gap:10px;">
-              <div class="emp-av" style="background:{% if emp.statut == 'actif' %}#1f6feb{% else %}#484f58{% endif %};">
-                {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
-              </div>
+              <div class="emp-av" style="background:{% if emp.statut == 'actif' %}#1f6feb{% else %}#484f58{% endif %}; overflow:hidden;">
+  {% if emp.photo_url %}
+    <img src="{{ emp.photo_url }}" alt="{{ emp.nom }}" style="width:100%; height:100%; object-fit:cover;">
+  {% else %}
+    {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
+  {% endif %}
+         </div>
               <div>
                 <div style="font-weight:500;">{{ emp.nom }} {{ emp.prenom }}</div>
                 <div style="font-size:11px; color:var(--text3);">{{ emp.email|default:"—" }}</div>
@@ -360,8 +363,8 @@ function openAddModal() {
       Créer un nouveau profil d'accès
     </div>
     
-    <form method="post" action="/employes/ajouter/" id="addEmployeeForm">
-      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+    
+<form method="post" action="/employes/ajouter/" id="addEmployeeForm" enctype="multipart/form-data">      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
       
       <!-- Section Identité -->
       <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
@@ -409,6 +412,30 @@ function openAddModal() {
           </div>
         </div>
       </div>
+      <!-- Section Photo -->
+<div class="form-row" style="margin-bottom: 20px;">
+  <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+    <i class="fas fa-camera" style="font-size: 11px;"></i> Photo de profil
+  </label>
+
+  <div style="display:flex; align-items:center; gap:14px;">
+    <div id="photoPreview" style="width:64px; height:64px; border-radius:50%; background:var(--bg3); border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+      <i class="fas fa-user" style="color:var(--text3); font-size:22px;"></i>
+    </div>
+
+    <label for="photoInput" style="cursor:pointer; padding:10px 16px; background:var(--bg3); border:1px solid var(--border); border-radius:10px; color:var(--text2); font-size:12px; display:inline-flex; align-items:center; gap:8px;">
+      <i class="fas fa-upload"></i> Choisir une photo
+    </label>
+    <input id="photoInput" type="file" name="photo" accept="image/*"
+           style="display:none;"
+           onchange="previewPhoto(event)">
+
+    <button type="button" id="removePhotoBtn" onclick="removePhoto()" style="display:none; background:transparent; border:1px solid var(--red); color:var(--red); padding:8px 12px; border-radius:8px; cursor:pointer; font-size:11px;">
+      <i class="fas fa-times"></i> Retirer
+    </button>
+  </div>
+  <small style="color:var(--text3); font-size:11px; margin-top:6px; display:block;">JPG ou PNG · Max 5 Mo</small>
+</div>
       
       <!-- Section Badge -->
       <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin: 20px 0 16px;">
@@ -635,6 +662,77 @@ document.addEventListener('DOMContentLoaded', function() {
   
   empFilter();
 });
+function previewPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    alert("L'image ne doit pas dépasser 5 Mo.");
+    event.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('photoPreview');
+    if (preview) {
+      preview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+      preview.style.border = '2px solid var(--blue2)';
+    }
+    const removeBtn = document.getElementById('removePhotoBtn');
+    if (removeBtn) removeBtn.style.display = 'inline-flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePhoto() {
+  const input = document.getElementById('photoInput');
+  if (input) input.value = '';
+  const preview = document.getElementById('photoPreview');
+  if (preview) {
+    preview.innerHTML = '<i class="fas fa-user" style="color:var(--text3); font-size:22px;"></i>';
+    preview.style.border = '2px dashed var(--border)';
+  }
+  const removeBtn = document.getElementById('removePhotoBtn');
+  if (removeBtn) removeBtn.style.display = 'none';
+}
+async function fullChatbotTest() {
+    console.log('=== TEST COMPLET CHATBOT ===');
+    
+    // Test 1: UI visible ?
+    const widget = document.getElementById('chatbotWidget');
+    const fab = document.querySelector('.chatbot-fab');
+    console.log('Widget présent:', !!widget);
+    console.log('FAB présent:', !!fab);
+    
+    // Test 2: Ouverture/Fermeture
+    if (typeof toggleChatbot === 'function') {
+        toggleChatbot();
+        await new Promise(r => setTimeout(r, 100));
+        console.log('Ouverture:', widget.style.display === 'flex');
+        toggleChatbot();
+        console.log('Fermeture:', widget.style.display === 'none');
+    }
+    
+    // Test 3: Envoi message
+    const input = document.getElementById('chatbotInput');
+    if (input) {
+        input.value = "Bonjour, test automatique";
+        await sendChatbotMessage();
+        await new Promise(r => setTimeout(r, 1000));
+        const messages = document.querySelectorAll('.chatbot-message');
+        console.log('Messages après envoi:', messages.length);
+    }
+    
+    // Test 4: Suggestions
+    const suggestions = document.querySelectorAll('.suggestion-chip');
+    console.log('Suggestions présentes:', suggestions.length);
+    
+    console.log('=== FIN DES TESTS ===');
+}
+
+// Lancez les tests
+fullChatbotTest();
 </script>
 
 {% endblock %}

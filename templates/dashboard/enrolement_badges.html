@@ -1,0 +1,328 @@
+{% extends 'base.html' %}
+{% block title %}Enrôlement des badges — SIGR-CA{% endblock %}
+{% block content %}
+<style>
+  .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px}
+  .page-title{font-size:22px;font-weight:600;color:var(--text)}
+  .page-sub{color:var(--text2);font-size:14px;margin-top:3px}
+  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:28px}
+  .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+  .stat-num{font-size:26px;font-weight:700}
+  .stat-lbl{font-size:12px;color:var(--text2);margin-top:3px}
+  .c-blue{color:#3b82f6} .c-green{color:#10b981} .c-red{color:#ef4444} .c-amber{color:#f59e0b} .c-cyan{color:#06b6d4}
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+  .search-box{flex:1;min-width:200px;position:relative}
+  .search-box input{width:100%;padding:9px 14px 9px 36px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none}
+  .search-box input:focus{border-color:#3b82f6}
+  .search-box i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px}
+  .filter-btn{padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:13px;cursor:pointer;transition:.15s}
+  .filter-btn.active,.filter-btn:hover{border-color:#3b82f6;color:#3b82f6}
+  .btn-export{padding:8px 16px;border-radius:8px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;text-decoration:none}
+  .btn-export:hover{border-color:#10b981;color:#10b981}
+  .table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  table{width:100%;border-collapse:collapse}
+  th{padding:12px 16px;font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);text-align:left;background:rgba(255,255,255,.02)}
+  td{padding:13px 16px;font-size:14px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .employe-info{display:flex;align-items:center;gap:10px}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#06b6d4);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
+  .employe-nom{font-weight:500;color:var(--text)}
+  .employe-dept{font-size:12px;color:var(--text3)}
+  .badge-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
+  .badge-rfid{background:rgba(31,111,235,.15);color:#93c5fd;border:1px solid rgba(31,111,235,.25)}
+  .badge-qr{background:rgba(139,92,246,.15);color:#c4b5fd;border:1px solid rgba(139,92,246,.25)}
+  .badge-none{background:rgba(107,114,128,.15);color:#9ca3af;border:1px solid rgba(107,114,128,.25)}
+  .badge-id-code{font-family:monospace;font-size:12px;color:var(--text2);background:var(--bg3);padding:3px 8px;border-radius:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
+  .btn-action{padding:6px 12px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:.15s;display:inline-flex;align-items:center;gap:5px}
+  .btn-affecter{background:rgba(31,111,235,.15);color:#93c5fd;border:1px solid rgba(31,111,235,.25)}
+  .btn-affecter:hover{background:rgba(31,111,235,.3)}
+  .btn-qr-gen{background:rgba(139,92,246,.15);color:#c4b5fd;border:1px solid rgba(139,92,246,.25)}
+  .btn-qr-gen:hover{background:rgba(139,92,246,.3)}
+  .btn-revoquer{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
+  .btn-revoquer:hover{background:rgba(239,68,68,.3)}
+  .actions-cell{display:flex;gap:6px;flex-wrap:wrap}
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:.2s}
+  .modal-overlay.open{opacity:1;pointer-events:all}
+  .modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;width:100%;max-width:460px;padding:28px;animation:slideUp .2s ease-out}
+  @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .modal-title{font-size:17px;font-weight:600;margin-bottom:6px}
+  .modal-sub{color:var(--text2);font-size:14px;margin-bottom:22px}
+  .form-row{margin-bottom:16px}
+  .form-label{font-size:13px;color:var(--text2);margin-bottom:6px;display:block}
+  .form-input{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;box-sizing:border-box}
+  .form-input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+  .form-select{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;cursor:pointer}
+  .badge-check{font-size:12px;margin-top:5px;min-height:16px}
+  .check-ok{color:#10b981} .check-err{color:#ef4444} .check-loading{color:var(--text3)}
+  .modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
+  .btn-cancel{padding:9px 18px;border-radius:8px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:14px;cursor:pointer}
+  .btn-cancel:hover{border-color:var(--text2)}
+  .btn-save{padding:9px 20px;border-radius:8px;background:linear-gradient(135deg,#1f6feb,#06b6d4);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer;transition:.15s}
+  .btn-save:hover{opacity:.9}
+  .btn-save:disabled{opacity:.4;cursor:not-allowed}
+  .toast{position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:10px;font-size:14px;color:#fff;font-weight:500;z-index:9999;opacity:0;transform:translateY(10px);transition:.3s;max-width:340px}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .toast.ok{background:#10b981} .toast.err{background:#ef4444}
+  .empty-state{padding:48px;text-align:center;color:var(--text3)}
+  .empty-state i{font-size:36px;margin-bottom:12px;display:block}
+</style>
+
+<div class="page-header">
+  <div>
+    <div class="page-title"><i class="fas fa-id-card" style="color:#3b82f6;margin-right:10px"></i>Enrôlement des badges</div>
+    <div class="page-sub">Gestion des badges RFID et QR code des employés</div>
+  </div>
+  <a href="{% url 'api_export_badges_csv' %}" class="btn-export">
+    <i class="fas fa-download"></i> Exporter CSV
+  </a>
+</div>
+
+<!-- Stats -->
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-num">{{ stats.total }}</div><div class="stat-lbl">Total employés</div></div>
+  <div class="stat-card"><div class="stat-num c-green">{{ stats.avec_badge }}</div><div class="stat-lbl">Avec badge</div></div>
+  <div class="stat-card"><div class="stat-num c-red">{{ stats.sans_badge }}</div><div class="stat-lbl">Sans badge</div></div>
+  <div class="stat-card"><div class="stat-num c-blue">{{ stats.rfid }}</div><div class="stat-lbl">Badges RFID</div></div>
+  <div class="stat-card"><div class="stat-num c-cyan">{{ stats.qr }}</div><div class="stat-lbl">QR codes</div></div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <div class="search-box">
+    <i class="fas fa-search"></i>
+    <input type="text" id="searchInput" placeholder="Rechercher un employé…" oninput="filtrerTableau()">
+  </div>
+  <button class="filter-btn active" onclick="setFiltre('tous',this)">Tous</button>
+  <button class="filter-btn" onclick="setFiltre('avec',this)">Avec badge</button>
+  <button class="filter-btn" onclick="setFiltre('sans',this)">Sans badge</button>
+</div>
+
+<!-- Tableau -->
+<div class="table-wrap">
+  <table id="tableEmployes">
+    <thead>
+      <tr>
+        <th>Employé</th>
+        <th>Email</th>
+        <th>Badge ID</th>
+        <th>Type</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for employe in employes %}
+      <tr data-badge="{{ employe.a_badge|yesno:'avec,sans' }}"
+          data-nom="{{ employe.nom|lower }} {{ employe.prenom|lower }}"
+          data-email="{{ employe.email|lower }}">
+        <td>
+          <div class="employe-info">
+            <div class="avatar">{{ employe.prenom|first|upper }}{{ employe.nom|first|upper }}</div>
+            <div>
+              <div class="employe-nom">{{ employe.prenom }} {{ employe.nom }}</div>
+              <div class="employe-dept">{{ employe.departement|default:"—" }}</div>
+            </div>
+          </div>
+        </td>
+        <td style="color:var(--text2)">{{ employe.email|default:"—" }}</td>
+        <td>
+          {% if employe.badge_id %}
+            <span class="badge-id-code" title="{{ employe.badge_id }}">{{ employe.badge_id }}</span>
+          {% else %}
+            <span style="color:var(--text3);font-size:13px">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if employe.badge_id %}
+            {% if employe.badge_type == 'QR' %}
+              <span class="badge-pill badge-qr"><i class="fas fa-qrcode"></i> QR Code</span>
+            {% else %}
+              <span class="badge-pill badge-rfid"><i class="fas fa-wifi"></i> RFID</span>
+            {% endif %}
+          {% else %}
+            <span class="badge-pill badge-none"><i class="fas fa-ban"></i> Aucun</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="actions-cell">
+            <button class="btn-action btn-affecter"
+                    onclick="ouvrirModalAffecter('{{ employe.id }}','{{ employe.prenom }} {{ employe.nom }}','{{ employe.badge_id|default:"" }}','{{ employe.badge_type|default:"RFID" }}')">
+              <i class="fas fa-id-card"></i> {% if employe.badge_id %}Modifier{% else %}Affecter{% endif %}
+            </button>
+            <button class="btn-action btn-qr-gen"
+                    onclick="genererQR('{{ employe.id }}','{{ employe.prenom }} {{ employe.nom }}')">
+              <i class="fas fa-qrcode"></i> Générer QR
+            </button>
+            {% if employe.badge_id %}
+            <button class="btn-action btn-revoquer"
+                    onclick="revoquerBadge('{{ employe.id }}','{{ employe.prenom }} {{ employe.nom }}')">
+              <i class="fas fa-trash"></i> Révoquer
+            </button>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">
+        <div class="empty-state">
+          <i class="fas fa-users"></i>
+          Aucun employé trouvé.
+        </div>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Modal Affecter badge -->
+<div class="modal-overlay" id="modalAffecter">
+  <div class="modal">
+    <div class="modal-title" id="modalTitre">Affecter un badge</div>
+    <div class="modal-sub" id="modalSub">Employé sélectionné</div>
+    <input type="hidden" id="modalEmployeId">
+    <div class="form-row">
+      <label class="form-label">Type de badge</label>
+      <select class="form-select" id="badgeType">
+        <option value="RFID">💳 RFID (lecteur physique)</option>
+        <option value="QR">📱 QR Code (scan mobile)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Identifiant du badge</label>
+      <input class="form-input" type="text" id="badgeId"
+             placeholder="Ex: RFID-0A1B2C3D ou QR-NOM-XXXX"
+             oninput="verifierBadge()">
+      <div class="badge-check" id="badgeCheck"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="fermerModal()">Annuler</button>
+      <button class="btn-save" id="btnSauvegarder" onclick="sauvegarderBadge()">
+        <i class="fas fa-save"></i> Sauvegarder
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+let filtreActif = 'tous';
+let verifyTimeout = null;
+
+function setFiltre(filtre, btn) {
+  filtreActif = filtre;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filtrerTableau();
+}
+
+function filtrerTableau() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('#tableEmployes tbody tr[data-nom]').forEach(tr => {
+    const nom   = tr.dataset.nom || '';
+    const email = tr.dataset.email || '';
+    const badge = tr.dataset.badge;
+    const matchSearch = nom.includes(q) || email.includes(q);
+    const matchFiltre = filtreActif === 'tous' || badge === filtreActif;
+    tr.style.display = (matchSearch && matchFiltre) ? '' : 'none';
+  });
+}
+
+function ouvrirModalAffecter(id, nom, badgeIdActuel, badgeTypeActuel) {
+  document.getElementById('modalEmployeId').value = id;
+  document.getElementById('modalTitre').textContent = badgeIdActuel ? 'Modifier le badge' : 'Affecter un badge';
+  document.getElementById('modalSub').textContent = nom;
+  document.getElementById('badgeId').value = badgeIdActuel || '';
+  document.getElementById('badgeType').value = badgeTypeActuel || 'RFID';
+  document.getElementById('badgeCheck').textContent = '';
+  document.getElementById('btnSauvegarder').disabled = false;
+  document.getElementById('modalAffecter').classList.add('open');
+}
+
+function fermerModal() {
+  document.getElementById('modalAffecter').classList.remove('open');
+}
+
+function verifierBadge() {
+  clearTimeout(verifyTimeout);
+  const badgeId   = document.getElementById('badgeId').value.trim();
+  const employe_id = document.getElementById('modalEmployeId').value;
+  const el = document.getElementById('badgeCheck');
+  if (!badgeId) { el.textContent = ''; return; }
+  el.className = 'badge-check check-loading';
+  el.textContent = 'Vérification…';
+  verifyTimeout = setTimeout(async () => {
+    const r = await fetch(`/api/badge/verifier/?badge_id=${encodeURIComponent(badgeId)}&employe_id=${employe_id}`);
+    const d = await r.json();
+    el.className = 'badge-check ' + (d.disponible ? 'check-ok' : 'check-err');
+    el.textContent = (d.disponible ? '✓ ' : '✗ ') + d.message;
+    document.getElementById('btnSauvegarder').disabled = !d.disponible;
+  }, 400);
+}
+
+async function sauvegarderBadge() {
+  const employe_id = document.getElementById('modalEmployeId').value;
+  const badge_id   = document.getElementById('badgeId').value.trim();
+  const badge_type = document.getElementById('badgeType').value;
+  if (!badge_id) { showToast('Veuillez saisir un identifiant de badge.', 'err'); return; }
+
+  const r = await fetch(`/api/badge/${employe_id}/affecter/`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+    body: JSON.stringify({badge_id, badge_type}),
+  });
+  const d = await r.json();
+  if (d.success) {
+    showToast(d.message, 'ok');
+    fermerModal();
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    showToast(d.error || 'Erreur.', 'err');
+  }
+}
+
+async function genererQR(employe_id, nom) {
+  if (!confirm(`Générer automatiquement un QR code pour ${nom} ?`)) return;
+  const r = await fetch(`/api/badge/${employe_id}/generer-qr/`, {
+    method: 'POST',
+    headers: {'X-CSRFToken': CSRF},
+  });
+  const d = await r.json();
+  if (d.success) {
+    showToast(`QR code généré : ${d.badge_id}`, 'ok');
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    showToast(d.error || 'Erreur.', 'err');
+  }
+}
+
+async function revoquerBadge(employe_id, nom) {
+  if (!confirm(`Révoquer le badge de ${nom} ? Cette action est irréversible.`)) return;
+  const r = await fetch(`/api/badge/${employe_id}/supprimer/`, {
+    method: 'POST',
+    headers: {'X-CSRFToken': CSRF},
+  });
+  const d = await r.json();
+  if (d.success) {
+    showToast(d.message, 'ok');
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    showToast(d.error || 'Erreur.', 'err');
+  }
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+document.getElementById('modalAffecter').addEventListener('click', e => {
+  if (e.target === e.currentTarget) fermerModal();
+});
+</script>
+{% endblock %}

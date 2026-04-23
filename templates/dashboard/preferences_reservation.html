@@ -1,0 +1,107 @@
+{# dashboard/preferences_reservation.html #}
+{% extends "base.html" %}
+{% block title %}Préférences de réservation - SIGR-CA{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <span>⚙️</span>
+    <span class="card-title">Préférences de réservation intelligentes</span>
+    <span class="card-sub">Aidez l'IA à mieux vous suggérer des créneaux</span>
+  </div>
+  <div class="card-body">
+    <form id="preferencesForm">
+      <div class="form-step">
+        <div class="step-title">📅 Jours préférés</div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <label class="checkbox-label">
+            <input type="checkbox" name="preferred_days" value="monday"> Lundi
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="preferred_days" value="tuesday"> Mardi
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="preferred_days" value="wednesday"> Mercredi
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="preferred_days" value="thursday"> Jeudi
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="preferred_days" value="friday"> Vendredi
+          </label>
+        </div>
+      </div>
+
+      <div class="form-step">
+        <div class="step-title">⏰ Horaires préférés</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <label class="checkbox-label"><input type="checkbox" value="8"> 08h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="9"> 09h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="10"> 10h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="11"> 11h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="14"> 14h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="15"> 15h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="16"> 16h00</label>
+          <label class="checkbox-label"><input type="checkbox" value="17"> 17h00</label>
+        </div>
+      </div>
+
+      <div class="form-step">
+        <div class="step-title">⏱️ Durée préférée</div>
+        <select class="form-select" name="preferred_duration" style="width: auto;">
+          <option value="30">30 minutes</option>
+          <option value="60" selected>1 heure</option>
+          <option value="90">1h30</option>
+          <option value="120">2 heures</option>
+          <option value="180">3 heures</option>
+        </select>
+      </div>
+
+      <div class="form-step">
+        <div class="step-title">🎯 Autres préférences</div>
+        <label class="checkbox-label">
+          <input type="checkbox" name="avoid_overlap" value="true"> Éviter les chevauchements avec mes autres réservations
+        </label>
+      </div>
+
+      <div style="margin-top: 24px; text-align: right;">
+        <button type="submit" class="btn btn-primary">💾 Enregistrer mes préférences</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.getElementById('preferencesForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  const preferredDays = Array.from(document.querySelectorAll('input[name="preferred_days"]:checked'))
+    .map(cb => cb.value);
+  const preferredHours = Array.from(document.querySelectorAll('input[type="checkbox"][value]'))
+    .filter(cb => cb.checked && ['8','9','10','11','14','15','16','17'].includes(cb.value))
+    .map(cb => parseInt(cb.value));
+  const duration = document.querySelector('select[name="preferred_duration"]').value;
+  const avoidOverlap = document.querySelector('input[name="avoid_overlap"]').checked;
+  
+  fetch('/api/user-preferences/save/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify({
+      preferred_days: preferredDays,
+      preferred_hours_start: preferredHours,
+      preferred_duration: parseInt(duration),
+      avoid_overlap: avoidOverlap,
+      preferred_rooms: []
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert('✅ Préférences enregistrées !');
+    } else {
+      alert('❌ Erreur: ' + data.message);
+    }
+  });
+});
+</script>
+{% endblock %}

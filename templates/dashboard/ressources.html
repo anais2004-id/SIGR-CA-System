@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Ressources & Bureaux - SIGR-CA{% endblock %}
+{% block title %}Ressources & Bureaux — SIGR-CA{% endblock %}
 {% block nav_ressources %}active{% endblock %}
 {% block page_title %}Gestion des ressources{% endblock %}
 {% block page_sub %}Zones, salles, matériel et équipements{% endblock %}
@@ -7,320 +7,107 @@
 {% block topbar_actions %}
 <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
 <button class="btn btn-ghost btn-sm" onclick="exportResourcesCSV()">⬇️ Exporter CSV</button>
-<button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Ajouter</button>
+<button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Ajouter</button>
 {% endblock %}
 
 {% block content %}
-
 <style>
-/* KPIs */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 14px;
-  margin-bottom: 24px;
-}
-@media (max-width: 768px) {
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-}
-.kpi {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  transition: all 0.2s;
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-.kpi-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.kpi-label {
-  font-size: 11px;
-  color: var(--text2);
-  text-transform: uppercase;
-}
-.kpi-value {
-  font-size: 28px;
-  font-weight: 600;
-}
-.kpi.k-blue .kpi-value { color: #1f6feb; }
-.kpi.k-green .kpi-value { color: #2dba6f; }
-.kpi.k-amber .kpi-value { color: #e3b341; }
-.kpi.k-purple .kpi-value { color: #a371f7; }
-.kpi.k-red .kpi-value { color: #f85149; }
-
-/* Onglets */
-.tabs {
-  display: flex;
-  gap: 4px;
-  background: var(--bg3);
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  margin-bottom: 20px;
-}
-.tab-btn {
-  flex: 1;
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--text2);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.tab-btn.active {
-  background: var(--bg2);
-  color: var(--text);
-  box-shadow: 0 1px 6px rgba(0,0,0,.3);
-}
-
-/* Zones Grid */
-.zones-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
-.zone-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: all 0.2s;
-  cursor: pointer;
-}
-.zone-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow);
-  border-color: var(--blue);
-}
-.zone-card.selected {
-  border-color: var(--blue);
-  background: var(--blue3);
-}
-.zone-header {
-  padding: 14px;
-  background: var(--bg3);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.zone-name { font-size: 15px; font-weight: 600; }
-.zone-code { font-size: 10px; color: var(--text3); font-family: monospace; }
-.zone-body { padding: 14px; }
-.zone-capacity {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  font-size: 12px;
-}
-.zone-bar {
-  background: var(--bg4);
-  border-radius: 6px;
-  height: 6px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-.zone-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
-.zone-fill.low { background: var(--green); }
-.zone-fill.mid { background: var(--amber); }
-.zone-fill.high { background: var(--red); }
-.zone-status {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border2);
-}
-.zone-badge {
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 10px;
-  font-weight: 500;
-}
-.zone-badge.disponible { background: rgba(45,186,111,0.12); color: #2dba6f; }
-.zone-badge.occupe { background: rgba(227,179,65,0.12); color: #e3b341; }
-.zone-badge.plein { background: rgba(248,81,73,0.12); color: #f85149; }
-.zone-footer {
-  padding: 10px 14px;
-  background: var(--bg3);
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
-}
-
-/* Matériel Grid */
-.materiel-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-}
-.materiel-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: all 0.2s;
-}
-.materiel-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow);
-  border-color: var(--blue);
-}
-.materiel-img {
-  width: 100%;
-  height: 160px;
-  background: var(--bg4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  overflow: hidden;
-}
-.materiel-img img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.materiel-header {
-  padding: 14px;
-  background: var(--bg3);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.materiel-name { font-size: 15px; font-weight: 600; }
-.materiel-category { font-size: 10px; padding: 2px 8px; border-radius: 12px; background: var(--blue3); color: var(--blue2); }
-.materiel-body { padding: 14px; }
-.materiel-info { font-size: 12px; color: var(--text2); line-height: 1.5; }
-.materiel-info div { margin-bottom: 6px; }
-.materiel-footer {
-  padding: 10px 14px;
-  background: var(--bg3);
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
+@media(max-width:768px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;transition:.2s}
+.kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.kpi-header{display:flex;justify-content:space-between;margin-bottom:8px}
+.kpi-label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.kpi-value{font-size:28px;font-weight:600}
+.kpi.k-blue .kpi-value{color:var(--blue)}
+.kpi.k-green .kpi-value{color:var(--green)}
+.kpi.k-amber .kpi-value{color:var(--amber)}
+.kpi.k-purple .kpi-value{color:var(--purple)}
+.kpi.k-red .kpi-value{color:var(--red)}
+.tabs{display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;border:1px solid var(--border);margin-bottom:20px}
+.tab-btn{flex:1;padding:10px 16px;border-radius:8px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:.15s}
+.tab-btn.active{background:var(--bg2);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,.3)}
+.zones-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.zone-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.2s;cursor:pointer}
+.zone-card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--blue)}
+.zone-card.selected{border-color:var(--blue);background:var(--blue3)}
+.zone-header{padding:14px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.zone-name{font-size:15px;font-weight:600}
+.zone-code{font-size:10px;color:var(--text3);font-family:monospace}
+.zone-body{padding:14px}
+.zone-capacity{display:flex;justify-content:space-between;margin-bottom:10px;font-size:12px}
+.zone-bar{background:var(--bg4);border-radius:6px;height:6px;overflow:hidden;margin-bottom:10px}
+.zone-fill{height:100%;border-radius:6px;transition:width .3s}
+.zone-fill.low{background:var(--green)}.zone-fill.mid{background:var(--amber)}.zone-fill.high{background:var(--red)}
+.zone-status{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2)}
+.zone-badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:500}
+.zone-badge.disponible{background:rgba(45,186,111,.12);color:#2dba6f}
+.zone-badge.occupe{background:rgba(227,179,65,.12);color:#e3b341}
+.zone-badge.plein{background:rgba(248,81,73,.12);color:#f85149}
+.zone-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:8px}
+/* Matériel */
+.materiel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.materiel-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.2s}
+.materiel-card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--blue)}
+.materiel-img{width:100%;height:140px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}
+.materiel-img img{width:100%;height:100%;object-fit:cover}
+.materiel-header{padding:12px 14px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.materiel-name{font-size:14px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.materiel-category{font-size:10px;padding:2px 8px;border-radius:12px;background:var(--blue3);color:var(--blue2);flex-shrink:0}
+.materiel-body{padding:12px 14px}
+.materiel-info{font-size:12px;color:var(--text2);line-height:1.7}
+.materiel-info div{display:flex;align-items:baseline;gap:6px}
+.inv-badge{display:inline-block;font-family:monospace;font-size:11px;background:rgba(163,113,247,.12);color:var(--purple);border:1px solid rgba(163,113,247,.25);border-radius:6px;padding:2px 8px;font-weight:600}
+.materiel-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+/* Statut badges */
+.s-disponible{background:rgba(45,186,111,.12);color:#2dba6f;border:1px solid rgba(45,186,111,.25);padding:2px 8px;border-radius:12px;font-size:10px}
+.s-utilise{background:rgba(31,111,235,.12);color:var(--blue2);border:1px solid rgba(31,111,235,.25);padding:2px 8px;border-radius:12px;font-size:10px}
+.s-maintenance{background:rgba(227,179,65,.12);color:var(--amber);border:1px solid rgba(227,179,65,.25);padding:2px 8px;border-radius:12px;font-size:10px}
+.s-hors_service{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.25);padding:2px 8px;border-radius:12px;font-size:10px}
 /* Filtres */
-.filters-bar {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.search-input {
-  flex: 1;
-  min-width: 200px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text);
-}
-.filter-select {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text);
-}
-.filter-tag {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.filter-tag.active {
-  background: var(--blue);
-  color: white;
-  border-color: var(--blue);
-}
-
+.filters-bar{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.search-input{flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none}
+.search-input:focus{border-color:var(--blue)}
+.filter-select{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none}
 /* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.modal {
-  background: var(--bg2);
-  border-radius: 12px;
-  width: 550px;
-  max-width: 95vw;
-}
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-.modal-header h3 { margin: 0; }
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--text2);
-}
-.modal-body { padding: 20px; max-height: 500px; overflow-y: auto; }
-.modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-.form-group { margin-bottom: 16px; }
-.form-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text2);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-}
-.form-input, .form-select, .form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 13px;
-}
-.form-input:focus, .form-select:focus { outline: none; border-color: var(--blue); }
-.form-textarea { resize: vertical; min-height: 80px; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal{background:var(--bg2);border-radius:14px;width:600px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--border);flex-shrink:0}
+.modal-header h3{margin:0;font-size:16px}
+.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);line-height:1}
+.modal-body{padding:22px;overflow-y:auto;flex:1}
+.modal-footer{padding:16px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
+.form-group{margin-bottom:15px}
+.form-label{display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.form-input,.form-select,.form-textarea{width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;outline:none;transition:.15s}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(31,111,235,.12)}
+.form-textarea{resize:vertical;min-height:72px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.inv-preview{background:rgba(163,113,247,.08);border:1px dashed rgba(163,113,247,.35);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--purple);display:flex;align-items:center;gap:8px}
+.inv-preview strong{font-family:monospace;font-size:15px}
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:10px;font-size:14px;color:#fff;font-weight:500;z-index:9999;opacity:0;transform:translateY(10px);transition:.3s;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{background:#2dba6f}.toast.err{background:#f85149}.toast.info{background:var(--blue)}
 </style>
 
 <!-- KPIs -->
 <div class="kpi-grid">
-  <div class="kpi k-blue"><div class="kpi-header"><div class="kpi-label">Total zones</div></div><div class="kpi-value">{{ total_bureaux|default:0 }}</div></div>
-  <div class="kpi k-green"><div class="kpi-header"><div class="kpi-label">Capacité totale</div></div><div class="kpi-value">{{ capacite_totale|default:0 }}</div></div>
-  <div class="kpi k-amber"><div class="kpi-header"><div class="kpi-label">Occupation moy.</div></div><div class="kpi-value">{{ occupation_moy|default:0 }}%</div></div>
-  <div class="kpi k-purple"><div class="kpi-header"><div class="kpi-label">Matériel total</div></div><div class="kpi-value">{{ total_materiel|default:0 }}</div></div>
-  <div class="kpi k-red"><div class="kpi-header"><div class="kpi-label">En maintenance</div></div><div class="kpi-value">{{ materiel_maintenance|default:0 }}</div></div>
+  <div class="kpi k-blue"><div class="kpi-header"><div class="kpi-label">Total zones</div></div><div class="kpi-value">{{ total_bureaux|default:"0" }}</div></div>
+  <div class="kpi k-green"><div class="kpi-header"><div class="kpi-label">Capacité totale</div></div><div class="kpi-value">{{ capacite_totale|default:"0" }}</div></div>
+  <div class="kpi k-amber"><div class="kpi-header"><div class="kpi-label">Occupation moy.</div></div><div class="kpi-value">{{ occupation_moy|default:"0" }}%</div></div>
+  <div class="kpi k-purple"><div class="kpi-header"><div class="kpi-label">Matériel total</div></div><div class="kpi-value">{{ total_materiel|default:"0" }}</div></div>
+  <div class="kpi k-red"><div class="kpi-header"><div class="kpi-label">En maintenance</div></div><div class="kpi-value">{{ materiel_maintenance|default:"0" }}</div></div>
 </div>
 
 <!-- Onglets -->
-<div class="tabs">
+<div class="tabs" id="mainTabs">
   <button class="tab-btn active" onclick="switchTab('zones')">🚪 Zones & Bureaux</button>
   <button class="tab-btn" onclick="switchTab('materiel')">🖥️ Matériel & Équipements</button>
 </div>
 
-<!-- PANEL ZONES -->
+<!-- ═══════════════════════ PANEL ZONES ═══════════════════════ -->
 <div id="panelZones">
   <div class="filters-bar">
     <input type="text" id="searchZone" class="search-input" placeholder="🔍 Rechercher une zone..." oninput="filterZones()">
@@ -331,52 +118,72 @@
       <option value="2">Étage 2</option>
       <option value="3">Étage 3</option>
     </select>
+    <select id="securiteFilter" class="filter-select" onchange="filterZones()">
+      <option value="all">Tous niveaux</option>
+      <option value="public">🟢 Public</option>
+      <option value="standard">🔵 Standard</option>
+      <option value="restreint">🟠 Restreint</option>
+      <option value="critique">🔴 Critique</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Zone</button>
   </div>
+
   <div class="zones-grid" id="zonesGrid">
     {% for bureau in bureaux %}
-    <div class="zone-card" data-id="{{ bureau.id }}" data-name="{{ bureau.nom|lower }}" data-etage="{{ bureau.etage|default:0 }}" onclick="selectZone('{{ bureau.id }}', '{{ bureau.nom }}')">
+    <div class="zone-card"
+         data-id="{{ bureau.id }}"
+         data-name="{{ bureau.nom|lower }}"
+         data-etage="{{ bureau.etage|default:"0" }}"
+         data-securite="{{ bureau.niveau_securite|default:"standard" }}"
+         onclick="selectZone('{{ bureau.id }}', '{{ bureau.nom }}')">
       <div class="zone-header">
         <span class="zone-name">{{ bureau.nom }}</span>
         <span class="zone-code">{{ bureau.code_bureau|default:"—" }}</span>
       </div>
       <div class="zone-body">
-        <div class="zone-capacity"><span>👥 Capacité</span><span><strong>{{ bureau.capacite_max|default:10 }}</strong> pers</span></div>
-        <div class="zone-bar"><div class="zone-fill" style="width: {{ bureau.taux_occupation|default:0 }}%"></div></div>
+        <div class="zone-capacity"><span>👥 Capacité</span><span><strong>{{ bureau.capacite_max|default:"10" }}</strong> pers</span></div>
+        <div class="zone-bar">
+          <div class="zone-fill {% if bureau.taux_occupation >= 70 %}high{% elif bureau.taux_occupation >= 30 %}mid{% else %}low{% endif %}"
+               style="width:{{ bureau.taux_occupation|default:"0" }}%"></div>
+        </div>
         <div class="zone-status">
-          <span>📊 <strong id="pct-{{ bureau.id }}">{{ bureau.taux_occupation|default:0 }}%</strong></span>
-          <span class="zone-badge" id="badge-{{ bureau.id }}">
+          <span>📊 <strong id="pct-{{ bureau.id }}">{{ bureau.taux_occupation|default:"0" }}%</strong></span>
+          <span class="zone-badge {% if bureau.taux_occupation >= 70 %}plein{% elif bureau.taux_occupation >= 30 %}occupe{% else %}disponible{% endif %}" id="badge-{{ bureau.id }}">
             {% if bureau.taux_occupation >= 70 %}🔴 Plein{% elif bureau.taux_occupation >= 30 %}🟡 Occupé{% else %}🟢 Disponible{% endif %}
           </span>
         </div>
-        <div class="zone-capacity" style="margin-top:8px"><span>📍 Étage {{ bureau.etage|default:"RDC" }}</span><span>🔒 {{ bureau.niveau_securite|default:"standard"|title }}</span></div>
+        <div class="zone-capacity" style="margin-top:8px">
+          <span>📍 Étage {{ bureau.etage|default:"RDC" }}</span>
+          <span>🔒 {{ bureau.niveau_securite|default:"standard"|title }}</span>
+        </div>
       </div>
       <div class="zone-footer">
-        <button class="btn btn-edit btn-sm" onclick="event.stopPropagation(); editZone('{{ bureau.id }}')">✏️</button>
+        <button class="btn btn-edit btn-sm" onclick="event.stopPropagation(); editZone('{{ bureau.id }}','{{ bureau.nom }}','{{ bureau.code_bureau|default:"" }}','{{ bureau.etage|default:"0" }}','{{ bureau.capacite_max|default:"10" }}','{{ bureau.niveau_securite|default:"standard" }}','{{ bureau.description|default:"" }}')">✏️ Modifier</button>
+        <a href="{% url 'bureau_detail' bureau.id %}" class="btn btn-ghost btn-sm" onclick="event.stopPropagation()">📊 Détail</a>
         <button class="btn btn-del btn-sm" onclick="event.stopPropagation(); deleteZone('{{ bureau.id }}', '{{ bureau.nom }}')">🗑️</button>
       </div>
     </div>
     {% empty %}
-    <div style="text-align:center; padding:60px; grid-column:1/-1">🚪 Aucune zone<br><button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('zone')">+ Ajouter</button></div>
+    <div style="text-align:center;padding:60px;grid-column:1/-1;color:var(--text2)">
+      🚪 Aucune zone — <button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('zone')">+ Ajouter</button>
+    </div>
     {% endfor %}
   </div>
-</div>
 
-<!-- Détail zone (affiché après clic) -->
-<div id="zoneDetail" class="card" style="margin-top:20px; display:none">
-  <div class="card-head">
-    <span>📊</span>
-    <span class="card-title" id="detailTitle">Détail de la zone</span>
-    <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="closeDetail()">✕ Fermer</button>
-  </div>
-  <div class="card-body">
-    <div id="detailContent"></div>
+  <!-- Détail zone -->
+  <div id="zoneDetail" style="margin-top:20px;display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <span style="font-weight:600" id="detailTitle">Détail</span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="closeDetail()">✕ Fermer</button>
+    </div>
+    <div style="padding:18px" id="detailContent"></div>
   </div>
 </div>
 
-<!-- PANEL MATÉRIEL -->
+<!-- ═══════════════════════ PANEL MATÉRIEL ═══════════════════════ -->
 <div id="panelMateriel" style="display:none">
   <div class="filters-bar">
-    <input type="text" id="searchMateriel" class="search-input" placeholder="🔍 Rechercher un équipement..." oninput="filterMateriel()">
+    <input type="text" id="searchMateriel" class="search-input" placeholder="🔍 Rechercher (nom, inventaire, série...)" oninput="filterMateriel()">
     <select id="categorieFilter" class="filter-select" onchange="filterMateriel()">
       <option value="all">Toutes catégories</option>
       <option value="informatique">💻 Informatique</option>
@@ -384,6 +191,8 @@
       <option value="audiovisuel">📽️ Audiovisuel</option>
       <option value="imprimante">🖨️ Imprimante</option>
       <option value="securite">🔒 Sécurité</option>
+      <option value="vehicule">🚗 Véhicule</option>
+      <option value="laboratoire">🔬 Laboratoire</option>
       <option value="autre">📦 Autre</option>
     </select>
     <select id="statutFilter" class="filter-select" onchange="filterMateriel()">
@@ -393,36 +202,52 @@
       <option value="maintenance">🔧 Maintenance</option>
       <option value="hors_service">❌ Hors service</option>
     </select>
+    <button class="btn btn-primary btn-sm" onclick="openAddModal('materiel')">+ Matériel</button>
   </div>
+
   <div class="materiel-grid" id="materielGrid">
     {% for mat in materiels %}
-    <div class="materiel-card" data-categorie="{{ mat.categorie }}" data-statut="{{ mat.statut }}" data-nom="{{ mat.nom|lower }}">
+    <div class="materiel-card"
+         data-categorie="{{ mat.categorie }}"
+         data-statut="{{ mat.statut }}"
+         data-nom="{{ mat.nom|lower }} {{ mat.num_inventaire|default:''|lower }} {{ mat.numero_serie|default:''|lower }}">
       <div class="materiel-img">
-        {% if mat.photo %}
-          <img src="{{ mat.photo }}" alt="{{ mat.nom }}">
-        {% else %}
-          {% if mat.categorie == 'informatique' %}💻
-          {% elif mat.categorie == 'mobilier' %}🪑
-          {% elif mat.categorie == 'audiovisuel' %}📽️
-          {% elif mat.categorie == 'imprimante' %}🖨️
-          {% elif mat.categorie == 'securite' %}🔒
-          {% else %}📦{% endif %}
-        {% endif %}
+        {% if mat.photo %}<img src="{{ mat.photo }}" alt="{{ mat.nom }}">
+        {% elif mat.categorie == 'informatique' %}💻
+        {% elif mat.categorie == 'mobilier' %}🪑
+        {% elif mat.categorie == 'audiovisuel' %}📽️
+        {% elif mat.categorie == 'imprimante' %}🖨️
+        {% elif mat.categorie == 'securite' %}🔒
+        {% elif mat.categorie == 'vehicule' %}🚗
+        {% elif mat.categorie == 'laboratoire' %}🔬
+        {% else %}📦{% endif %}
       </div>
       <div class="materiel-header">
-        <span class="materiel-name">{{ mat.nom }}</span>
+        <span class="materiel-name" title="{{ mat.nom }}">{{ mat.nom }}</span>
         <span class="materiel-category">{{ mat.categorie|title }}</span>
       </div>
       <div class="materiel-body">
         <div class="materiel-info">
-          {% if mat.numero_serie %}<div>🔢 Série: {{ mat.numero_serie }}</div>{% endif %}
-          {% if mat.zone %}<div>🚪 Zone: {{ mat.zone }}</div>{% endif %}
-          {% if mat.description %}<div>📝 {{ mat.description|truncatechars:80 }}</div>{% endif %}
-          <div>📊 Statut: 
-            {% if mat.statut == 'disponible' %}✅ Disponible
-            {% elif mat.statut == 'utilise' %}🔄 Utilisé
-            {% elif mat.statut == 'maintenance' %}🔧 Maintenance
-            {% else %}❌ Hors service{% endif %}
+          {% if mat.num_inventaire %}
+          <div>🏷️ <span class="inv-badge">{{ mat.num_inventaire }}</span></div>
+          {% endif %}
+          {% if mat.marque or mat.modele %}
+          <div>🏭 {{ mat.marque }} {{ mat.modele }}</div>
+          {% endif %}
+          {% if mat.numero_serie %}
+          <div>🔢 S/N : <code style="font-size:11px">{{ mat.numero_serie }}</code></div>
+          {% endif %}
+          {% if mat.zone %}
+          <div>🚪 Zone : {{ mat.zone }}</div>
+          {% endif %}
+          {% if mat.date_achat %}
+          <div>📅 Achat : {{ mat.date_achat }}</div>
+          {% endif %}
+          <div>📊
+            {% if mat.statut == 'disponible' %}<span class="s-disponible">✅ Disponible</span>
+            {% elif mat.statut == 'utilise' %}<span class="s-utilise">🔄 Utilisé</span>
+            {% elif mat.statut == 'maintenance' %}<span class="s-maintenance">🔧 Maintenance</span>
+            {% else %}<span class="s-hors_service">❌ Hors service</span>{% endif %}
           </div>
         </div>
       </div>
@@ -432,12 +257,14 @@
       </div>
     </div>
     {% empty %}
-    <div style="text-align:center; padding:60px; grid-column:1/-1">🖥️ Aucun matériel<br><button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('materiel')">+ Ajouter</button></div>
+    <div style="text-align:center;padding:60px;grid-column:1/-1;color:var(--text2)">
+      🖥️ Aucun matériel — <button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('materiel')">+ Ajouter</button>
+    </div>
     {% endfor %}
   </div>
 </div>
 
-<!-- MODAL AJOUT/MODIFICATION -->
+<!-- ═══════════════════════ MODAL ═══════════════════════ -->
 <div id="mainModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-header">
@@ -445,262 +272,438 @@
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="tabs" style="margin-bottom:16px">
+      <!-- Onglets modal -->
+      <div class="tabs" style="margin-bottom:18px">
         <button class="tab-btn active" onclick="switchModalTab('zone')" id="modalTabZone">🚪 Zone</button>
         <button class="tab-btn" onclick="switchModalTab('materiel')" id="modalTabMateriel">🖥️ Matériel</button>
       </div>
-      
-      <!-- Formulaire Zone -->
+
+      <!-- ── Formulaire Zone ── -->
       <div id="formZone">
         <form method="post" action="{% url 'bureau_ajouter' %}" id="zoneForm">
           {% csrf_token %}
           <input type="hidden" name="bureau_id" id="zoneId">
-          <div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" name="nom" id="zoneNom" required></div>
-          <div class="form-group"><label class="form-label">Code interne</label><input type="text" class="form-input" name="code_bureau" id="zoneCode"></div>
           <div class="form-row">
-            <div class="form-group"><label class="form-label">Étage</label><input type="number" class="form-input" name="etage" id="zoneEtage" value="0"></div>
-            <div class="form-group"><label class="form-label">Capacité</label><input type="number" class="form-input" name="capacite_max" id="zoneCapacite" value="10"></div>
+            <div class="form-group">
+              <label class="form-label">Nom *</label>
+              <input type="text" class="form-input" name="nom" id="zoneNom" placeholder="ex: Salle de réunion A" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Code interne</label>
+              <input type="text" class="form-input" name="code_bureau" id="zoneCode" placeholder="ex: SR-A-01">
+            </div>
           </div>
-          <div class="form-group"><label class="form-label">Niveau sécurité</label><select class="form-select" name="niveau_securite" id="zoneSecurite"><option value="public">🟢 Public</option><option value="standard" selected>🔵 Standard</option><option value="restreint">🟠 Restreint</option><option value="critique">🔴 Critique</option></select></div>
-          <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" name="description" id="zoneDesc"></textarea></div>
-          <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button><button type="submit" class="btn btn-primary">💾 Enregistrer</button></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Étage</label>
+              <input type="number" class="form-input" name="etage" id="zoneEtage" value="0" min="0" max="20">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Capacité max (personnes)</label>
+              <input type="number" class="form-input" name="capacite_max" id="zoneCapacite" value="10" min="1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Niveau de sécurité</label>
+              <select class="form-select" name="niveau_securite" id="zoneSecurite">
+                <option value="public">🟢 Public</option>
+                <option value="standard" selected>🔵 Standard</option>
+                <option value="restreint">🟠 Restreint</option>
+                <option value="critique">🔴 Critique</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Statut</label>
+              <select class="form-select" name="statut" id="zoneStatut">
+                <option value="actif" selected>✅ Actif</option>
+                <option value="inactif">⏸️ Inactif</option>
+                <option value="maintenance">🔧 Maintenance</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea class="form-textarea" name="description" id="zoneDesc" placeholder="Équipements présents, accès, remarques..."></textarea>
+          </div>
+          <div class="modal-footer" style="padding:0;border:none;margin-top:4px">
+            <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+          </div>
         </form>
       </div>
-      
-      <!-- Formulaire Matériel -->
+
+      <!-- ── Formulaire Matériel ── -->
       <div id="formMateriel" style="display:none">
-        <form id="materielForm">
-          <input type="hidden" id="materielId">
-          <div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="matNom" required></div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Catégorie</label><select class="form-select" id="matCategorie"><option value="informatique">💻 Informatique</option><option value="mobilier">🪑 Mobilier</option><option value="audiovisuel">📽️ Audiovisuel</option><option value="imprimante">🖨️ Imprimante</option><option value="securite">🔒 Sécurité</option><option value="autre">📦 Autre</option></select></div>
-            <div class="form-group"><label class="form-label">N° série</label><input type="text" class="form-input" id="matSerie"></div>
+        <!-- Prévisualisation numéro inventaire -->
+        <div class="inv-preview" id="invPreview">
+          🏷️ Numéro d'inventaire généré automatiquement : <strong id="invPreviewVal">INF-2026-00001</strong>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Nom *</label>
+            <input type="text" class="form-input" id="matNom" placeholder="ex: Ordinateur portable Dell" required>
           </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Statut</label><select class="form-select" id="matStatut"><option value="disponible">✅ Disponible</option><option value="utilise">🔄 Utilisé</option><option value="maintenance">🔧 Maintenance</option><option value="hors_service">❌ Hors service</option></select></div>
-            <div class="form-group"><label class="form-label">Zone assignée</label><select class="form-select" id="matZone"><option value="">— Aucune —</option>{% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}</select></div>
+          <div class="form-group">
+            <label class="form-label">Catégorie</label>
+            <select class="form-select" id="matCategorie" onchange="updateInvPreview()">
+              <option value="informatique">💻 Informatique</option>
+              <option value="mobilier">🪑 Mobilier</option>
+              <option value="audiovisuel">📽️ Audiovisuel</option>
+              <option value="imprimante">🖨️ Imprimante</option>
+              <option value="securite">🔒 Sécurité</option>
+              <option value="vehicule">🚗 Véhicule</option>
+              <option value="laboratoire">🔬 Laboratoire</option>
+              <option value="autre">📦 Autre</option>
+            </select>
           </div>
-          <div class="form-group"><label class="form-label">Photo (URL)</label><input type="text" class="form-input" id="matPhoto" placeholder="https://..."></div>
-          <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="matDesc" rows="2"></textarea></div>
-          <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button><button type="button" class="btn btn-primary" onclick="saveMateriel()">💾 Enregistrer</button></div>
-        </form>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Marque</label>
+            <input type="text" class="form-input" id="matMarque" placeholder="ex: Dell, HP, Samsung...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Modèle</label>
+            <input type="text" class="form-input" id="matModele" placeholder="ex: Latitude 5520">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Numéro de série</label>
+            <input type="text" class="form-input" id="matSerie" placeholder="ex: SN-XXXXXXXXXX">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date d'achat</label>
+            <input type="date" class="form-input" id="matDateAchat">
+          </div>
+        </div>
+        <div class="form-row">
+          
+          <div class="form-group">
+            <label class="form-label">Statut</label>
+            <select class="form-select" id="matStatut">
+              <option value="disponible">✅ Disponible</option>
+              <option value="utilise">🔄 Utilisé</option>
+              <option value="maintenance">🔧 Maintenance</option>
+              <option value="hors_service">❌ Hors service</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Zone assignée</label>
+            <select class="form-select" id="matZone">
+              <option value="">— Aucune —</option>
+              {% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Photo (URL)</label>
+            <input type="text" class="form-input" id="matPhoto" placeholder="https://...">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description / Remarques</label>
+          <textarea class="form-textarea" id="matDesc" rows="2" placeholder="État, accessoires inclus, localisation précise..."></textarea>
+        </div>
+
+        <!-- Champs cachés pour édition -->
+        <input type="hidden" id="materielId">
+        <input type="hidden" id="matInvExistant">
+
+        <div class="modal-footer" style="padding:0;border:none;margin-top:4px">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+          <button type="button" class="btn btn-primary" id="btnSaveMat" onclick="saveMateriel()">💾 Enregistrer</button>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
 <script>
-// Variables
-let currentTab = 'zones';
+const CSRF = '{{ csrf_token }}';
 let materielsData = {{ materiels_json|safe|default:'[]' }};
 let selectedZoneId = null;
+let invCounters = {};
 
-// Changer d'onglet principal
+// ─── Onglets ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
-  currentTab = tab;
-  document.getElementById('panelZones').style.display = tab === 'zones' ? 'block' : 'none';
+  document.getElementById('panelZones').style.display    = tab === 'zones'    ? 'block' : 'none';
   document.getElementById('panelMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  if (tab === 'zones') document.querySelector('.tabs .tab-btn:first-child').classList.add('active');
-  else document.querySelector('.tabs .tab-btn:last-child').classList.add('active');
+  document.querySelectorAll('#mainTabs .tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'zones') || (i === 1 && tab === 'materiel'));
+  });
 }
 
-// Filtres Zones
+// ─── Filtres ─────────────────────────────────────────────────────────────────
 function filterZones() {
-  var search = document.getElementById('searchZone').value.toLowerCase();
-  var etage = document.getElementById('etageFilter').value;
-  document.querySelectorAll('#zonesGrid .zone-card').forEach(card => {
-    var name = card.dataset.name || '';
-    var cardEtage = card.dataset.etage || '0';
-    var matchSearch = name.includes(search);
-    var matchEtage = etage === 'all' || cardEtage === etage;
-    card.style.display = (matchSearch && matchEtage) ? '' : 'none';
+  const q  = document.getElementById('searchZone').value.toLowerCase();
+  const et = document.getElementById('etageFilter').value;
+  const sec= document.getElementById('securiteFilter').value;
+  document.querySelectorAll('#zonesGrid .zone-card').forEach(c => {
+    const ok = c.dataset.name.includes(q)
+      && (et  === 'all' || c.dataset.etage    === et)
+      && (sec === 'all' || c.dataset.securite === sec);
+    c.style.display = ok ? '' : 'none';
   });
 }
 
-// Filtres Matériel
 function filterMateriel() {
-  var search = document.getElementById('searchMateriel').value.toLowerCase();
-  var categorie = document.getElementById('categorieFilter').value;
-  var statut = document.getElementById('statutFilter').value;
-  document.querySelectorAll('#materielGrid .materiel-card').forEach(card => {
-    var name = card.dataset.nom || '';
-    var cat = card.dataset.categorie || '';
-    var st = card.dataset.statut || '';
-    var matchSearch = name.includes(search);
-    var matchCat = categorie === 'all' || cat === categorie;
-    var matchStatut = statut === 'all' || st === statut;
-    card.style.display = (matchSearch && matchCat && matchStatut) ? '' : 'none';
+  const q  = document.getElementById('searchMateriel').value.toLowerCase();
+  const cat= document.getElementById('categorieFilter').value;
+  const st = document.getElementById('statutFilter').value;
+  document.querySelectorAll('#materielGrid .materiel-card').forEach(c => {
+    const ok = c.dataset.nom.includes(q)
+      && (cat === 'all' || c.dataset.categorie === cat)
+      && (st  === 'all' || c.dataset.statut    === st);
+    c.style.display = ok ? '' : 'none';
   });
 }
 
-// Zones
+// ─── Zones ───────────────────────────────────────────────────────────────────
 function selectZone(id, name) {
-  // Retirer la sélection précédente
   if (selectedZoneId) {
-    var prevCard = document.querySelector('.zone-card[data-id="' + selectedZoneId + '"]');
-    if (prevCard) prevCard.classList.remove('selected');
+    document.querySelector(`.zone-card[data-id="${selectedZoneId}"]`)?.classList.remove('selected');
   }
   selectedZoneId = id;
-  var card = document.querySelector('.zone-card[data-id="' + id + '"]');
-  if (card) card.classList.add('selected');
-  
+  document.querySelector(`.zone-card[data-id="${id}"]`)?.classList.add('selected');
   document.getElementById('detailTitle').textContent = name;
   document.getElementById('zoneDetail').style.display = 'block';
-  
-  // Charger les détails de la zone
-  fetch('/api/bureau/' + id + '/stats/')
-    .then(r => r.json())
-    .then(data => {
-      var html = '<div class="g2"><div><strong>📊 Statistiques des 7 derniers jours</strong><div class="bars" style="height:100px;margin-top:12px">';
-      data.acces_par_jour.forEach((v, i) => {
-        html += '<div class="bar-wrap"><div class="bar ok" style="height:' + Math.min(100, v * 2) + 'px"></div><div style="font-size:10px">' + data.dates[i] + '</div></div>';
-      });
-      html += '</div></div><div><strong>📍 Informations</strong><div class="field-grid" style="margin-top:12px">';
-      html += '<div class="field-box"><div class="field-lbl">Capacité</div><div class="field-val">' + (card.querySelector('.zone-capacity strong')?.textContent || '—') + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">Étage</div><div class="field-val">' + (card.querySelector('.zone-capacity:last-child span:first-child')?.textContent?.replace('📍 Étage ', '') || '—') + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">Sécurité</div><div class="field-val">' + (card.querySelector('.zone-capacity:last-child span:last-child')?.textContent?.replace('🔒 ', '') || '—') + '</div></div>';
-      html += '<div class="field-box"><div class="field-lbl">Occupation</div><div class="field-val">' + (card.querySelector('#pct-' + id)?.textContent || '0') + '%</div></div>';
-      html += '</div></div></div>';
-      document.getElementById('detailContent').innerHTML = html;
-    });
+  fetch(`/api/bureau/${id}/stats/`).then(r => r.json()).then(data => {
+    const max = Math.max(...data.acces_par_jour, 1);
+    const bars = data.acces_par_jour.map((v, i) =>
+      `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;width:36px">
+        <div style="width:20px;background:var(--blue);border-radius:4px;height:${Math.round(v/max*80)+4}px;min-height:4px"></div>
+        <span style="font-size:10px;color:var(--text3)">${data.dates[i]}</span>
+       </div>`
+    ).join('');
+    document.getElementById('detailContent').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-weight:600">📊 Accès — 7 derniers jours</div>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:90px">${bars}</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-weight:600">📍 Informations</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <div style="background:var(--bg3);border-radius:8px;padding:10px">
+              <div style="color:var(--text3);font-size:10px">Capacité</div>
+              <div style="font-weight:600;font-size:16px">${data.capacite}</div>
+            </div>
+            <div style="background:var(--bg3);border-radius:8px;padding:10px">
+              <div style="color:var(--text3);font-size:10px">Total accès (7j)</div>
+              <div style="font-weight:600;font-size:16px">${data.acces_par_jour.reduce((a,b)=>a+b,0)}</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).catch(() => {
+    document.getElementById('detailContent').innerHTML = '<p style="color:var(--text3)">Impossible de charger les stats.</p>';
+  });
 }
 
 function closeDetail() {
   document.getElementById('zoneDetail').style.display = 'none';
-  if (selectedZoneId) {
-    var card = document.querySelector('.zone-card[data-id="' + selectedZoneId + '"]');
-    if (card) card.classList.remove('selected');
-    selectedZoneId = null;
-  }
+  document.querySelector(`.zone-card[data-id="${selectedZoneId}"]`)?.classList.remove('selected');
+  selectedZoneId = null;
 }
 
-function editZone(id) {
-  var card = document.querySelector('.zone-card[data-id="' + id + '"]');
-  if (!card) return;
+function editZone(id, nom, code, etage, capacite, securite, desc) {
   document.getElementById('modalTitle').textContent = '✏️ Modifier la zone';
-  document.getElementById('zoneId').value = id;
-  document.getElementById('zoneNom').value = card.querySelector('.zone-name')?.textContent || '';
-  document.getElementById('zoneCode').value = card.querySelector('.zone-code')?.textContent?.replace('—', '') || '';
-  document.getElementById('zoneEtage').value = card.querySelector('.zone-capacity:last-child span:first-child')?.textContent?.replace('📍 Étage ', '').replace('RDC', '0') || '0';
-  document.getElementById('zoneCapacite').value = card.querySelector('.zone-capacity strong')?.textContent || '10';
-  var securiteText = card.querySelector('.zone-capacity:last-child span:last-child')?.textContent?.replace('🔒 ', '').toLowerCase() || 'standard';
-  document.getElementById('zoneSecurite').value = securiteText;
+  document.getElementById('zoneId').value       = id;
+  document.getElementById('zoneNom').value      = nom;
+  document.getElementById('zoneCode').value     = code;
+  document.getElementById('zoneEtage').value    = etage;
+  document.getElementById('zoneCapacite').value = capacite;
+  document.getElementById('zoneSecurite').value = securite;
+  document.getElementById('zoneDesc').value     = desc;
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab('zone');
 }
 
 function deleteZone(id, name) {
-  if (confirm('Supprimer la zone "' + name + '" ?')) {
-    fetch('/bureaux/' + id + '/supprimer/', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
-      .then(() => location.reload());
-  }
+  if (!confirm(`Supprimer la zone "${name}" ? Cette action est irréversible.`)) return;
+  fetch(`/bureaux/${id}/supprimer/`, { method:'POST', headers:{'X-CSRFToken':CSRF} })
+    .then(() => { showToast('Zone supprimée', 'ok'); setTimeout(() => location.reload(), 800); });
 }
 
-// Matériel
+// ─── Matériel ─────────────────────────────────────────────────────────────────
+const prefixes = {
+  informatique:'INF', mobilier:'MOB', audiovisuel:'AUD',
+  imprimante:'IMP', securite:'SEC', vehicule:'VEH', laboratoire:'LAB', autre:'MAT'
+};
+
+function updateInvPreview() {
+  const cat    = document.getElementById('matCategorie').value;
+  const prefix = prefixes[cat] || 'MAT';
+  const annee  = new Date().getFullYear();
+  const existing = materielsData.filter(m => m.categorie === cat).length;
+  const seq    = existing + (invCounters[cat] || 0) + 1;
+  const preview= `${prefix}-${annee}-${String(seq).padStart(5,'0')}`;
+  document.getElementById('invPreviewVal').textContent = preview;
+}
+
 function editMateriel(id) {
-  var materiel = materielsData.find(m => m.id === id);
-  if (!materiel) return;
+  const m = materielsData.find(x => x.id === id);
+  if (!m) return;
   document.getElementById('modalTitle').textContent = '✏️ Modifier le matériel';
-  document.getElementById('materielId').value = id;
-  document.getElementById('matNom').value = materiel.nom || '';
-  document.getElementById('matCategorie').value = materiel.categorie || 'informatique';
-  document.getElementById('matSerie').value = materiel.numero_serie || '';
-  document.getElementById('matStatut').value = materiel.statut || 'disponible';
-  document.getElementById('matZone').value = materiel.zone || '';
-  document.getElementById('matPhoto').value = materiel.photo || '';
-  document.getElementById('matDesc').value = materiel.description || '';
+  document.getElementById('materielId').value    = id;
+  document.getElementById('matInvExistant').value= m.num_inventaire || '';
+  document.getElementById('matNom').value        = m.nom || '';
+  document.getElementById('matCategorie').value  = m.categorie || 'informatique';
+  document.getElementById('matMarque').value     = m.marque || '';
+  document.getElementById('matModele').value     = m.modele || '';
+  document.getElementById('matSerie').value      = m.numero_serie || '';
+  document.getElementById('matDateAchat').value  = m.date_achat || '';
+  document.getElementById('matValeur').value     = m.valeur || '';
+  document.getElementById('matStatut').value     = m.statut || 'disponible';
+  document.getElementById('matZone').value       = m.zone || '';
+  document.getElementById('matPhoto').value      = m.photo || '';
+  document.getElementById('matDesc').value       = m.description || '';
+  const inv = m.num_inventaire;
+  document.getElementById('invPreview').innerHTML = inv
+    ? `🏷️ Numéro d'inventaire : <strong id="invPreviewVal" style="font-family:monospace;font-size:15px">${inv}</strong>`
+    : `🏷️ Numéro d'inventaire non assigné`;
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab('materiel');
 }
 
 function deleteMateriel(id, name) {
-  if (confirm('Supprimer le matériel "' + name + '" ?')) {
-    fetch('/api/materiel/' + id + '/supprimer/', { method: 'DELETE', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
-      .then(() => location.reload());
+  if (!confirm(`Supprimer le matériel "${name}" ? Cette action est irréversible.`)) return;
+  fetch(`/api/materiel/${id}/supprimer/`, { method:'DELETE', headers:{'X-CSRFToken':CSRF} })
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'success') { showToast('Matériel supprimé', 'ok'); setTimeout(() => location.reload(), 800); }
+      else showToast(d.message || 'Erreur', 'err');
+    });
+}
+
+async function saveMateriel() {
+  const nom = document.getElementById('matNom').value.trim();
+  if (!nom) { showToast('Le nom est obligatoire', 'err'); return; }
+
+  const btn = document.getElementById('btnSaveMat');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enregistrement...';
+
+  const data = {
+    id:           document.getElementById('materielId').value,
+    nom,
+    categorie:    document.getElementById('matCategorie').value,
+    marque:       document.getElementById('matMarque').value,
+    modele:       document.getElementById('matModele').value,
+    numero_serie: document.getElementById('matSerie').value,
+    date_achat:   document.getElementById('matDateAchat').value,
+    valeur:       document.getElementById('matValeur').value,
+    statut:       document.getElementById('matStatut').value,
+    zone:         document.getElementById('matZone').value,
+    photo:        document.getElementById('matPhoto').value,
+    description:  document.getElementById('matDesc').value,
+  };
+
+  try {
+    const r = await fetch('/api/materiel/ajouter/', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
+      body: JSON.stringify(data),
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      if (d.num_inventaire && !data.id) {
+        showToast(`✅ ${nom} ajouté — N° ${d.num_inventaire}`, 'ok');
+        const cat = data.categorie;
+        invCounters[cat] = (invCounters[cat] || 0) + 1;
+      } else {
+        showToast(`✅ ${nom} modifié`, 'ok');
+      }
+      closeModal();
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(d.message || 'Erreur lors de l\'enregistrement', 'err');
+    }
+  } catch(e) {
+    showToast('Erreur réseau', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Enregistrer';
   }
 }
 
-function saveMateriel() {
-  var data = {
-    id: document.getElementById('materielId').value,
-    nom: document.getElementById('matNom').value,
-    categorie: document.getElementById('matCategorie').value,
-    numero_serie: document.getElementById('matSerie').value,
-    statut: document.getElementById('matStatut').value,
-    zone: document.getElementById('matZone').value,
-    photo: document.getElementById('matPhoto').value,
-    description: document.getElementById('matDesc').value
-  };
-  if (!data.nom) { alert('Le nom est obligatoire'); return; }
-  fetch('/api/materiel/ajouter/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-    body: JSON.stringify(data)
-  }).then(() => location.reload());
-}
-
-// Modal
+// ─── Modal ────────────────────────────────────────────────────────────────────
 function openAddModal(type) {
-  document.getElementById('modalTitle').textContent = '➕ Ajouter';
-  document.getElementById('zoneId').value = '';
-  document.getElementById('zoneNom').value = '';
-  document.getElementById('zoneCode').value = '';
-  document.getElementById('zoneEtage').value = '0';
+  document.getElementById('modalTitle').textContent = type === 'zone' ? '➕ Nouvelle zone' : '➕ Nouveau matériel';
+  // Reset zone
+  ['zoneId','zoneNom','zoneCode','zoneDesc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('zoneEtage').value    = '0';
   document.getElementById('zoneCapacite').value = '10';
   document.getElementById('zoneSecurite').value = 'standard';
-  document.getElementById('zoneDesc').value = '';
-  document.getElementById('materielId').value = '';
-  document.getElementById('matNom').value = '';
+  document.getElementById('zoneStatut').value   = 'actif';
+  // Reset matériel
+  ['materielId','matNom','matMarque','matModele','matSerie','matDateAchat','matValeur','matPhoto','matDesc','matInvExistant'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   document.getElementById('matCategorie').value = 'informatique';
-  document.getElementById('matSerie').value = '';
-  document.getElementById('matStatut').value = 'disponible';
-  document.getElementById('matZone').value = '';
-  document.getElementById('matPhoto').value = '';
-  document.getElementById('matDesc').value = '';
+  document.getElementById('matStatut').value    = 'disponible';
+  document.getElementById('matZone').value      = '';
+  document.getElementById('invPreview').innerHTML =
+    `🏷️ Numéro d'inventaire généré automatiquement : <strong id="invPreviewVal">INF-${new Date().getFullYear()}-00001</strong>`;
+  updateInvPreview();
+
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab(type || 'zone');
 }
 
 function switchModalTab(tab) {
-  document.getElementById('formZone').style.display = tab === 'zone' ? 'block' : 'none';
+  document.getElementById('formZone').style.display     = tab === 'zone'     ? 'block' : 'none';
   document.getElementById('formMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
-  document.getElementById('modalTabZone').classList.toggle('active', tab === 'zone');
+  document.getElementById('modalTabZone').classList.toggle('active',     tab === 'zone');
   document.getElementById('modalTabMateriel').classList.toggle('active', tab === 'materiel');
+  if (tab === 'materiel') updateInvPreview();
 }
 
 function closeModal() {
   document.getElementById('mainModal').style.display = 'none';
 }
 
+// ─── Occupation temps réel ─────────────────────────────────────────────────────
 function refreshOccupation() {
   fetch('/api/occupation/').then(r => r.json()).then(data => {
     data.bureaux.forEach(b => {
-      var pctEl = document.getElementById('pct-' + b.id);
-      var badgeEl = document.getElementById('badge-' + b.id);
-      var fillEl = document.querySelector('.zone-card[data-id="' + b.id + '"] .zone-fill');
-      if (pctEl) pctEl.textContent = b.taux + '%';
-      if (fillEl) fillEl.style.width = b.taux + '%';
-      if (badgeEl) {
-        if (b.taux >= 70) { badgeEl.innerHTML = '🔴 Plein'; badgeEl.className = 'zone-badge plein'; }
-        else if (b.taux >= 30) { badgeEl.innerHTML = '🟡 Occupé'; badgeEl.className = 'zone-badge occupe'; }
-        else { badgeEl.innerHTML = '🟢 Disponible'; badgeEl.className = 'zone-badge disponible'; }
+      const pct  = document.getElementById('pct-' + b.id);
+      const badge= document.getElementById('badge-' + b.id);
+      const fill = document.querySelector(`.zone-card[data-id="${b.id}"] .zone-fill`);
+      if (pct)   pct.textContent  = b.taux + '%';
+      if (fill) { fill.style.width = b.taux + '%'; fill.className = 'zone-fill ' + (b.taux>=70?'high':b.taux>=30?'mid':'low'); }
+      if (badge) {
+        if (b.taux >= 70) { badge.innerHTML = '🔴 Plein';      badge.className = 'zone-badge plein'; }
+        else if (b.taux >= 30) { badge.innerHTML = '🟡 Occupé'; badge.className = 'zone-badge occupe'; }
+        else { badge.innerHTML = '🟢 Disponible'; badge.className = 'zone-badge disponible'; }
       }
     });
   }).catch(() => {});
 }
 
+// ─── Utilitaires ──────────────────────────────────────────────────────────────
 function refreshPage() { location.reload(); }
+function exportResourcesCSV() { window.location.href = '/api/export/ressources/csv/'; }
 
-function exportResourcesCSV() {
-  window.location.href = '/api/export/ressources/csv/';
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3500);
 }
 
-// Initialisation
+// ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
   refreshOccupation();
   setInterval(refreshOccupation, 30000);
+  updateInvPreview();
 });
 </script>
-
 {% endblock %}

@@ -1,0 +1,180 @@
+{# dashboard/horaires_activite.html #}
+{% extends "base.html" %}
+{% block title %}Plages horaires d'activité - SIGR-CA{% endblock %}
+
+{% block content %}
+<style>
+.schedule-card {
+  background: var(--bg2);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.schedule-header {
+  padding: 16px 20px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.day-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border2);
+}
+.day-name {
+  width: 100px;
+  font-weight: 600;
+}
+.time-range {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-left: 20px;
+}
+.time-input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+}
+.exception-item {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+</style>
+
+<div class="g2">
+  <!-- Configuration globale -->
+  <div class="schedule-card">
+    <div class="schedule-header">
+      <h3 style="margin: 0;">🌍 Configuration globale</h3>
+      <button class="btn btn-primary btn-sm" onclick="saveGlobalConfig()">💾 Sauvegarder</button>
+    </div>
+    <div>
+      {% for jour in jours %}
+      <div class="day-row">
+        <div class="day-name">{{ jours_labels[jour] }}</div>
+        <label class="checkbox-label" style="margin-right: 20px;">
+          <input type="checkbox" class="day-enabled" data-day="{{ jour }}"
+                 {% if config.default[jour].enabled %}checked{% endif %}> Actif
+        </label>
+        <div class="time-range">
+          <span>De</span>
+          <input type="time" class="time-input day-start" data-day="{{ jour }}"
+                 value="{{ config.default[jour].start }}">
+          <span>à</span>
+          <input type="time" class="time-input day-end" data-day="{{ jour }}"
+                 value="{{ config.default[jour].end }}">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Périodes exceptionnelles -->
+  <div class="schedule-card">
+    <div class="schedule-header">
+      <h3 style="margin: 0;">📅 Périodes exceptionnelles</h3>
+      <button class="btn btn-primary btn-sm" onclick="addException()">+ Ajouter</button>
+    </div>
+    <div id="exceptionsList">
+      {% for exc in config.exceptions %}
+      <div class="exception-item" data-id="{{ exc.id }}">
+        <div>
+          <strong>{{ exc.titre }}</strong><br>
+          <small>Du {{ exc.date_debut }} au {{ exc.date_fin }}</small>
+          <span style="margin-left: 12px;">🕐 {{ exc.horaire_debut }} → {{ exc.horaire_fin }}</span>
+        </div>
+        <button class="btn btn-del btn-sm" onclick="removeException(this)">🗑️</button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+let exceptions = {{ config.exceptions|default:[]|safe }};
+
+function saveGlobalConfig() {
+  const defaultConfig = {};
+  const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  
+  days.forEach(day => {
+    defaultConfig[day] = {
+      enabled: document.querySelector(`.day-enabled[data-day="${day}"]`).checked,
+      start: document.querySelector(`.day-start[data-day="${day}"]`).value,
+      end: document.querySelector(`.day-end[data-day="${day}"]`).value
+    };
+  });
+  
+  fetch('/api/horaires/save/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify({ default: defaultConfig, exceptions: exceptions })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert('✅ Configuration sauvegardée');
+    } else {
+      alert('❌ Erreur: ' + data.message);
+    }
+  });
+}
+
+function addException() {
+  const titre = prompt('Titre de la période exceptionnelle (ex: "Fermeture annuelle"):');
+  if (!titre) return;
+  
+  const dateDebut = prompt('Date de début (JJ/MM/AAAA):');
+  const dateFin = prompt('Date de fin (JJ/MM/AAAA):');
+  const horaireDebut = prompt('Horaire de début (HH:MM):', '08:00');
+  const horaireFin = prompt('Horaire de fin (HH:MM):', '18:00');
+  
+  const newException = {
+    id: Date.now(),
+    titre: titre,
+    date_debut: dateDebut,
+    date_fin: dateFin,
+    horaire_debut: horaireDebut,
+    horaire_fin: horaireFin
+  };
+  
+  exceptions.push(newException);
+  renderExceptions();
+  saveGlobalConfig();
+}
+
+function removeException(btn) {
+  const item = btn.closest('.exception-item');
+  const id = parseInt(item.dataset.id);
+  exceptions = exceptions.filter(e => e.id !== id);
+  renderExceptions();
+  saveGlobalConfig();
+}
+
+function renderExceptions() {
+  const container = document.getElementById('exceptionsList');
+  container.innerHTML = exceptions.map(e => `
+    <div class="exception-item" data-id="${e.id}">
+      <div>
+        <strong>${e.titre}</strong><br>
+        <small>Du ${e.date_debut} au ${e.date_fin}</small>
+        <span style="margin-left: 12px;">🕐 ${e.horaire_debut} → ${e.horaire_fin}</span>
+      </div>
+      <button class="btn btn-del btn-sm" onclick="removeException(this)">🗑️</button>
+    </div>
+  `).join('');
+}
+</script>
+{% endblock %}

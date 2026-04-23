@@ -1,181 +1,424 @@
 {% extends "base.html" %}
-{% block title %}{{ employe.nom }} {{ employe.prenom }}{% endblock %}
+{% block title %}{{ employe.nom }} {{ employe.prenom }} · Fiche employé{% endblock %}
 {% block nav_employes %}active{% endblock %}
 {% block page_title %}Fiche employé{% endblock %}
 {% block page_sub %}{{ employe.nom }} {{ employe.prenom }}{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-edit btn-sm" onclick="openEditModalInDetail('{{ employe.id }}')">✏️ Modifier</button><a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
-<button class="btn btn-info btn-sm" onclick="exportEmployeeHistory()" style="background:var(--blue3);color:var(--blue2)">⬇️ Exporter historique</button>
+<div style="display:flex; gap:8px; align-items:center;">
+  <a href="{% url 'employe_list' %}" class="topbtn topbtn-ghost">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    Retour
+  </a>
+  <a href="{% url 'employe_modifier' employe.id %}" class="topbtn topbtn-accent">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    Modifier le profil
+  </a>
+  <button class="topbtn topbtn-ghost" onclick="exportEmployeeHistory()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Exporter historique
+  </button>
+</div>
 {% endblock %}
 
 {% block content %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-<div class="card">
-  <div class="card-body">
-    <div class="profile-hdr">
-      <div class="profile-av" style="background:{% if employe.statut == 'actif' %}#1f6feb{% else %}#484f58{% endif %}; width:110px; height:110px; font-size:36px;">
-        {{ employe.nom|slice:":1"|upper }}{{ employe.prenom|slice:":1"|upper }}
+  :root {
+    --accent: #6366f1;
+    --accent-light: rgba(99,102,241,0.12);
+    --accent-glow: rgba(99,102,241,0.25);
+    --green-val: #10b981; --green-bg: rgba(16,185,129,0.1);
+    --red-val: #f43f5e;   --red-bg: rgba(244,63,94,0.1);
+    --amber-val: #f59e0b; --amber-bg: rgba(245,158,11,0.1);
+    --cyan-val: #06b6d4;  --cyan-bg: rgba(6,182,212,0.1);
+    --purple-val: #a855f7;--purple-bg: rgba(168,85,247,0.1);
+    --font-sans: 'DM Sans', var(--font, sans-serif);
+    --font-mono: 'JetBrains Mono', var(--mono, monospace);
+    --radius-lg: 14px; --radius-md: 10px; --radius-sm: 6px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.15);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.2);
+  }
+
+  .topbtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: var(--radius-md);
+    font-size: 12.5px; font-weight: 600;
+    cursor: pointer; border: 1px solid transparent;
+    transition: all 0.15s; text-decoration: none; font-family: var(--font-sans);
+  }
+  .topbtn-ghost { background: var(--bg2); color: var(--text2); border-color: var(--border); }
+  .topbtn-ghost:hover { background: var(--bg3); color: var(--text); }
+  .topbtn-accent { background: var(--accent); color: #fff; }
+  .topbtn-accent:hover { filter: brightness(1.1); box-shadow: 0 4px 12px var(--accent-glow); }
+
+  /* ── Profile hero card ── */
+  .profile-hero {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .profile-hero-banner {
+    height: 90px;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 40%, #a855f7 100%);
+    position: relative;
+  }
+  .profile-hero-banner::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='30' cy='30' r='20' fill='none' stroke='rgba(255,255,255,0.07)' stroke-width='1'/%3E%3C/svg%3E") repeat;
+  }
+  .profile-hero-body { padding: 0 28px 28px; }
+  .profile-av-wrap {
+    display: flex; align-items: flex-end; gap: 20px;
+    margin-top: -40px; margin-bottom: 20px;
+  }
+  .profile-av-outer {
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    border: 4px solid var(--bg2);
+    background: var(--bg3);
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-md);
+    position: relative;
+  }
+  .profile-av-img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .profile-av-initials {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 700; color: #fff;
+    background: {% if employe.statut == 'actif' %}linear-gradient(135deg,#6366f1,#8b5cf6){% else %}#6b7280{% endif %};
+  }
+  .profile-name { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .profile-role { font-size: 14px; color: var(--text2); margin-top: 4px; }
+  .profile-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .pill-indigo  { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(99,102,241,.25); }
+  .pill-green   { background: var(--green-bg); color: var(--green-val); border: 1px solid rgba(16,185,129,.25); }
+  .pill-gray    { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+  .pill-purple  { background: var(--purple-bg); color: var(--purple-val); border: 1px solid rgba(168,85,247,.25); }
+  .pill-amber   { background: var(--amber-bg); color: var(--amber-val); border: 1px solid rgba(245,158,11,.25); }
+  .pill-red     { background: var(--red-bg); color: var(--red-val); border: 1px solid rgba(244,63,94,.25); }
+  .pill-cyan    { background: var(--cyan-bg); color: var(--cyan-val); border: 1px solid rgba(6,182,212,.25); }
+
+  /* ── Info field grid ── */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-top: 20px;
+  }
+  .info-cell {
+    background: var(--bg2);
+    padding: 16px 18px;
+  }
+  .info-lbl { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); margin-bottom: 5px; }
+  .info-val { font-size: 13.5px; font-weight: 500; color: var(--text); }
+
+  /* ── KPI row ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 20px 0; }
+  .mini-kpi {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 16px;
+    position: relative; overflow: hidden;
+    transition: transform 0.15s;
+  }
+  .mini-kpi:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .mini-kpi::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 3px 3px 0 0;
+  }
+  .mk-i::before { background: linear-gradient(90deg,#6366f1,#8b5cf6); }
+  .mk-g::before { background: linear-gradient(90deg,#10b981,#34d399); }
+  .mk-r::before { background: linear-gradient(90deg,#f43f5e,#fb7185); }
+  .mk-a::before { background: linear-gradient(90deg,#f59e0b,#fcd34d); }
+  .mk-p::before { background: linear-gradient(90deg,#a855f7,#c084fc); }
+  .mini-kpi-icon { font-size: 18px; margin-bottom: 8px; }
+  .mini-kpi-val { font-size: 22px; font-weight: 700; line-height: 1; }
+  .mk-i .mini-kpi-val { color: var(--accent); }
+  .mk-g .mini-kpi-val { color: var(--green-val); }
+  .mk-r .mini-kpi-val { color: var(--red-val); }
+  .mk-a .mini-kpi-val { color: var(--amber-val); }
+  .mk-p .mini-kpi-val { color: var(--purple-val); }
+  .mini-kpi-lbl { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .prog-track { height: 4px; background: var(--bg3); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .prog-fill  { height: 100%; border-radius: 4px; }
+
+  /* ── Content card ── */
+  .c-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .c-card + .c-card { margin-top: 16px; }
+  .c-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .c-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .c-sub { margin-left: auto; font-size: 11px; color: var(--text3); background: var(--bg3); padding: 2px 8px; border-radius: 20px; border: 1px solid var(--border); }
+  .c-body { padding: 20px; }
+
+  /* ── Leave balances ── */
+  .leave-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+  .leave-box {
+    text-align: center; padding: 20px;
+    background: var(--bg3); border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+  }
+  .leave-num { font-size: 36px; font-weight: 300; line-height: 1; }
+  .leave-label { font-size: 12px; color: var(--text2); margin-top: 6px; }
+
+  /* ── Zone progress bars ── */
+  .zone-item { margin-bottom: 16px; }
+  .zone-item:last-child { margin-bottom: 0; }
+  .zone-top { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12.5px; }
+  .zone-name { color: var(--text); font-weight: 500; }
+  .zone-stat { color: var(--text2); font-family: var(--font-mono); font-size: 11px; }
+
+  /* ── Work cycle day pills ── */
+  .day-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 50%;
+    font-size: 11px; font-weight: 600;
+    background: var(--bg3); color: var(--text3); border: 2px solid var(--border);
+  }
+  .day-pill.active { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+
+  /* ── Access log table ── */
+  .log-tbl { width: 100%; border-collapse: collapse; }
+  .log-tbl th {
+    padding: 9px 14px; font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3);
+    background: var(--bg3); border-bottom: 1px solid var(--border); text-align: left;
+  }
+  .log-tbl td {
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    font-size: 12.5px; color: var(--text); vertical-align: middle;
+  }
+  .log-tbl tbody tr:last-child td { border-bottom: none; }
+  .log-tbl tbody tr:hover { background: rgba(99,102,241,0.03); }
+  .log-filter-btns { display: flex; gap: 4px; margin-left: auto; }
+  .lf-btn {
+    padding: 5px 12px; border-radius: 20px;
+    background: var(--bg3); border: 1px solid var(--border);
+    cursor: pointer; font-size: 11px; font-weight: 500;
+    color: var(--text2); transition: all 0.15s; font-family: var(--font-sans);
+  }
+  .lf-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .status-ok { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: var(--radius-sm); background: var(--green-bg); color: var(--green-val); font-size: 10.5px; font-weight: 700; font-family: var(--font-mono); border: 1px solid rgba(16,185,129,.2); }
+  .status-no { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: var(--radius-sm); background: var(--red-bg); color: var(--red-val); font-size: 10.5px; font-weight: 700; font-family: var(--font-mono); border: 1px solid rgba(244,63,94,.2); }
+
+  /* ── Alert box ── */
+  .alert-archived {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-radius: var(--radius-md);
+    background: var(--amber-bg); border: 1px solid rgba(245,158,11,.25);
+    color: var(--amber-val); font-size: 13px;
+    margin-top: 20px;
+  }
+
+  /* ── Two-column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+
+<!-- ══ Profile hero ══ -->
+<div class="profile-hero">
+  <div class="profile-hero-banner"></div>
+  <div class="profile-hero-body">
+    <div class="profile-av-wrap">
+      <div class="profile-av-outer">
+        {% if employe.photo_url %}
+          <img class="profile-av-img" src="{{ employe.photo_url }}" alt="{{ employe.nom }}">
+        {% else %}
+          <div class="profile-av-initials">{{ employe.nom|slice:":1"|upper }}{{ employe.prenom|slice:":1"|upper }}</div>
+        {% endif %}
       </div>
-
-      <div style="flex:1">
-        <div style="font-size:24px; font-weight:700">{{ employe.nom }} {{ employe.prenom }}</div>
-        <div style="font-size:15px; color:var(--text2); margin-top:6px">
-          {{ employe.poste|default:"—"}} • {{ employe.departement|default:"—"}}
-        </div>
-
-        <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap">
-          <span class="badge b-blue">🪪 {{ employe.badge_id|default:"Pas de badge" }}</span>
-          {% if employe.statut == 'actif' %}
-            <span class="badge b-green">● Actif</span>
-          {% else %}
-            <span class="badge b-gray">● Archivé</span>
-          {% endif %}
-          <span class="badge b-purple">{{ employe.niveau|default:"Staff" }}</span>
-          <span class="badge b-amber">📞 {{ employe.telephone|default:"—" }}</span>
-        </div>
-      </div>
-
-      <div>
-        <a href="{% url 'employe_modifier' employe.id %}" class="btn btn-primary btn-sm">Modifier le profil</a>
+      <div style="padding-bottom:6px;">
+        <div class="profile-name">{{ employe.nom }} {{ employe.prenom }}</div>
+        <div class="profile-role">{{ employe.poste|default:"—" }} · {{ employe.departement|default:"—" }}</div>
       </div>
     </div>
 
-    <!-- Informations générales -->
-    <div class="field-grid" style="margin:28px 0">
-      <div class="field-box"><div class="field-lbl">Email</div><div class="field-val">{{ employe.email|default:"—" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Téléphone</div><div class="field-val">{{ employe.telephone|default:"—" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Date d'embauche</div><div class="field-val">{{ employe.date_embauche|date:"d/m/Y"|default:"—" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Type de contrat</div><div class="field-val">{{ employe.type_contrat|default:"CDI" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Manager</div><div class="field-val">{{ employe.manager|default:"—" }}</div></div>
-      <div class="field-box"><div class="field-lbl">Horaires hebdomadaires</div><div class="field-val">{{ employe.heures_hebdo|default:"35" }}h</div></div>
+    <div class="profile-pills">
+      <span class="pill pill-indigo">🪪 {{ employe.badge_id|default:"Pas de badge" }}</span>
+      {% if employe.statut == 'actif' %}
+        <span class="pill pill-green"><span style="font-size:8px;">●</span> Actif</span>
+      {% else %}
+        <span class="pill pill-gray"><span style="font-size:8px;">●</span> Archivé</span>
+      {% endif %}
+      {% if employe.niveau == 'Admin' %}<span class="pill pill-purple">👑 Admin</span>
+      {% elif employe.niveau == 'Maintenance' %}<span class="pill pill-amber">🔧 Maintenance</span>
+      {% elif employe.niveau == 'Visiteur' %}<span class="pill pill-gray">🚪 Visiteur</span>
+      {% else %}<span class="pill pill-indigo">👤 Staff</span>{% endif %}
+      {% if employe.telephone %}<span class="pill pill-amber">📞 {{ employe.telephone }}</span>{% endif %}
+    </div>
+
+    <div class="info-grid">
+      <div class="info-cell"><div class="info-lbl">Email</div><div class="info-val">{{ employe.email|default:"—" }}</div></div>
+      <div class="info-cell"><div class="info-lbl">Téléphone</div><div class="info-val">{{ employe.telephone|default:"—" }}</div></div>
+      <div class="info-cell"><div class="info-lbl">Date d'embauche</div><div class="info-val">{{ employe.date_embauche|date:"d/m/Y"|default:"—" }}</div></div>
+      <div class="info-cell"><div class="info-lbl">Type de contrat</div><div class="info-val">{{ employe.type_contrat|default:"CDI" }}</div></div>
+      <div class="info-cell"><div class="info-lbl">Manager</div><div class="info-val">{{ employe.manager|default:"—" }}</div></div>
+      <div class="info-cell"><div class="info-lbl">Heures hebdo</div><div class="info-val">{{ employe.heures_hebdo|default:"35" }}h / semaine</div></div>
     </div>
 
     {% if employe.statut != 'actif' %}
-    <div class="alert-box danger">
-      <div class="alert-ico">⚠️</div>
-      <div class="alert-text">Cet employé est archivé. Son historique reste consultable.</div>
+    <div class="alert-archived">
+      ⚠️ Cet employé est archivé. Son historique d'accès reste consultable en lecture seule.
     </div>
     {% endif %}
   </div>
 </div>
 
-<!-- KPI Employé -->
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px; margin:24px 0">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">🔑</div></div>
-    <div class="kpi-value">{{ total_acces }}</div>
+<!-- ══ KPI row ══ -->
+<div class="kpi-row">
+  <div class="mini-kpi mk-i">
+    <div class="mini-kpi-icon">🔑</div>
+    <div class="mini-kpi-val">{{ total_acces }}</div>
+    <div class="mini-kpi-lbl">Total accès</div>
   </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Taux succès</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ taux_succes }}%</div>
-    <div class="progress-bar" style="margin-top:8px; height:4px">
-      <div class="progress-fill" style="width: {{ taux_succes }}%; background:{% if taux_succes >= 80 %}#2dba6f{% elif taux_succes >= 50 %}#e3b341{% else %}#f85149{% endif %}"></div>
+  <div class="mini-kpi mk-g">
+    <div class="mini-kpi-icon">✅</div>
+    <div class="mini-kpi-val">{{ taux_succes }}%</div>
+    <div class="mini-kpi-lbl">Taux de succès</div>
+    <div class="prog-track">
+      <div class="prog-fill" style="width:{{ taux_succes }}%; background:{% if taux_succes >= 80 %}var(--green-val){% elif taux_succes >= 50 %}var(--amber-val){% else %}var(--red-val){% endif %};"></div>
     </div>
   </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
-    <div class="kpi-value">{{ acces_refuses }}</div>
+  <div class="mini-kpi mk-r">
+    <div class="mini-kpi-icon">🚫</div>
+    <div class="mini-kpi-val">{{ acces_refuses }}</div>
+    <div class="mini-kpi-lbl">Accès refusés</div>
   </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Dernier accès</div><div class="kpi-icon">🕐</div></div>
-    <div class="kpi-value" style="font-size:15px">
-      {% if dernier_acces %}{{ dernier_acces.timestamp|date:"d/m H:i" }}{% else %}Jamais{% endif %}
-    </div>
+  <div class="mini-kpi mk-a">
+    <div class="mini-kpi-icon">🕐</div>
+    <div class="mini-kpi-val" style="font-size:15px;">{% if dernier_acces %}{{ dernier_acces.timestamp|date:"d/m H:i" }}{% else %}Jamais{% endif %}</div>
+    <div class="mini-kpi-lbl">Dernier accès</div>
   </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Cycle travail</div><div class="kpi-icon">⏰</div></div>
-    <div class="kpi-value" style="font-size:15px">{{ employe.horaire|default:"08:00-17:00" }}</div>
+  <div class="mini-kpi mk-p">
+    <div class="mini-kpi-icon">⏰</div>
+    <div class="mini-kpi-val" style="font-size:15px;">{{ employe.horaire|default:"08:00-17:00" }}</div>
+    <div class="mini-kpi-lbl">Horaires</div>
   </div>
 </div>
 
-<!-- Planning Absences -->
-<div class="card" style="margin-top:24px">
-  <div class="card-head">
+<!-- ══ Leave balances ══ -->
+<div class="c-card">
+  <div class="c-head">
     <span>📅</span>
-    <span class="card-title">Planning absences & congés</span>
+    <span class="c-title">Soldes de congés & absences</span>
   </div>
-  <div class="card-body">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
-      <div style="text-align:center; padding:15px; background:var(--bg3); border-radius:10px">
-        <div style="font-size:32px;font-weight:300;color:var(--green)">{{ employe.solde_conges|default:25 }}</div>
-        <div style="color:var(--text2);margin-top:4px">Congés payés</div>
+  <div class="c-body">
+    <div class="leave-grid">
+      <div class="leave-box">
+        <div class="leave-num" style="color:var(--green-val);">{{ employe.solde_conges|default:25 }}</div>
+        <div class="leave-label">Congés payés (jours)</div>
       </div>
-      <div style="text-align:center; padding:15px; background:var(--bg3); border-radius:10px">
-        <div style="font-size:32px;font-weight:300;color:var(--amber)">{{ employe.solde_rtt|default:10 }}</div>
-        <div style="color:var(--text2);margin-top:4px">RTT</div>
+      <div class="leave-box">
+        <div class="leave-num" style="color:var(--amber-val);">{{ employe.solde_rtt|default:10 }}</div>
+        <div class="leave-label">RTT (jours)</div>
       </div>
-      <div style="text-align:center; padding:15px; background:var(--bg3); border-radius:10px">
-        <div style="font-size:32px;font-weight:300;color:var(--red)">{{ employe.solde_maladie|default:0 }}</div>
-        <div style="color:var(--text2);margin-top:4px">Maladie / CET</div>
+      <div class="leave-box">
+        <div class="leave-num" style="color:var(--red-val);">{{ employe.solde_maladie|default:0 }}</div>
+        <div class="leave-label">Maladie / CET (jours)</div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="g2">
-  <!-- Zones fréquentées -->
-  <div class="card">
-    <div class="card-head"><span>🚪</span><span class="card-title">Zones les plus fréquentées</span></div>
-    <div class="card-body">
+<!-- ══ Two-column: Zones & Work cycle ══ -->
+<div class="two-col">
+  <div class="c-card" style="margin-top:0;">
+    <div class="c-head">
+      <span>🚪</span>
+      <span class="c-title">Zones les plus fréquentées</span>
+    </div>
+    <div class="c-body">
       {% for b in bureaux_frequentes %}
-      <div style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span>{{ b.nom }}</span>
-          <span style="font-family:var(--mono)">{{ b.count }} accès ({{ b.pct }}%)</span>
+      <div class="zone-item">
+        <div class="zone-top">
+          <span class="zone-name">{{ b.nom }}</span>
+          <span class="zone-stat">{{ b.count }} accès · {{ b.pct }}%</span>
         </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width:{{ b.pct }}%"></div>
+        <div class="prog-track">
+          <div class="prog-fill" style="width:{{ b.pct }}%; background:var(--accent);"></div>
         </div>
       </div>
       {% empty %}
-      <p style="text-align:center;color:var(--text3);padding:30px">Aucune donnée disponible</p>
+      <p style="text-align:center; color:var(--text3); padding:30px 0; font-size:13px;">Aucune donnée disponible</p>
       {% endfor %}
     </div>
   </div>
 
-  <!-- Cycle de travail -->
-  <div class="card">
-    <div class="card-head"><span>⏰</span><span class="card-title">Cycle de travail</span></div>
-    <div class="card-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+  <div class="c-card" style="margin-top:0;">
+    <div class="c-head">
+      <span>⏰</span>
+      <span class="c-title">Cycle de travail</span>
+    </div>
+    <div class="c-body">
+      <div style="margin-bottom:20px;">
+        <div style="font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:8px;">Jours travaillés</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          {% with all_days="Lun,Mar,Mer,Jeu,Ven,Sam,Dim" %}
+          {% for jour in all_days.split %}
+            <span class="day-pill {% if jour in employe.jours_travailles %}active{% endif %}">{{ jour }}</span>
+          {% endfor %}
+          {% endwith %}
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
         <div>
-          <strong style="color:var(--text2)">Horaires quotidiens</strong><br>
-          <div style="font-size:18px;margin:12px 0">{{ employe.horaire|default:"08:00 - 17:00" }}</div>
-          <strong style="color:var(--text2)">Jours travaillés</strong><br>
-          <div style="margin-top:8px">
-            {% for jour in employe.jours_travailles %}
-              <span class="badge b-blue" style="margin-right:4px">{{ jour }}</span>
-            {% empty %}
-              <span class="badge b-gray">Lun-Ven</span>
-            {% endfor %}
-          </div>
+          <div style="font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:6px;">Horaires</div>
+          <div style="font-size:15px; font-weight:600; color:var(--text);">{{ employe.horaire|default:"08:00 - 17:00" }}</div>
         </div>
         <div>
-          <strong style="color:var(--text2)">Type de contrat</strong><br>
-          <div style="font-size:16px;margin:10px 0">{{ employe.type_contrat|default:"CDI" }}</div>
-          <strong style="color:var(--text2)">Heures hebdomadaires</strong><br>
-          <div style="font-size:22px;color:var(--green)">{{ employe.heures_hebdo|default:"35" }}h</div>
+          <div style="font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:6px;">Contrat</div>
+          <span class="pill pill-indigo">{{ employe.type_contrat|default:"CDI" }}</span>
+        </div>
+        <div>
+          <div style="font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:6px;">Heures / semaine</div>
+          <div style="font-size:15px; font-weight:600; color:var(--text);">{{ employe.heures_hebdo|default:35 }}h</div>
+        </div>
+        <div>
+          <div style="font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:6px;">Manager</div>
+          <div style="font-size:13px; color:var(--text);">{{ employe.manager|default:"—" }}</div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Historique complet -->
-<div class="card" style="margin-top:24px">
-  <div class="card-head">
+<!-- ══ Access log ══ -->
+<div class="c-card" style="margin-top:16px;">
+  <div class="c-head">
     <span>📋</span>
-    <span class="card-title">Historique des accès</span>
-    <span class="card-sub">{{ total_acces }} passages</span>
-    <div style="margin-left:auto; display:flex; gap:8px">
-      <button class="btn btn-sm btn-ghost" onclick="filterLogs('all')">Tous</button>
-      <button class="btn btn-sm btn-ghost" onclick="filterLogs('autorise')">Autorisés</button>
-      <button class="btn btn-sm btn-ghost" onclick="filterLogs('refuse')">Refusés</button>
+    <span class="c-title">Historique des accès</span>
+    <span class="c-sub">{{ total_acces }} passages</span>
+    <div class="log-filter-btns">
+      <button class="lf-btn active" onclick="filterLogs('all',this)">Tous</button>
+      <button class="lf-btn" onclick="filterLogs('autorise',this)">Autorisés</button>
+      <button class="lf-btn" onclick="filterLogs('refuse',this)">Refusés</button>
     </div>
   </div>
-  <div style="overflow-x:auto;max-height:500px;overflow-y:auto">
-    <table class="tbl">
+  <div style="overflow-x:auto; max-height:500px; overflow-y:auto;">
+    <table class="log-tbl">
       <thead>
         <tr>
           <th>Date & Heure</th>
@@ -187,17 +430,19 @@
       <tbody id="logs-body">
         {% for a in acces %}
         <tr class="log-row" data-resultat="{{ a.resultat|lower }}">
-          <td style="font-family:var(--mono)">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td style="font-family:var(--font-mono); font-size:11.5px;">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
           <td>{{ a.bureau_nom|default:"Inconnu" }}</td>
-          <td><span style="font-family:var(--mono)">{{ a.type_acces|default:"RFID" }}</span></td>
+          <td><span style="font-family:var(--font-mono); font-size:11px; color:var(--text2);">{{ a.type_acces|default:"RFID" }}</span></td>
           <td>
             {% if a.resultat == 'AUTORISE' %}
-              <div class="feed-status fs-ok">AUTORISÉ</div>
+              <span class="status-ok">✓ AUTORISÉ</span>
             {% else %}
-              <div class="feed-status fs-no">REFUSÉ</div>
+              <span class="status-no">✕ REFUSÉ</span>
             {% endif %}
           </td>
         </tr>
+        {% empty %}
+        <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text3);">Aucun accès enregistré</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -205,109 +450,26 @@
 </div>
 
 <script>
-  function openEditModalInDetail(employeId) {
-    // Récupérer les données actuelles de l'employé depuis la page
-    const nom = "{{ employe.nom|escapejs }}";
-    const prenom = "{{ employe.prenom|escapejs }}";
-    const email = "{{ employe.email|default:''|escapejs }}";
-    const telephone = "{{ employe.telephone|default:''|escapejs }}";
-    const badge_id = "{{ employe.badge_id|default:''|escapejs }}";
-    const departement = "{{ employe.departement|default:''|escapejs }}";
-    const poste = "{{ employe.poste|default:''|escapejs }}";
-    const niveau = "{{ employe.niveau|default:'Staff'|escapejs }}";
-    const statut = "{{ employe.statut|default:'actif'|escapejs }}";
-    
-    const modalContent = `
-        <div class="modal-title">✏️ Modifier l'employé</div>
-        <div class="modal-sub">${prenom} ${nom}</div>
-        <form method="post" action="/employes/${employeId}/modifier/" id="editEmployeeForm">
-            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                <div class="form-row"><label class="form-label">Nom *</label><input class="form-input" name="nom" value="${nom}" required></div>
-                <div class="form-row"><label class="form-label">Prénom</label><input class="form-input" name="prenom" value="${prenom}"></div>
-            </div>
-            <div class="form-row"><label class="form-label">Badge RFID *</label><input class="form-input" name="badge_id" value="${badge_id}" required></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                <div class="form-row"><label class="form-label">Email</label><input class="form-input" name="email" value="${email}"></div>
-                <div class="form-row"><label class="form-label">Téléphone</label><input class="form-input" name="telephone" value="${telephone}"></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                <div class="form-row"><label class="form-label">Département</label>
-                    <select class="form-select" name="departement">
-                        <option value="">Sélectionner</option>
-                        <option value="Informatique" ${departement === 'Informatique' ? 'selected' : ''}>Informatique</option>
-                        <option value="Ressources Humaines" ${departement === 'Ressources Humaines' ? 'selected' : ''}>Ressources Humaines</option>
-                        <option value="Finance" ${departement === 'Finance' ? 'selected' : ''}>Finance</option>
-                        <option value="Production" ${departement === 'Production' ? 'selected' : ''}>Production</option>
-                        <option value="Commercial" ${departement === 'Commercial' ? 'selected' : ''}>Commercial</option>
-                        <option value="Maintenance" ${departement === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
-                        <option value="Direction" ${departement === 'Direction' ? 'selected' : ''}>Direction</option>
-                    </select>
-                </div>
-                <div class="form-row"><label class="form-label">Poste</label><input class="form-input" name="poste" value="${poste}"></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                <div class="form-row"><label class="form-label">Niveau d'accès</label>
-                    <select class="form-select" name="niveau">
-                        <option value="Staff" ${niveau === 'Staff' ? 'selected' : ''}>Staff</option>
-                        <option value="Admin" ${niveau === 'Admin' ? 'selected' : ''}>Admin</option>
-                        <option value="Maintenance" ${niveau === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
-                        <option value="Visiteur" ${niveau === 'Visiteur' ? 'selected' : ''}>Visiteur</option>
-                    </select>
-                </div>
-                <div class="form-row"><label class="form-label">Statut</label>
-                    <select class="form-select" name="statut">
-                        <option value="actif" ${statut === 'actif' ? 'selected' : ''}>Actif</option>
-                        <option value="inactif" ${statut === 'inactif' ? 'selected' : ''}>Archivé</option>
-                    </select>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
-                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-            </div>
-        </form>
-    `;
-    document.getElementById('modal-content').innerHTML = modalContent;
-    document.getElementById('modal-overlay').style.display = 'flex';
-}
-function filterLogs(filter) {
-  const rows = document.querySelectorAll('.log-row');
-  rows.forEach(row => {
-    const resultat = row.dataset.resultat;
-    if (filter === 'all') row.style.display = '';
-    else if (filter === 'autorise') row.style.display = resultat === 'autorise' ? '' : 'none';
-    else if (filter === 'refuse') row.style.display = resultat === 'refuse' ? '' : 'none';
+function filterLogs(filter, btn) {
+  document.querySelectorAll('.lf-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.log-row').forEach(row => {
+    const r = row.dataset.resultat;
+    row.style.display = (filter === 'all' || (filter === 'autorise' && r === 'autorise') || (filter === 'refuse' && r === 'refuse')) ? '' : 'none';
   });
 }
 
 function exportEmployeeHistory() {
   let csv = "Date,Zone,Méthode,Résultat\n";
-  const rows = document.querySelectorAll('.log-row');
-  rows.forEach(row => {
+  document.querySelectorAll('.log-row').forEach(row => {
     const cells = row.querySelectorAll('td');
     csv += `"${cells[0].textContent.trim()}","${cells[1].textContent.trim()}","${cells[2].textContent.trim()}","${cells[3].textContent.trim()}"\n`;
   });
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `historique_${"{{ employe.nom }}_{{ employe.prenom }}"}_${new Date().toISOString().slice(0,10)}.csv`;
+  link.href = URL.createObjectURL(new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"}));
+  link.download = `historique_{{ employe.nom }}_{{ employe.prenom }}_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
-  URL.revokeObjectURL(link.href);
 }
 </script>
-
-<style>
-.feed-status {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--mono);
-  display: inline-block;
-}
-.fs-ok { background: var(--green2); color: var(--green); border: 1px solid rgba(45,186,111,.3); }
-.fs-no { background: var(--red2); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
-</style>
 
 {% endblock %}

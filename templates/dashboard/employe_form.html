@@ -9,67 +9,114 @@
 {% endblock %}
 
 {% block content %}
-
-<div style="max-width:860px; margin:0 auto">
-
+<div style="max-width:900px;margin:0 auto;">
   <div class="card">
     <div class="card-head">
       <span>{% if employe.id %}✏️{% else %}➕{% endif %}</span>
-      <span class="card-title">{% if employe.id %}Modifier le profil complet{% else %}Créer un nouveau profil{% endif %}</span>
+      <span class="card-title">{% if employe.id %}Modifier le profil{% else %}Créer un nouveau profil{% endif %}</span>
     </div>
+    <div class="card-body" style="padding:28px 32px;">
 
-    <div class="card-body" style="padding:32px 40px">
-
-      <form method="post" id="employeForm">
+      <form method="post"
+            action="{% if employe.id %}{% url 'employe_modifier' employe.id %}{% else %}{% url 'employe_ajouter' %}{% endif %}"
+            id="employeForm"
+            enctype="multipart/form-data">
         {% csrf_token %}
+        <input type="hidden" id="avatarData" name="photo_data">
 
-        <!-- Informations personnelles -->
-        <div class="section-title">Informations personnelles</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Nom <span style="color:#f85149">*</span></label>
-            <input class="form-input" name="nom" value="{{ employe.nom|default:'' }}" required>
+        <!-- Avatar -->
+        <div style="display:flex;align-items:center;gap:24px;padding:20px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:28px;">
+          <div id="avatarDrop"
+               onclick="document.getElementById('avatarInput').click()"
+               style="width:80px;height:80px;border-radius:50%;background:var(--blue);overflow:hidden;position:relative;cursor:pointer;flex-shrink:0;border:3px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:white;"
+               title="Cliquer ou glisser une photo">
+            <div id="avatarInitials" style="position:absolute;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+              {% if employe.nom %}{{ employe.nom|slice:":1"|upper }}{% if employe.prenom %}{{ employe.prenom|slice:":1"|upper }}{% endif %}{% else %}?{% endif %}
+            </div>
+            {% if employe.photo_url %}
+            <img id="avatarPreview" src="{{ employe.photo_url }}" style="position:absolute;width:100%;height:100%;object-fit:cover;" alt="photo">
+            {% else %}
+            <img id="avatarPreview" style="position:absolute;width:100%;height:100%;object-fit:cover;display:none;" alt="photo">
+            {% endif %}
+            <div id="avatarOverlay" style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:none;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:white;gap:2px;text-align:center;">
+              📷<br>Changer
+            </div>
           </div>
-          <div class="form-row">
-            <label class="form-label">Prénom</label>
-            <input class="form-input" name="prenom" value="{{ employe.prenom|default:'' }}">
+          <input type="file" id="avatarInput" name="photo" accept="image/*" style="display:none;">
+          <div>
+            <div style="font-weight:600;font-size:13px;color:var(--text);" id="prevName">
+              {% if employe.nom %}{{ employe.nom }} {{ employe.prenom }}{% else %}Nouveau profil{% endif %}
+            </div>
+            <div style="font-size:12px;color:var(--text2);margin-top:3px;" id="prevRole">
+              {% if employe.poste %}{{ employe.poste }}{% if employe.departement %} · {{ employe.departement }}{% endif %}{% else %}Glissez ou cliquez l'avatar pour ajouter une photo{% endif %}
+            </div>
+            <button type="button" id="avatarRemoveBtn"
+                    onclick="removeAvatar()"
+                    style="display:{% if employe.photo_url %}inline-flex{% else %}none{% endif %};margin-top:8px;padding:3px 10px;border-radius:20px;background:var(--red2);color:var(--red);border:1px solid rgba(248,81,73,.25);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);">
+              ✕ Supprimer la photo
+            </button>
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- Informations personnelles -->
+        <div class="section-label">👤 Informations personnelles</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-row">
+            <label class="form-label">Nom <span style="color:var(--red)">*</span></label>
+            <input class="form-input" name="nom" id="inputNom"
+                   value="{{ employe.nom|default:'' }}" placeholder="DUPONT" required
+                   pattern="[A-Za-zÀ-ÿ\s\-']+"
+                   title="Lettres uniquement (espaces et tirets autorisés)">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Prénom</label>
+            <input class="form-input" name="prenom" id="inputPrenom"
+                   value="{{ employe.prenom|default:'' }}" placeholder="Jean"
+                   pattern="[A-Za-zÀ-ÿ\s\-']+"
+                   title="Lettres uniquement (espaces et tirets autorisés)">
+          </div>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-row">
             <label class="form-label">Email</label>
-            <input class="form-input" name="email" type="email" value="{{ employe.email|default:'' }}">
+            <input class="form-input" name="email" type="email" value="{{ employe.email|default:'' }}" placeholder="jean@exemple.fr">
           </div>
           <div class="form-row">
             <label class="form-label">Téléphone</label>
-            <input class="form-input" name="telephone" value="{{ employe.telephone|default:'' }}">
+            <input class="form-input" name="telephone" id="inputTel"
+                   value="{{ employe.telephone|default:'' }}"
+                   placeholder="0555 12 34 56"
+                   pattern="0[5-7][0-9]{8}"
+                   maxlength="10"
+                   title="10 chiffres commençant par 05, 06 ou 07 (ex : 0555123456)">
+            <div id="telHint" style="font-size:11px;margin-top:6px;font-weight:600;min-height:16px;"></div>
           </div>
         </div>
 
         <!-- Informations professionnelles -->
-        <div class="section-title">Informations professionnelles</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="section-label">🏢 Informations professionnelles</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-row">
             <label class="form-label">Département</label>
-            <select class="form-select" name="departement">
+            <select class="form-select" name="departement" id="inputDept">
               <option value="">Sélectionner</option>
-              <option value="Informatique" {% if employe.departement == 'Informatique' %}selected{% endif %}>Informatique</option>
-              <option value="Ressources Humaines" {% if employe.departement == 'Ressources Humaines' %}selected{% endif %}>Ressources Humaines</option>
-              <option value="Finance" {% if employe.departement == 'Finance' %}selected{% endif %}>Finance</option>
-              <option value="Production" {% if employe.departement == 'Production' %}selected{% endif %}>Production</option>
-              <option value="Commercial" {% if employe.departement == 'Commercial' %}selected{% endif %}>Commercial</option>
-              <option value="Maintenance" {% if employe.departement == 'Maintenance' %}selected{% endif %}>Maintenance</option>
-              <option value="Direction" {% if employe.departement == 'Direction' %}selected{% endif %}>Direction</option>
+              <option value="Informatique"       {% if employe.departement == 'Informatique' %}selected{% endif %}>Informatique</option>
+              <option value="Ressources Humaines"{% if employe.departement == 'Ressources Humaines' %}selected{% endif %}>Ressources Humaines</option>
+              <option value="Finance"            {% if employe.departement == 'Finance' %}selected{% endif %}>Finance</option>
+              <option value="Production"         {% if employe.departement == 'Production' %}selected{% endif %}>Production</option>
+              <option value="Commercial"         {% if employe.departement == 'Commercial' %}selected{% endif %}>Commercial</option>
+              <option value="Maintenance"        {% if employe.departement == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+              <option value="Direction"          {% if employe.departement == 'Direction' %}selected{% endif %}>Direction</option>
             </select>
           </div>
           <div class="form-row">
             <label class="form-label">Poste</label>
-            <input class="form-input" name="poste" value="{{ employe.poste|default:'' }}">
+            <input class="form-input" name="poste" id="inputPoste" value="{{ employe.poste|default:'' }}" placeholder="Chef de service">
           </div>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-row">
             <label class="form-label">Date d'embauche</label>
             <input class="form-input" name="date_embauche" type="date" value="{% if employe.date_embauche %}{{ employe.date_embauche|date:'Y-m-d' }}{% endif %}">
@@ -77,142 +124,237 @@
           <div class="form-row">
             <label class="form-label">Type de contrat</label>
             <select class="form-select" name="type_contrat">
-              <option value="CDI" {% if employe.type_contrat == 'CDI' %}selected{% endif %}>CDI</option>
-              <option value="CDD" {% if employe.type_contrat == 'CDD' %}selected{% endif %}>CDD</option>
-              <option value="Stage" {% if employe.type_contrat == 'Stage' %}selected{% endif %}>Stage</option>
+              <option value="CDI"  {% if employe.type_contrat == 'CDI' or not employe.type_contrat %}selected{% endif %}>CDI</option>
+              <option value="CDD"  {% if employe.type_contrat == 'CDD' %}selected{% endif %}>CDD</option>
+              <option value="Stage"{% if employe.type_contrat == 'Stage' %}selected{% endif %}>Stage</option>
             </select>
-          </div>
-          <div class="form-row">
-            <label class="form-label">Manager</label>
-            <input class="form-input" name="manager" value="{{ employe.manager|default:'' }}">
-          </div>
-        </div>
-
-        <!-- Cycle de travail -->
-        <div class="section-title">Cycle de travail hebdomadaire</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Horaires quotidiens</label>
-            <input class="form-input" name="horaire" value="{{ employe.horaire|default:'08:00 - 17:00' }}">
-          </div>
-          <div class="form-row">
-            <label class="form-label">Heures par semaine</label>
-            <input class="form-input" name="heures_hebdo" type="number" value="{{ employe.heures_hebdo|default:35 }}" min="1">
-          </div>
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Jours travaillés</label>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">
-            {% with jours_list="Lun,Mar,Mer,Jeu,Ven,Sam,Dim" %}
-            {% for jour in jours_list.split %}
-            <label style="display:flex;align-items:center;gap:6px">
-              <input type="checkbox" name="jours_travailles" value="{{ jour }}" 
-                     {% if jour in employe.jours_travailles %}checked{% endif %}>
-              {{ jour }}
-            </label>
-            {% endfor %}
-            {% endwith %}
-          </div>
-        </div>
-
-        <!-- Planning Absences & Congés -->
-        <div class="section-title">Planning absences & congés</div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Solde Congés payés (jours)</label>
-            <input class="form-input" name="solde_conges" type="number" step="0.5" value="{{ employe.solde_conges|default:25 }}">
-          </div>
-          <div class="form-row">
-            <label class="form-label">Solde RTT (jours)</label>
-            <input class="form-input" name="solde_rtt" type="number" step="0.5" value="{{ employe.solde_rtt|default:10 }}">
-          </div>
-          <div class="form-row">
-            <label class="form-label">Solde Maladie / CET (jours)</label>
-            <input class="form-input" name="solde_maladie" type="number" step="0.5" value="{{ employe.solde_maladie|default:0 }}">
           </div>
         </div>
 
         <!-- Badge & Accès -->
-        <div class="section-title">Badge & Niveau d'accès</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="section-label">🪪 Badge & Niveau d'accès</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-row">
-            <label class="form-label">Badge RFID <span style="color:#f85149">*</span></label>
-            <input class="form-input" name="badge_id" value="{{ employe.badge_id|default:'' }}" required>
+            <label class="form-label">Badge RFID <span style="color:var(--red)">*</span></label>
+            <input class="form-input" name="badge_id" id="inputBadge"
+                   value="{{ employe.badge_id|default:'' }}"
+                   placeholder="RFID-0001" required
+                   pattern="RFID-[A-Z0-9]{4}"
+                   maxlength="9"
+                   style="font-family:var(--mono);text-transform:uppercase;"
+                   title="Format requis : RFID-XXXX (ex : RFID-0001)"
+                   autocomplete="off">
+            <div id="badgeHint" style="font-size:11px;margin-top:6px;font-weight:600;min-height:16px;"></div>
           </div>
           <div class="form-row">
             <label class="form-label">Niveau d'accès</label>
             <select class="form-select" name="niveau">
-              <option value="Staff" {% if employe.niveau == 'Staff' %}selected{% endif %}>Staff</option>
-              <option value="Admin" {% if employe.niveau == 'Admin' %}selected{% endif %}>Admin</option>
-              <option value="Maintenance" {% if employe.niveau == 'Maintenance' %}selected{% endif %}>Maintenance</option>
-              <option value="Visiteur" {% if employe.niveau == 'Visiteur' %}selected{% endif %}>Visiteur</option>
+              <option value="Staff"      {% if employe.niveau == 'Staff' or not employe.niveau %}selected{% endif %}>👤 Staff</option>
+              <option value="Admin"      {% if employe.niveau == 'Admin' %}selected{% endif %}>👑 Admin</option>
+              <option value="Maintenance"{% if employe.niveau == 'Maintenance' %}selected{% endif %}>🔧 Maintenance</option>
+              <option value="Visiteur"   {% if employe.niveau == 'Visiteur' %}selected{% endif %}>🚪 Visiteur</option>
             </select>
           </div>
         </div>
 
         {% if employe.id %}
-        <div class="form-row">
-          <label class="form-label">Statut</label>
+        <div class="form-row" style="max-width:200px;">
+          <label class="form-label">Statut du compte</label>
           <select class="form-select" name="statut">
-            <option value="actif" {% if employe.statut == 'actif' %}selected{% endif %}>Actif</option>
-            <option value="inactif" {% if employe.statut == 'inactif' %}selected{% endif %}>Archivé</option>
+            <option value="actif"   {% if employe.statut != 'inactif' %}selected{% endif %}>● Actif</option>
+            <option value="inactif" {% if employe.statut == 'inactif' %}selected{% endif %}>● Archivé</option>
           </select>
         </div>
         {% endif %}
 
-        <div style="display:flex;gap:12px;justify-content:flex-end;padding-top:32px;border-top:1px solid var(--border);margin-top:32px">
+        <!-- Actions -->
+        <div style="display:flex;gap:12px;justify-content:flex-end;padding-top:24px;border-top:1px solid var(--border);margin-top:24px;">
           <a href="{% url 'employe_list' %}" class="btn btn-ghost">Annuler</a>
           <button type="submit" class="btn btn-primary">
             {% if employe.id %}💾 Enregistrer les modifications{% else %}➕ Créer l'employé{% endif %}
           </button>
         </div>
+
       </form>
     </div>
   </div>
 </div>
 
 <style>
-.section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text2);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 24px 0 16px 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+.section-label {
+  font-size:11px; font-weight:700; color:var(--text2);
+  text-transform:uppercase; letter-spacing:.6px;
+  margin:24px 0 14px; padding-bottom:8px;
+  border-bottom:1px solid var(--border);
 }
-.section-title:first-of-type {
-  margin-top: 0;
+.section-label:first-of-type { margin-top:0; }
+.day-check-label { cursor:pointer; }
+.day-check-label input { display:none; }
+.day-pill {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:38px; height:38px; border-radius:50%;
+  font-size:11px; font-weight:600;
+  background:var(--bg3); color:var(--text3);
+  border:2px solid var(--border);
+  user-select:none;
 }
-.form-row {
-  margin-bottom: 0;
+.day-check-label input:checked + .day-pill {
+  background:var(--blue3); color:var(--blue2); border-color:var(--blue);
 }
-.form-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text2);
-  margin-bottom: 6px;
-  display: block;
-}
-.form-input, .form-select {
-  width: 100%;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--text);
-  font-family: var(--font);
-  outline: none;
-  transition: all 0.15s;
-}
-.form-input:focus, .form-select:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 2px rgba(31,111,235,0.1);
-}
+.day-check-label:hover .day-pill { border-color:var(--blue); }
+#avatarDrop:hover #avatarOverlay { display:flex !important; }
+#avatarDrop.dragover { outline:3px dashed var(--blue); outline-offset:3px; }
 </style>
+
+<script>
+const drop      = document.getElementById('avatarDrop');
+const input     = document.getElementById('avatarInput');
+const preview   = document.getElementById('avatarPreview');
+const initials  = document.getElementById('avatarInitials');
+const removeBtn = document.getElementById('avatarRemoveBtn');
+const dataInput = document.getElementById('avatarData');
+
+function loadImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    initials.style.display = 'none';
+    removeBtn.style.display = 'inline-flex';
+    dataInput.value = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeAvatar() {
+  preview.src = '';
+  preview.style.display = 'none';
+  initials.style.display = 'flex';
+  removeBtn.style.display = 'none';
+  dataInput.value = '__remove__';
+  input.value = '';
+}
+
+input.addEventListener('change', () => { if (input.files[0]) loadImage(input.files[0]); });
+drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('dragover'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+drop.addEventListener('drop', e => {
+  e.preventDefault();
+  drop.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) {
+    const dt = new DataTransfer();
+    dt.items.add(e.dataTransfer.files[0]);
+    input.files = dt.files;
+    loadImage(e.dataTransfer.files[0]);
+  }
+});
+
+function updatePreview() {
+  const nom    = (document.getElementById('inputNom')?.value   || '').trim().toUpperCase();
+  const prenom = (document.getElementById('inputPrenom')?.value|| '').trim();
+  const poste  = (document.getElementById('inputPoste')?.value || '').trim();
+  const dept   = (document.getElementById('inputDept')?.value  || '');
+  document.getElementById('prevName').textContent = (nom || prenom) ? `${nom} ${prenom}`.trim() : 'Nouveau profil';
+  document.getElementById('prevRole').textContent = [poste, dept].filter(Boolean).join(' · ') || 'Glissez ou cliquez l\'avatar pour ajouter une photo';
+  const txt = ((nom[0]||'')+(prenom[0]||'')).toUpperCase() || '?';
+  initials.textContent = txt;
+}
+
+['inputNom','inputPrenom','inputPoste','inputDept'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input',  updatePreview);
+  document.getElementById(id)?.addEventListener('change', updatePreview);
+});
+
+// Vérification badge en temps réel
+const badgeInput   = document.getElementById('inputBadge');
+const badgeHint    = document.getElementById('badgeHint');
+const submitBtn    = document.querySelector('#employeForm button[type="submit"]');
+const currentEmpId = "{{ employe.id|default:'' }}";
+let badgeTimer = null;
+
+badgeInput?.addEventListener('input', () => {
+  clearTimeout(badgeTimer);
+  const value = badgeInput.value.trim();
+  badgeHint.textContent = '';
+  badgeHint.style.color = '';
+  if (submitBtn) submitBtn.disabled = false;
+
+  if (!value) return;
+
+  badgeHint.textContent = '⏳ Vérification...';
+  badgeHint.style.color = 'var(--text3)';
+
+  badgeTimer = setTimeout(() => {
+    fetch(`/api/check-badge/?badge=${encodeURIComponent(value)}&exclude_id=${currentEmpId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.exists) {
+          badgeHint.textContent = `❌ Ce badge est déjà attribué à ${data.nom}`;
+          badgeHint.style.color = 'var(--red, #dc2626)';
+          badgeInput.style.borderColor = 'var(--red, #dc2626)';
+          if (submitBtn) submitBtn.disabled = true;
+        } else {
+          badgeHint.textContent = '✅ Badge disponible';
+          badgeHint.style.color = 'var(--green, #16a34a)';
+          badgeInput.style.borderColor = 'var(--green, #16a34a)';
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      })
+      .catch(() => {
+        badgeHint.textContent = '';
+        badgeInput.style.borderColor = '';
+      });
+  }, 400);
+});
+
+// Validation en direct
+function setHint(el, ok, msg) {
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--green, #16a34a)' : 'var(--red, #dc2626)';
+}
+function setBorder(input, ok) {
+  if (!input) return;
+  input.style.borderColor = ok ? 'var(--green, #16a34a)' : 'var(--red, #dc2626)';
+}
+
+// Nom & Prénom : lettres uniquement
+['inputNom', 'inputPrenom'].forEach(id => {
+  const el = document.getElementById(id);
+  el?.addEventListener('input', () => {
+    el.value = el.value.replace(/[0-9_@#$%^&*()+=\[\]{};:"\\|,.<>\/?]/g, '');
+    if (id === 'inputNom') el.value = el.value.toUpperCase();
+  });
+});
+
+// Téléphone : chiffres uniquement, 10 max
+const tel     = document.getElementById('inputTel');
+const telHint = document.getElementById('telHint');
+tel?.addEventListener('input', () => {
+  tel.value = tel.value.replace(/\D/g, '').slice(0, 10);
+  if (tel.value.length === 0) { setHint(telHint, true, ''); setBorder(tel, true); return; }
+  const ok = /^0[5-7][0-9]{8}$/.test(tel.value);
+  setBorder(tel, ok);
+  setHint(telHint, ok,
+    ok ? '✅ Numéro valide'
+       : `❌ Format : 10 chiffres commençant par 05, 06 ou 07 (${tel.value.length}/10)`);
+});
+
+// Badge : majuscules + format RFID-XXXX
+const badge = document.getElementById('inputBadge');
+badge?.addEventListener('input', () => {
+  badge.value = badge.value.toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 9);
+  if (badge.value.length === 4 && badge.value === 'RFID') badge.value = 'RFID-';
+});
+
+// Bloque le submit si formulaire invalide
+document.getElementById('employeForm')?.addEventListener('submit', e => {
+  if (!e.target.checkValidity()) {
+    e.preventDefault();
+    e.target.reportValidity();
+  }
+});
+</script>
 
 {% endblock %}

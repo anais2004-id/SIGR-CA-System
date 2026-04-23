@@ -5,7 +5,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
-
+from django.db import models
+from django.contrib.auth.models import User
 
 
 
@@ -398,17 +399,13 @@ class AdminProfile(models.Model):
     def __str__(self):
         return f"Profil de {self.user.username}"
         # dashboard/models.py - Ajoutez ces classes
-
+# dashboard/models.py - Ajoutez ce champ
 class ChatbotConversation(models.Model):
-    """Historique des conversations avec le chatbot"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_conversations')
-    session_id = models.CharField(max_length=100, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    
-    class Meta:
-        ordering = ['-updated_at']
+    context = models.TextField(default='{}')  # ← AJOUTER CE CHAMP
     
     def __str__(self):
         return f"Conversation {self.id} - {self.user.username}"
@@ -428,6 +425,7 @@ class ChatbotMessage(models.Model):
     intent = models.CharField(max_length=100, blank=True)
     entities = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
+    state = models.JSONField(default=dict)
     
     class Meta:
         ordering = ['created_at']
@@ -484,3 +482,22 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"Token pour {self.user.username} — {'valide' if self.is_valid() else 'expiré/utilisé'}"
+        # dashboard/models.py - Ajoutez ces collections
+
+# Structure hiérarchique des ressources
+# Domaines (ex: "Administration", "Production", "Recherche")
+#   └── Sites (ex: "Site A", "Site B")
+#       └── Bâtiments (ex: "Bâtiment Principal", "Atelier")
+#           └── Étagess (ex: "RDC", "Étage 1")
+#               └── Salles/Bureaux
+
+HIERARCHY_COLLECTIONS = {
+    'domaines': 'domaines',
+    'sites': 'sites', 
+    'batiments': 'batiments',
+    'etages': 'etages',
+    'salles': 'bureaux',  # existant
+}
+
+# Indisponibilités planifiées
+# collection: indisponibilites

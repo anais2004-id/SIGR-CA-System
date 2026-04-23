@@ -3,9 +3,13 @@ import os
 from pathlib import Path
 from pymongo import MongoClient
 from dotenv import load_dotenv
+
+
+
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 SECRET_KEY = 'your-secret-key-here'
 
 DEBUG = True
@@ -45,6 +49,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'dashboard.middleware.UserSessionMiddleware',  # Votre middleware # Ajouter cette ligne
 ]
+if DEBUG:
+    MIDDLEWARE.append('dashboard.middleware.NoBrowserCacheMiddleware')
 
 ROOT_URLCONF = 'config.urls'
 
@@ -153,3 +159,10 @@ DEFAULT_FROM_EMAIL = 'SIGR-CA <souhla.ghanem@gmail.com>'
 # Commentez les lignes EMAIL_BACKEND..DEFAULT_FROM_EMAIL ci-dessus
 # et décommentez la ligne suivante :
 #EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+}

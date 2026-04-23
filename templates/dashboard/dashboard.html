@@ -334,34 +334,40 @@
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(1.2); }
 }
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text3);
+}
 </style>
 
 <!-- KPIs -->
 <div class="kpi-grid">
     <div class="kpi-card blue">
         <div class="kpi-header"><span class="kpi-label">Employés actifs</span><span class="kpi-icon">👥</span></div>
-        <div class="kpi-value">{{ total_employes|default:0 }}</div>
-        <div class="kpi-delta up">↑ {{ nouveaux_employes|default:0 }} ce mois</div>
+        <div class="kpi-value">{{ total_employes|default:"0" }}</div>
+        <div class="kpi-delta up">↑ {{ nouveaux_employes|default:"0" }} ce mois</div>
     </div>
     <div class="kpi-card green">
         <div class="kpi-header"><span class="kpi-label">Accès aujourd'hui</span><span class="kpi-icon">✅</span></div>
-        <div class="kpi-value">{{ acces_aujourdhui|default:0 }}</div>
-        <div class="kpi-delta up">↑ 12% vs hier</div>
+        <div class="kpi-value">{{ acces_aujourdhui|default:"0" }}</div>
+        <div class="kpi-delta up">↑ {{ evolution_acces|default:"0" }}% vs hier</div>
     </div>
     <div class="kpi-card red">
         <div class="kpi-header"><span class="kpi-label">Accès refusés</span><span class="kpi-icon">🚫</span></div>
-        <div class="kpi-value">{{ acces_refuses|default:0 }}</div>
-        <div class="kpi-delta down">{{ taux_refus|default:0 }}% du total</div>
+        <div class="kpi-value">{{ acces_refuses|default:"0" }}</div>
+        <div class="kpi-delta down">{{ taux_refus|default:"0" }}% du total</div>
     </div>
     <div class="kpi-card amber">
         <div class="kpi-header"><span class="kpi-label">Taux occupation</span><span class="kpi-icon">📊</span></div>
-        <div class="kpi-value">{{ taux_occupation|default:47 }}%</div>
+        <div class="kpi-value">{{ taux_occupation|default:"47" }}%</div>
         <div class="kpi-delta">Moyenne des zones</div>
     </div>
     <div class="kpi-card purple">
         <div class="kpi-header"><span class="kpi-label">Réservations</span><span class="kpi-icon">📆</span></div>
-        <div class="kpi-value">{{ reservations_actives|default:0 }}</div>
-        <div class="kpi-delta">{{ reservations_aujourdhui|default:0 }} aujourd'hui</div>
+        <div class="kpi-value">{{ reservations_actives|default:"0" }}</div>
+        <div class="kpi-delta">{{ reservations_aujourdhui|default:"0" }} aujourd'hui</div>
     </div>
     <div class="kpi-card cyan">
         <div class="kpi-header"><span class="kpi-label">Prédiction IA</span><span class="kpi-icon">🤖</span></div>
@@ -407,26 +413,29 @@
             <span class="card-sub"><span class="live-dot"></span> Badges RFID & QR</span>
         </div>
         <div class="feed-container" id="live-feed">
-            {% for log in derniers_logs %}
-            <div class="feed-item {% if forloop.first %}new{% endif %}">
-                <div class="feed-avatar" style="background:{% if log.resultat == 'AUTORISE' %}#1f6feb{% else %}#f85149{% endif %}">
-                    {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
-                </div>
-                <div class="feed-info">
-                    <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
-                    <div class="feed-detail">
-                        <span>🚪 {{ log.bureau_nom|default:"Zone inconnue" }}</span>
-                        <span>📱 {{ log.type_acces|default:"RFID" }}</span>
+            {% if derniers_logs %}
+                {% for log in derniers_logs %}
+                <div class="feed-item {% if forloop.first %}new{% endif %}">
+                    <div class="feed-avatar" style="background:{% if log.resultat == 'AUTORISE' %}#1f6feb{% else %}#f85149{% endif %}">
+                        {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+                    </div>
+                    <div class="feed-info">
+                        <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+                        <div class="feed-detail">
+                            <span>🚪 {{ log.bureau_nom|default:"Zone inconnue" }}</span>
+                            <span>📱 {{ log.type_acces|default:"RFID" }}</span>
+                            <span>🆔 {{ log.badge_id|default:"???" }}</span>
+                        </div>
+                    </div>
+                    <div class="feed-time">{{ log.timestamp_str|default:"--:--:--" }}</div>
+                    <div class="feed-badge {% if log.resultat == 'AUTORISE' %}success{% else %}danger{% endif %}">
+                        {% if log.resultat == 'AUTORISE' %}✓ AUTORISÉ{% else %}✗ REFUSÉ{% endif %}
                     </div>
                 </div>
-                <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
-                <div class="feed-badge {% if log.resultat == 'AUTORISE' %}success{% else %}danger{% endif %}">
-                    {% if log.resultat == 'AUTORISE' %}✓ AUTORISÉ{% else %}✗ REFUSÉ{% endif %}
-                </div>
-            </div>
-            {% empty %}
-            <div class="empty-state">📡 Aucun accès récent</div>
-            {% endfor %}
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">📡 Aucun accès récent</div>
+            {% endif %}
         </div>
     </div>
 
@@ -440,7 +449,6 @@
                 <span><span class="legend-dot" style="background:#2dba6f"></span>Prédiction</span>
             </div>
             <div class="chart-wrapper" id="chart-container"></div>
-            <div id="chart-labels" style="display: flex; gap: 8px; margin-top: 8px;"></div>
         </div>
     </div>
 </div>
@@ -462,7 +470,7 @@
     <div class="card-head">
         <span>⚠️</span>
         <span class="card-title">Alertes système</span>
-        <span class="card-sub">{{ alertes|default:0 }} non traitée(s)</span>
+        <span class="card-sub">{{ alertes|default:"0" }} non traitée(s)</span>
     </div>
     <div class="card-body">
         {% if alertes > 0 %}
@@ -504,71 +512,90 @@
 </div>
 
 <script>
-var chartData = {{ stats_7jours|safe|default:'[]' }};
+// Données du graphique - transmises depuis le serveur via des variables JS
+var chartData = [
+    {% for item in stats_7jours %}
+    {
+        date: "{{ item.date|default:'' }}",
+        autorises: {{ item.autorises|default:0 }},
+        total: {{ item.total|default:0 }}
+    },
+    {% endfor %}
+];
+
+var zonesData = [
+    {% for zone in zones_data %}
+    {
+        nom: "{{ zone.nom|default:'Zone' }}",
+        acces: {{ zone.acces|default:0 }},
+        occupation: {{ zone.occupation|default:0 }}
+    },
+    {% endfor %}
+];
 
 function renderChart() {
     var container = document.getElementById('chart-container');
-    var labelsDiv = document.getElementById('chart-labels');
-    if (!container || !chartData || chartData.length === 0) {
-        if (container) container.innerHTML = '<div style="text-align:center;padding:40px">Chargement...</div>';
+    if (!container) return;
+    
+    if (!chartData || chartData.length === 0) {
+        container.innerHTML = '<div class="empty-state">📊 Aucune donnée disponible</div>';
         return;
     }
     
     container.innerHTML = '';
-    labelsDiv.innerHTML = '';
     
-    var maxVal = 0;
-    chartData.forEach(function(item) {
-        var total = (item.autorises || 0) + ((item.total || 0) - (item.autorises || 0));
+    var maxVal = 1;
+    for (var i = 0; i < chartData.length; i++) {
+        var total = chartData[i].autorises || 0;
         if (total > maxVal) maxVal = total;
-    });
+    }
     if (maxVal === 0) maxVal = 1;
     
-    chartData.forEach(function(item) {
+    for (var i = 0; i < chartData.length; i++) {
+        var item = chartData[i];
         var autorises = item.autorises || 0;
         var refuses = (item.total || 0) - autorises;
         var prediction = Math.round(autorises * 1.05);
-        
-        var barItem = document.createElement('div');
-        barItem.className = 'chart-bar-item';
         
         var predHeight = Math.min(100, Math.round(prediction / maxVal * 100));
         var refusedHeight = Math.min(100, Math.round(refuses / maxVal * 100));
         var allowedHeight = Math.min(100, Math.round(autorises / maxVal * 100));
         
+        var dateStr = item.date ? item.date.slice(5) : 'J' + (i + 1);
+        
+        var barItem = document.createElement('div');
+        barItem.className = 'chart-bar-item';
         barItem.innerHTML = `
             <div class="chart-bars">
                 <div class="chart-bar-pred" style="height:${predHeight}px"></div>
                 <div class="chart-bar-refused" style="height:${refusedHeight}px"></div>
                 <div class="chart-bar-allowed" style="height:${allowedHeight}px"></div>
             </div>
-            <div class="chart-label">${item._id ? item._id.slice(5) : '—'}</div>
+            <div class="chart-label">${dateStr}</div>
         `;
         container.appendChild(barItem);
-    });
+    }
 }
 
 function renderZones() {
     var container = document.getElementById('zones-container');
     if (!container) return;
     
-    var zones = [
-        {nom: "Direction Générale", acces: 142, occupation: 78},
-        {nom: "Atelier Production", acces: 98, occupation: 65},
-        {nom: "Salle Serveur", acces: 67, occupation: 42},
-        {nom: "Bureau Administratif", acces: 45, occupation: 31},
-        {nom: "Laboratoire", acces: 38, occupation: 28}
-    ];
+    if (!zonesData || zonesData.length === 0) {
+        container.innerHTML = '<div class="empty-state">🚪 Aucune zone disponible</div>';
+        return;
+    }
     
     var html = '';
-    zones.forEach(function(z) {
+    for (var i = 0; i < zonesData.length; i++) {
+        var z = zonesData[i];
         var occClass = z.occupation > 70 ? 'high' : (z.occupation > 40 ? 'mid' : 'low');
         var statusText = z.occupation > 70 ? '🔴 Très fréquenté' : (z.occupation > 40 ? '🟡 Affluence modérée' : '🟢 Faible affluence');
         html += `
             <div class="zone-row">
                 <div class="zone-row-header">
                     <span class="zone-name">🚪 ${z.nom}</span>
-                    <span class="zone-count">${z.acces} accès</span>
+                    <span class="zone-count">${z.acces} accès (1h)</span>
                 </div>
                 <div class="zone-bar"><div class="zone-fill ${occClass}" style="width: ${z.occupation}%"></div></div>
                 <div class="zone-footer">
@@ -577,7 +604,7 @@ function renderZones() {
                 </div>
             </div>
         `;
-    });
+    }
     container.innerHTML = html;
 }
 
@@ -665,11 +692,20 @@ function emergencyUnlock() {
     }
 }
 
+// Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     renderChart();
     renderZones();
     liveInterval = setInterval(refreshLiveFeed, 10000);
 });
+
+// Rafraîchissement périodique des données
+setInterval(function() {
+    if (liveEnabled) {
+        renderChart();
+        renderZones();
+    }
+}, 30000);
 </script>
 
 {% endblock %}

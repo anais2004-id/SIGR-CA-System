@@ -1,0 +1,272 @@
+{# dashboard/gestion_indisponibilites.html #}
+{% extends "base.html" %}
+{% block title %}Indisponibilités planifiées - SIGR-CA{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+
+{% block content %}
+<style>
+.indispo-card {
+  background: var(--bg2);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 16px;
+  transition: all 0.2s;
+}
+.indispo-card.maintenance { border-left: 4px solid #f59e0b; }
+.indispo-card.reservation { border-left: 4px solid #f85149; }
+.indispo-card.fermeture { border-left: 4px solid #1f6feb; }
+.indispo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.indispo-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.indispo-date {
+  font-size: 12px;
+  color: var(--text2);
+  font-family: monospace;
+}
+.indispo-type {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.type-maintenance { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.type-reservation { background: rgba(248,81,73,0.12); color: #f85149; }
+.type-fermeture { background: rgba(31,111,235,0.12); color: #1f6feb; }
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+}
+.status-en_cours { background: rgba(248,81,73,0.12); color: #f85149; }
+.status-a_venir { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.status-passee { background: rgba(107,114,128,0.12); color: #9ca3af; }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-top: 16px;
+}
+.calendar-day {
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg3);
+  font-size: 12px;
+}
+.calendar-day.has-indispo {
+  background: rgba(245,158,11,0.2);
+  border: 1px solid #f59e0b;
+}
+</style>
+
+<div style="max-width: 1200px; margin: 0 auto;">
+  <!-- KPIs -->
+  <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+    <div class="kpi k-red"><div class="kpi-value">{{ stats.en_cours }}</div><div class="kpi-label">En cours</div></div>
+    <div class="kpi k-amber"><div class="kpi-value">{{ stats.a_venir }}</div><div class="kpi-label">À venir</div></div>
+    <div class="kpi k-blue"><div class="kpi-value">{{ stats.passees }}</div><div class="kpi-label">Passées</div></div>
+    <div class="kpi k-purple"><div class="kpi-value">{{ stats.total }}</div><div class="kpi-label">Total</div></div>
+  </div>
+
+  <!-- Formulaire d'ajout -->
+  <div class="card" style="margin-bottom: 24px;">
+    <div class="card-head"><span>➕</span><span class="card-title">Planifier une indisponibilité</span></div>
+    <div class="card-body">
+      <form id="indispoForm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">Ressource *</label>
+          <select id="ressourceSelect" class="form-select" required>
+            <option value="">— Choisir une ressource —</option>
+            {% for r in ressources %}
+            <option value="{{ r.id }}" data-type="{{ r.type }}">{{ r.type_icon }} {{ r.nom }} ({{ r.type|title }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type d'indisponibilité *</label>
+          <select id="typeIndispo" class="form-select" required>
+            <option value="maintenance">🔧 Maintenance programmée</option>
+            <option value="reservation_bloquee">🚫 Réservation bloquée</option>
+            <option value="fermeture">🚪 Fermeture exceptionnelle</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Titre *</label>
+          <input type="text" id="indispoTitre" class="form-input" placeholder="ex: Maintenance annuelle" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="indispoDesc" class="form-textarea" rows="2" placeholder="Détails de l'indisponibilité..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date de début *</label>
+          <input type="datetime-local" id="indispoDebut" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date de fin *</label>
+          <input type="datetime-local" id="indispoFin" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Récurrence</label>
+          <select id="indispoRecurrence" class="form-select">
+            <option value="none">Aucune</option>
+            <option value="daily">Quotidienne</option>
+            <option value="weekly">Hebdomadaire</option>
+            <option value="monthly">Mensuelle</option>
+          </select>
+        </div>
+        <div class="form-group" id="recurrenceEndGroup" style="display: none;">
+          <label class="form-label">Jusqu'au</label>
+          <input type="date" id="indispoRecurrenceEnd" class="form-input">
+        </div>
+        <div style="grid-column: span 2; display: flex; justify-content: flex-end;">
+          <button type="button" class="btn btn-primary" onclick="createIndisponibilite()">📅 Planifier</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Liste des indisponibilités -->
+  <div class="card">
+    <div class="card-head"><span>📋</span><span class="card-title">Indisponibilités planifiées</span></div>
+    <div class="card-body">
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button class="filter-tag active" onclick="filterIndispos('all')">Toutes</button>
+        <button class="filter-tag" onclick="filterIndispos('en_cours')">En cours</button>
+        <button class="filter-tag" onclick="filterIndispos('a_venir')">À venir</button>
+        <button class="filter-tag" onclick="filterIndispos('passees')">Passées</button>
+      </div>
+      
+      <div id="indisposList">
+        {% for i in indisponibilites %}
+        <div class="indispo-card {{ i.type_indispo }}" data-statut="{% if i.date_debut <= now and i.date_fin >= now %}en_cours{% elif i.date_debut > now %}a_venir{% else %}passees{% endif %}">
+          <div class="indispo-header">
+            <div>
+              <span class="indispo-title">{{ i.titre }}</span>
+              <span class="indispo-date">{{ i.date_debut|date:"d/m/Y H:i" }} → {{ i.date_fin|date:"d/m/Y H:i" }}</span>
+            </div>
+            <div>
+              <span class="indispo-type type-{{ i.type_indispo }}">
+                {% if i.type_indispo == 'maintenance' %}🔧 Maintenance
+                {% elif i.type_indispo == 'reservation_bloquee' %}🚫 Réservations bloquées
+                {% else %}🚪 Fermeture{% endif %}
+              </span>
+              <span class="status-badge status-{% if i.date_debut <= now and i.date_fin >= now %}en_cours{% elif i.date_debut > now %}a_venir{% else %}passee{% endif %}">
+                {% if i.date_debut <= now and i.date_fin >= now %}⏳ En cours
+                {% elif i.date_debut > now %}📅 À venir
+                {% else %}✅ Terminée{% endif %}
+              </span>
+            </div>
+          </div>
+          <div style="font-size: 13px; color: var(--text2); margin-bottom: 12px;">
+            🏢 {{ i.ressource_nom }}
+          </div>
+          <div style="font-size: 13px; margin-bottom: 12px;">
+            {{ i.description|default:"Aucune description" }}
+          </div>
+          <div class="indispo-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn btn-edit btn-sm" onclick="editIndispo('{{ i.id }}')">✏️ Modifier</button>
+            <button class="btn btn-del btn-sm" onclick="deleteIndispo('{{ i.id }}', '{{ i.titre|escapejs }}')">🗑️ Supprimer</button>
+          </div>
+        </div>
+        {% empty %}
+        <div style="text-align: center; padding: 40px;">📅 Aucune indisponibilité planifiée</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let now = new Date();
+
+document.getElementById('indispoRecurrence').addEventListener('change', function() {
+  const recurrenceEndGroup = document.getElementById('recurrenceEndGroup');
+  recurrenceEndGroup.style.display = this.value !== 'none' ? 'block' : 'none';
+});
+
+function createIndisponibilite() {
+  const ressourceSelect = document.getElementById('ressourceSelect');
+  const ressourceId = ressourceSelect.value;
+  const ressourceType = ressourceSelect.options[ressourceSelect.selectedIndex]?.dataset.type;
+  
+  if (!ressourceId) {
+    alert('Veuillez choisir une ressource');
+    return;
+  }
+  
+  const data = {
+    ressource_id: ressourceId,
+    ressource_type: ressourceType,
+    titre: document.getElementById('indispoTitre').value,
+    description: document.getElementById('indispoDesc').value,
+    type_indispo: document.getElementById('typeIndispo').value,
+    date_debut: document.getElementById('indispoDebut').value,
+    date_fin: document.getElementById('indispoFin').value,
+    recurrence: document.getElementById('indispoRecurrence').value,
+    recurrence_end: document.getElementById('indispoRecurrenceEnd').value
+  };
+  
+  if (!data.titre || !data.date_debut || !data.date_fin) {
+    alert('Veuillez remplir tous les champs obligatoires');
+    return;
+  }
+  
+  fetch('/api/indisponibilite/ajouter/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(data)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      location.reload();
+    } else {
+      alert(data.message || data.error || 'Erreur');
+    }
+  });
+}
+
+function deleteIndispo(id, titre) {
+  if (confirm(`Supprimer l'indisponibilité "${titre}" ?`)) {
+    fetch(`/api/indisponibilite/${id}/supprimer/`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        location.reload();
+      } else {
+        alert(data.message || 'Erreur');
+      }
+    });
+  }
+}
+
+function editIndispo(id) {
+  // Implémentez la modification si nécessaire
+  alert('Fonctionnalité à implémenter');
+}
+
+function filterIndispos(statut) {
+  document.querySelectorAll('.filter-tag').forEach(tag => tag.classList.remove('active'));
+  event.target.classList.add('active');
+  
+  document.querySelectorAll('.indispo-card').forEach(card => {
+    if (statut === 'all') {
+      card.style.display = 'block';
+    } else {
+      card.style.display = card.dataset.statut === statut ? 'block' : 'none';
+    }
+  });
+}
+</script>
+{% endblock %}

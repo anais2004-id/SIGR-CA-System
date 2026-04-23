@@ -1,0 +1,331 @@
+{# dashboard/gestion_hierarchique.html #}
+{% extends "base.html" %}
+{% block title %}Hiérarchie des ressources - SIGR-CA{% endblock %}
+{% block nav_ressources %}active{% endblock %}
+
+{% block content %}
+<style>
+.hierarchy-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.hierarchy-level {
+  background: var(--bg2);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.level-header {
+  padding: 14px 20px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.level-header h3 {
+  margin: 0;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.level-content {
+  padding: 16px;
+  display: none;
+}
+.level-content.open {
+  display: block;
+}
+.items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.hierarchy-item {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px;
+  transition: all 0.2s;
+}
+.hierarchy-item:hover {
+  border-color: var(--blue);
+}
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.item-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.item-code {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: monospace;
+}
+.item-actions {
+  display: flex;
+  gap: 6px;
+}
+.item-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.sub-items {
+  margin-top: 12px;
+  padding-left: 20px;
+  border-left: 2px solid var(--border);
+}
+.btn-add {
+  background: var(--blue3);
+  border: 1px dashed var(--blue);
+  color: var(--blue2);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-add:hover {
+  background: var(--blue);
+  color: white;
+}
+</style>
+
+<div style="max-width: 1200px; margin: 0 auto;">
+  <!-- KPIs -->
+  <div class="kpi-grid" style="grid-template-columns: repeat(5, 1fr); margin-bottom: 24px;">
+    <div class="kpi k-blue"><div class="kpi-value">{{ stats.total_domaines }}</div><div class="kpi-label">Domaines</div></div>
+    <div class="kpi k-green"><div class="kpi-value">{{ stats.total_sites }}</div><div class="kpi-label">Sites</div></div>
+    <div class="kpi k-amber"><div class="kpi-value">{{ stats.total_batiments }}</div><div class="kpi-label">Bâtiments</div></div>
+    <div class="kpi k-purple"><div class="kpi-value">{{ stats.total_etages }}</div><div class="kpi-label">Étages</div></div>
+    <div class="kpi k-red"><div class="kpi-value">{{ stats.total_salles }}</div><div class="kpi-label">Salles</div></div>
+  </div>
+
+  <!-- Arbre hiérarchique -->
+  <div class="hierarchy-tree">
+    {% for domaine in domaines %}
+    <div class="hierarchy-level" data-level="domaine" data-id="{{ domaine.id }}">
+      <div class="level-header" onclick="toggleLevel(this)">
+        <h3><span>🏢</span> {{ domaine.nom }} <span class="item-code">({{ domaine.code|default:"—" }})</span></h3>
+        <div>
+          <button class="btn-add-sm" onclick="event.stopPropagation(); showAddModal('site', '{{ domaine.id }}', '{{ domaine.nom }}')">+ Ajouter un site</button>
+          <button class="btn-edit-sm" onclick="event.stopPropagation(); editElement('domaine', '{{ domaine.id }}', '{{ domaine.nom|escapejs }}', '{{ domaine.code|default:""|escapejs }}', '{{ domaine.description|default:""|escapejs }}')">✏️</button>
+          <button class="btn-del-sm" onclick="event.stopPropagation(); deleteElement('domaine', '{{ domaine.id }}', '{{ domaine.nom|escapejs }}')">🗑️</button>
+        </div>
+      </div>
+      <div class="level-content">
+        <div class="items-grid">
+          {% for site in domaine.sites %}
+          <div class="hierarchy-item" data-level="site" data-id="{{ site.id }}">
+            <div class="item-header">
+              <div><span class="item-name">{{ site.nom }}</span> <span class="item-code">({{ site.code|default:"—" }})</span></div>
+              <div class="item-actions">
+                <button onclick="showAddModal('batiment', '{{ site.id }}', '{{ site.nom|escapejs }}')" title="Ajouter bâtiment">🏗️</button>
+                <button onclick="editElement('site', '{{ site.id }}', '{{ site.nom|escapejs }}', '{{ site.code|default:""|escapejs }}', '{{ site.description|default:""|escapejs }}')">✏️</button>
+                <button onclick="deleteElement('site', '{{ site.id }}', '{{ site.nom|escapejs }}')">🗑️</button>
+              </div>
+            </div>
+            <div class="item-desc">{{ site.description|default:"Aucune description"|truncatechars:80 }}</div>
+            
+            <!-- Bâtiments -->
+            <div class="sub-items">
+              {% for batiment in site.batiments %}
+              <div class="hierarchy-item" data-level="batiment" data-id="{{ batiment.id }}" style="margin-bottom: 8px;">
+                <div class="item-header">
+                  <div><span class="item-name">{{ batiment.nom }}</span> <span class="item-code">({{ batiment.code|default:"—" }})</span></div>
+                  <div class="item-actions">
+                    <button onclick="showAddModal('etage', '{{ batiment.id }}', '{{ batiment.nom|escapejs }}')" title="Ajouter étage">📐</button>
+                    <button onclick="editElement('batiment', '{{ batiment.id }}', '{{ batiment.nom|escapejs }}', '{{ batiment.code|default:""|escapejs }}', '{{ batiment.description|default:""|escapejs }}')">✏️</button>
+                    <button onclick="deleteElement('batiment', '{{ batiment.id }}', '{{ batiment.nom|escapejs }}')">🗑️</button>
+                  </div>
+                </div>
+                
+                <!-- Étages -->
+                <div class="sub-items">
+                  {% for etage in batiment.etages %}
+                  <div class="hierarchy-item" data-level="etage" data-id="{{ etage.id }}" style="margin-bottom: 8px;">
+                    <div class="item-header">
+                      <div><span class="item-name">{{ etage.nom }}</span> <span class="item-code">({{ etage.code|default:"—" }})</span></div>
+                      <div class="item-actions">
+                        <button onclick="showAddModal('salle', '{{ etage.id }}', '{{ etage.nom|escapejs }}')" title="Ajouter salle">🚪</button>
+                        <button onclick="editElement('etage', '{{ etage.id }}', '{{ etage.nom|escapejs }}', '{{ etage.code|default:""|escapejs }}', '{{ etage.description|default:""|escapejs }}')">✏️</button>
+                        <button onclick="deleteElement('etage', '{{ etage.id }}', '{{ etage.nom|escapejs }}')">🗑️</button>
+                      </div>
+                    </div>
+                    
+                    <!-- Salles -->
+                    <div class="sub-items">
+                      {% for salle in etage.salles %}
+                      <div class="hierarchy-item" data-level="salle" data-id="{{ salle.id }}" style="margin-bottom: 4px;">
+                        <div class="item-header">
+                          <div><span class="item-name">{{ salle.nom }}</span> <span class="item-code">(Cap. {{ salle.capacite_max|default:10 }})</span></div>
+                          <div class="item-actions">
+                            <a href="{% url 'bureau_detail' salle.id %}" style="color: var(--blue2);">👁️</a>
+                            <button onclick="editSalle('{{ salle.id }}')">✏️</button>
+                            <button onclick="deleteElement('salle', '{{ salle.id }}', '{{ salle.nom|escapejs }}')">🗑️</button>
+                          </div>
+                        </div>
+                      </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  
+  <button class="btn btn-primary" style="margin-top: 20px;" onclick="showAddModal('domaine')">+ Ajouter un domaine</button>
+</div>
+
+<!-- Modal -->
+<div id="hierarchyModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModal()">
+  <div class="modal" style="width: 450px;">
+    <div class="modal-header">
+      <h3 id="modalTitle">Ajouter</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="hierarchyForm">
+        <input type="hidden" id="niveau">
+        <input type="hidden" id="parentId">
+        <div class="form-group">
+          <label class="form-label">Nom *</label>
+          <input type="text" id="elementNom" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Code</label>
+          <input type="text" id="elementCode" class="form-input" placeholder="Code interne">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="elementDesc" class="form-textarea" rows="3"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="saveElement()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentEditId = null;
+
+function toggleLevel(header) {
+  const content = header.nextElementSibling;
+  content.classList.toggle('open');
+}
+
+function showAddModal(niveau, parentId = null, parentName = '') {
+  document.getElementById('modalTitle').innerHTML = `➕ Ajouter un(e) ${niveau}`;
+  if (parentName) {
+    document.getElementById('modalTitle').innerHTML += ` dans ${parentName}`;
+  }
+  document.getElementById('niveau').value = niveau;
+  document.getElementById('parentId').value = parentId || '';
+  document.getElementById('elementNom').value = '';
+  document.getElementById('elementCode').value = '';
+  document.getElementById('elementDesc').value = '';
+  currentEditId = null;
+  document.getElementById('hierarchyModal').style.display = 'flex';
+}
+
+function editElement(niveau, id, nom, code, desc) {
+  document.getElementById('modalTitle').innerHTML = `✏️ Modifier ${niveau}`;
+  document.getElementById('niveau').value = niveau;
+  document.getElementById('parentId').value = '';
+  document.getElementById('elementNom').value = nom;
+  document.getElementById('elementCode').value = code;
+  document.getElementById('elementDesc').value = desc;
+  currentEditId = id;
+  document.getElementById('hierarchyModal').style.display = 'flex';
+}
+
+function saveElement() {
+  const niveau = document.getElementById('niveau').value;
+  const nom = document.getElementById('elementNom').value;
+  const code = document.getElementById('elementCode').value;
+  const desc = document.getElementById('elementDesc').value;
+  
+  if (!nom) {
+    alert('Le nom est requis');
+    return;
+  }
+  
+  let url = '/api/hierarchie/ajouter/';
+  let method = 'POST';
+  let body = { niveau, nom, code, description: desc };
+  
+  if (currentEditId) {
+    // Pour la modification, utiliser une autre API
+    url = `/api/hierarchie/${niveau}/${currentEditId}/modifier/`;
+    method = 'PUT';
+    body = { nom, code, description: desc };
+  } else {
+    const parentId = document.getElementById('parentId').value;
+    if (parentId) body.parent_id = parentId;
+  }
+  
+  fetch(url, {
+    method: method,
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(body)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      location.reload();
+    } else {
+      alert(data.message || 'Erreur');
+    }
+  });
+}
+
+function deleteElement(niveau, id, nom) {
+  if (confirm(`Supprimer ${niveau} "${nom}" ?`)) {
+    fetch(`/api/hierarchie/${niveau}/${id}/supprimer/`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        location.reload();
+      } else {
+        alert(data.message || 'Erreur');
+      }
+    });
+  }
+}
+
+function editSalle(id) {
+  window.location.href = `/bureaux/${id}/modifier/`;
+}
+
+function closeModal() {
+  document.getElementById('hierarchyModal').style.display = 'none';
+}
+</script>
+{% endblock %}
