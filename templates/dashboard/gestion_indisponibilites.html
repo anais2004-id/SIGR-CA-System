@@ -138,134 +138,220 @@
     <div class="card-head"><span>📋</span><span class="card-title">Indisponibilités planifiées</span></div>
     <div class="card-body">
       <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-        <button class="filter-tag active" onclick="filterIndispos('all')">Toutes</button>
-        <button class="filter-tag" onclick="filterIndispos('en_cours')">En cours</button>
-        <button class="filter-tag" onclick="filterIndispos('a_venir')">À venir</button>
-        <button class="filter-tag" onclick="filterIndispos('passees')">Passées</button>
+        {# FIX: pass event explicitly to filterIndispos #}
+        <button class="filter-tag active" onclick="filterIndispos(event, 'all')">Toutes</button>
+        <button class="filter-tag" onclick="filterIndispos(event, 'en_cours')">En cours</button>
+        <button class="filter-tag" onclick="filterIndispos(event, 'a_venir')">À venir</button>
+        <button class="filter-tag" onclick="filterIndispos(event, 'passees')">Passées</button>
       </div>
-      
-      <div id="indisposList">
-        {% for i in indisponibilites %}
-        <div class="indispo-card {{ i.type_indispo }}" data-statut="{% if i.date_debut <= now and i.date_fin >= now %}en_cours{% elif i.date_debut > now %}a_venir{% else %}passees{% endif %}">
-          <div class="indispo-header">
-            <div>
-              <span class="indispo-title">{{ i.titre }}</span>
-              <span class="indispo-date">{{ i.date_debut|date:"d/m/Y H:i" }} → {{ i.date_fin|date:"d/m/Y H:i" }}</span>
-            </div>
-            <div>
-              <span class="indispo-type type-{{ i.type_indispo }}">
-                {% if i.type_indispo == 'maintenance' %}🔧 Maintenance
-                {% elif i.type_indispo == 'reservation_bloquee' %}🚫 Réservations bloquées
-                {% else %}🚪 Fermeture{% endif %}
-              </span>
-              <span class="status-badge status-{% if i.date_debut <= now and i.date_fin >= now %}en_cours{% elif i.date_debut > now %}a_venir{% else %}passee{% endif %}">
-                {% if i.date_debut <= now and i.date_fin >= now %}⏳ En cours
-                {% elif i.date_debut > now %}📅 À venir
-                {% else %}✅ Terminée{% endif %}
-              </span>
-            </div>
-          </div>
-          <div style="font-size: 13px; color: var(--text2); margin-bottom: 12px;">
-            🏢 {{ i.ressource_nom }}
-          </div>
-          <div style="font-size: 13px; margin-bottom: 12px;">
-            {{ i.description|default:"Aucune description" }}
-          </div>
-          <div class="indispo-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button class="btn btn-edit btn-sm" onclick="editIndispo('{{ i.id }}')">✏️ Modifier</button>
-            <button class="btn btn-del btn-sm" onclick="deleteIndispo('{{ i.id }}', '{{ i.titre|escapejs }}')">🗑️ Supprimer</button>
+
+      {# Liste des cartes — à rendre côté serveur dans votre boucle réelle #}
+      {% for i in indisponibilites %}
+      <div class="indispo-card {{ i.type_indispo }}" data-statut="{{ i.statut }}" style="margin-bottom: 12px;">
+        <div class="indispo-header">
+          <span class="indispo-title">{{ i.titre }}</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="indispo-type type-{{ i.type_indispo }}">{{ i.type_indispo|title }}</span>
+            <span class="status-badge status-{{ i.statut }}">{{ i.statut|title }}</span>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:12px;" onclick="editIndispo('{{ i.id }}')">✏️</button>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:12px; color:#f85149;" onclick="deleteIndispo('{{ i.id }}', '{{ i.titre|escapejs }}')">🗑️</button>
           </div>
         </div>
-        {% empty %}
-        <div style="text-align: center; padding: 40px;">📅 Aucune indisponibilité planifiée</div>
-        {% endfor %}
+        <div class="indispo-date">
+          📅 {{ i.date_debut|date:"d/m/Y H:i" }} → {{ i.date_fin|date:"d/m/Y H:i" }}
+          {% if i.ressource_nom %} &nbsp;·&nbsp; 🏢 {{ i.ressource_nom }}{% endif %}
+        </div>
+        {% if i.description %}<p style="margin:8px 0 0; font-size:13px; color:var(--text2);">{{ i.description }}</p>{% endif %}
       </div>
+      {% empty %}
+      <p style="color:var(--text2); text-align:center; padding:32px 0;">Aucune indisponibilité planifiée.</p>
+      {% endfor %}
     </div>
   </div>
 </div>
 
-<script>
-let now = new Date();
+<!-- Modal d'édition -->
+<div id="editModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:1000;" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal" style="background:var(--bg2); border-radius:12px; width:520px; max-width:95vw; padding:0;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
+      <h3 style="margin:0;">✏️ Modifier l'indisponibilité</h3>
+      <button class="modal-close" onclick="closeEditModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text2);">✕</button>
+    </div>
+    <div style="padding:20px; display:grid; gap:14px;">
+      <input type="hidden" id="editId">
+      <div class="form-group">
+        <label class="form-label">Titre *</label>
+        <input type="text" id="editTitre" class="form-input" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type *</label>
+        <select id="editType" class="form-select">
+          <option value="maintenance">🔧 Maintenance programmée</option>
+          <option value="reservation_bloquee">🚫 Réservation bloquée</option>
+          <option value="fermeture">🚪 Fermeture exceptionnelle</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="editDesc" class="form-textarea form-input" rows="2"></textarea>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <div class="form-group">
+          <label class="form-label">Date de début *</label>
+          <input type="datetime-local" id="editDebut" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date de fin *</label>
+          <input type="datetime-local" id="editFin" class="form-input" required>
+        </div>
+      </div>
+    </div>
+    <div style="padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px;">
+      <button class="btn btn-ghost" onclick="closeEditModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="saveEditIndispo()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
 
-document.getElementById('indispoRecurrence').addEventListener('change', function() {
-  const recurrenceEndGroup = document.getElementById('recurrenceEndGroup');
-  recurrenceEndGroup.style.display = this.value !== 'none' ? 'block' : 'none';
+{# FIX: données sérialisées proprement via json_script — évite le filtre stringformat inexistant #}
+{{ indisponibilites_json|json_script:"indisposRaw" }}
+
+<script>
+// FIX: déclaration unique de `now`
+const now = new Date();
+
+// FIX: event listener unique pour la récurrence
+document.getElementById('indispoRecurrence').addEventListener('change', function () {
+  document.getElementById('recurrenceEndGroup').style.display = this.value !== 'none' ? 'block' : 'none';
+});
+
+function _isOk(data) {
+  return data && (data.status === 'success' || data.success === true);
+}
+
+// FIX: construction de indisposData depuis json_script (pas de filtre stringformat)
+const _rawIndispos = JSON.parse(document.getElementById('indisposRaw').textContent);
+const indisposData = {};
+_rawIndispos.forEach(function (i) {
+  indisposData[i.id] = {
+    titre:       i.titre        || '',
+    description: i.description  || '',
+    type_indispo: i.type_indispo || 'maintenance',
+    // Les dates viennent du JSON ; on les reformate pour datetime-local (YYYY-MM-DDTHH:mm)
+    date_debut:  i.date_debut ? i.date_debut.slice(0, 16) : '',
+    date_fin:    i.date_fin   ? i.date_fin.slice(0, 16)   : '',
+  };
 });
 
 function createIndisponibilite() {
   const ressourceSelect = document.getElementById('ressourceSelect');
   const ressourceId = ressourceSelect.value;
   const ressourceType = ressourceSelect.options[ressourceSelect.selectedIndex]?.dataset.type;
-  
-  if (!ressourceId) {
-    alert('Veuillez choisir une ressource');
-    return;
-  }
-  
+
+  if (!ressourceId) { alert('Veuillez choisir une ressource'); return; }
+
   const data = {
-    ressource_id: ressourceId,
+    ressource_id:   ressourceId,
     ressource_type: ressourceType,
-    titre: document.getElementById('indispoTitre').value,
-    description: document.getElementById('indispoDesc').value,
-    type_indispo: document.getElementById('typeIndispo').value,
-    date_debut: document.getElementById('indispoDebut').value,
-    date_fin: document.getElementById('indispoFin').value,
-    recurrence: document.getElementById('indispoRecurrence').value,
-    recurrence_end: document.getElementById('indispoRecurrenceEnd').value
+    titre:          document.getElementById('indispoTitre').value.trim(),
+    description:    document.getElementById('indispoDesc').value,
+    type_indispo:   document.getElementById('typeIndispo').value,
+    date_debut:     document.getElementById('indispoDebut').value,
+    date_fin:       document.getElementById('indispoFin').value,
+    recurrence:     document.getElementById('indispoRecurrence').value,
+    recurrence_end: document.getElementById('indispoRecurrenceEnd').value,
   };
-  
+
   if (!data.titre || !data.date_debut || !data.date_fin) {
     alert('Veuillez remplir tous les champs obligatoires');
     return;
   }
-  
+
   fetch('/api/indisponibilite/ajouter/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-    body: JSON.stringify(data)
+    body: JSON.stringify(data),
   })
-  .then(r => r.json())
-  .then(data => {
-    if (data.status === 'success') {
-      location.reload();
-    } else {
-      alert(data.message || data.error || 'Erreur');
-    }
-  });
+    .then(r => r.json())
+    .then(data => {
+      if (_isOk(data)) {
+        alert('✅ ' + (data.message || 'Indisponibilité créée'));
+        location.reload();
+      } else {
+        alert('❌ ' + (data.message || data.error || 'Erreur'));
+      }
+    })
+    .catch(err => alert('❌ Erreur réseau : ' + err));
 }
 
 function deleteIndispo(id, titre) {
-  if (confirm(`Supprimer l'indisponibilité "${titre}" ?`)) {
-    fetch(`/api/indisponibilite/${id}/supprimer/`, {
-      method: 'DELETE',
-      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-    })
+  if (!confirm(`Supprimer l'indisponibilité "${titre}" ?`)) return;
+  fetch(`/api/indisponibilite/${id}/supprimer/`, {
+    method: 'DELETE',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
     .then(r => r.json())
     .then(data => {
-      if (data.status === 'success') {
+      if (_isOk(data)) {
         location.reload();
       } else {
-        alert(data.message || 'Erreur');
+        alert('❌ ' + (data.message || data.error || 'Erreur'));
       }
     });
-  }
 }
 
 function editIndispo(id) {
-  // Implémentez la modification si nécessaire
-  alert('Fonctionnalité à implémenter');
+  const data = indisposData[id];
+  if (!data) { alert('Indisponibilité introuvable'); return; }
+  document.getElementById('editId').value    = id;
+  document.getElementById('editTitre').value = data.titre;
+  document.getElementById('editDesc').value  = data.description;
+  document.getElementById('editType').value  = data.type_indispo;
+  document.getElementById('editDebut').value = data.date_debut;
+  document.getElementById('editFin').value   = data.date_fin;
+  document.getElementById('editModal').style.display = 'flex';
 }
 
-function filterIndispos(statut) {
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+function saveEditIndispo() {
+  const id = document.getElementById('editId').value;
+  const payload = {
+    titre:        document.getElementById('editTitre').value.trim(),
+    description:  document.getElementById('editDesc').value,
+    type_indispo: document.getElementById('editType').value,
+    date_debut:   document.getElementById('editDebut').value,
+    date_fin:     document.getElementById('editFin').value,
+  };
+  if (!payload.titre || !payload.date_debut || !payload.date_fin) {
+    alert('Veuillez remplir tous les champs obligatoires');
+    return;
+  }
+  // FIX: méthode PUT pour correspondre à la vue Django
+  fetch(`/api/indisponibilite/${id}/modifier/`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(payload),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (_isOk(data)) {
+        alert('✅ Indisponibilité modifiée');
+        location.reload();
+      } else {
+        alert('❌ ' + (data.message || data.error || 'Erreur'));
+      }
+    });
+}
+
+// FIX: event passé explicitement, plus de référence à `event` global
+function filterIndispos(event, statut) {
   document.querySelectorAll('.filter-tag').forEach(tag => tag.classList.remove('active'));
   event.target.classList.add('active');
-  
   document.querySelectorAll('.indispo-card').forEach(card => {
-    if (statut === 'all') {
-      card.style.display = 'block';
-    } else {
-      card.style.display = card.dataset.statut === statut ? 'block' : 'none';
-    }
+    card.style.display = (statut === 'all' || card.dataset.statut === statut) ? 'block' : 'none';
   });
 }
 </script>

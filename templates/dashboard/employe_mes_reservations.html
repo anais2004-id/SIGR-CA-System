@@ -91,8 +91,7 @@
             <strong>{{ r.titre|default:"Sans titre" }}</strong>
             {% if r.description %}<div style="font-size:10.5px; color:var(--text3); margin-top:3px;">{{ r.description|truncatechars:50 }}</div>{% endif %}
           </td>
-          <td><span class="badge b-blue">🚪 {{ r.bureau_nom|default:"—" }}</span></td>
-          <td style="font-family:var(--mono); font-size:12px;">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
+<td><span class="badge b-blue">{{ r.ressource_icon|default:"🚪" }} {{ r.bureau_nom|default:"—" }}</span></td>          <td style="font-family:var(--mono); font-size:12px;">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
           <td style="font-family:var(--mono); font-size:12px;">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
           <td style="text-align:center;">👥 {{ r.nb_participants|default:1 }}</td>
           <td>
@@ -144,43 +143,82 @@
 
 <!-- Modal Réservation -->
 <div id="resaModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeResaModal()">
-  <div class="modal" style="width:550px; max-width:95vw;">
+  <div class="modal" style="width:600px; max-width:95vw;">
     <div class="modal-title">📆 Nouvelle Réservation</div>
     <div class="modal-sub">Réservez une salle pour votre activité</div>
     <form method="post" action="{% url 'employe_mes_reservations' %}">
       {% csrf_token %}
+
       <div class="form-row">
         <label class="form-label">Titre *</label>
         <input type="text" class="form-input" name="titre" placeholder="Ex : Réunion d'équipe..." required>
       </div>
+
       <div class="form-row">
-        <label class="form-label">Salle *</label>
-        <select class="form-select" name="bureau_id" id="selBureau" required>
-          <option value="">— Choisir une salle —</option>
-          {% for b in bureaux %}
-          <option value="{{ b.id }}">{{ b.nom }}{% if b.capacite_max %} (Cap. {{ b.capacite_max }}){% endif %}</option>
-          {% endfor %}
+        <label class="form-label">Salle ou ressource *</label>
+        <select class="form-select" name="resource_id" id="selResource" onchange="onEmpResourceChange()" required>
+          <option value="">— Choisir une salle ou une ressource —</option>
+          {% if bureaux %}
+          <optgroup label="🚪 Salles / Zones">
+            {% for b in bureaux %}
+            <option value="{{ b.id }}" data-type="salle" data-capacite="{{ b.capacite_max|default:'' }}">
+              🚪 {{ b.nom }}{% if b.capacite_max %} (Cap. {{ b.capacite_max }}){% endif %}
+            </option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if materiels %}
+          <optgroup label="📦 Matériel / Équipements">
+            {% for m in materiels %}
+            <option value="{{ m.id }}" data-type="materiel">
+              {{ m.type_icon|default:"📦" }} {{ m.nom }}{% if m.categorie %} — {{ m.categorie }}{% endif %}
+            </option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
         </select>
+        <input type="hidden" name="resource_type" id="empResourceType" value="salle">
+        <div id="empResourceHint" style="margin-top:6px; font-size:11px; color:var(--text3)"></div>
       </div>
+
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
         <div class="form-row">
           <label class="form-label">Début *</label>
-          <input type="datetime-local" class="form-input" name="date_debut" id="dateDebut" required>
+          <input type="datetime-local" class="form-input" name="date_debut" id="dateDebut" required onchange="empCheckDispo()">
         </div>
         <div class="form-row">
           <label class="form-label">Fin *</label>
-          <input type="datetime-local" class="form-input" name="date_fin" id="dateFin" required>
+          <input type="datetime-local" class="form-input" name="date_fin" id="dateFin" required onchange="empCheckDispo()">
         </div>
       </div>
+
       <div class="form-row">
         <label class="form-label">Participants</label>
-        <input type="number" class="form-input" name="nb_participants" value="1" min="1" max="100">
+        <input type="number" class="form-input" name="nb_participants" id="nbParticipants" value="1" min="1" max="100">
       </div>
+
+      <!-- ⭐ NOUVEAU : Bloc suggestions intelligentes -->
+      <div class="form-row" style="background:var(--bg3); padding:12px; border-radius:8px; border:1px dashed var(--border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <label class="form-label" style="margin:0;">🤖 Suggestions intelligentes</label>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="empShowSuggestions()">
+            ✨ Proposer des créneaux libres
+          </button>
+        </div>
+        <div style="font-size:11px; color:var(--text3); margin-bottom:8px;">
+          Choisissez d'abord une ressource et une date, puis cliquez ci-dessus pour voir les créneaux disponibles.
+        </div>
+        <div id="empSuggestionsContainer"></div>
+      </div>
+
       <div class="form-row">
         <label class="form-label">Description (optionnel)</label>
         <textarea class="form-input" name="description" rows="2" placeholder="Détails..."></textarea>
       </div>
-      <div id="dispoMsg" style="display:none; padding:10px; border-radius:6px; margin-top:10px; font-size:13px;"></div>
+
+      <!-- ⭐ Bloc message de disponibilité -->
+      <div id="empDispoMsg" style="display:none; padding:10px; border-radius:6px; margin-top:10px; font-size:13px;"></div>
+
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeResaModal()">Annuler</button>
         <button type="submit" class="btn btn-primary" id="submitBtn">✅ Confirmer</button>
@@ -624,6 +662,24 @@ function downloadQRCode() {
     }
 }
 
+function onEmpResourceChange() {
+  var sel = document.getElementById('selResource');
+  if (!sel) return;
+  var opt = sel.options[sel.selectedIndex];
+  var type = opt ? (opt.dataset.type || 'salle') : 'salle';
+  document.getElementById('empResourceType').value = type;
+
+  var hint = document.getElementById('empResourceHint');
+  if (hint) {
+    if (type === 'materiel') {
+      hint.innerHTML = '📦 Vous réservez un <strong>matériel</strong>.';
+    } else {
+      var cap = opt ? opt.dataset.capacite : '';
+      hint.innerHTML = '🚪 Vous réservez une <strong>salle</strong>' + (cap ? ' (capacité ' + cap + ')' : '') + '.';
+    }
+  }
+}
+
 function printQRCode() {
     if (currentQRCodeData) {
         const qrImage = `<img src="data:image/png;base64,${currentQRCodeData}" style="width:250px; height:250px;">`;
@@ -671,6 +727,126 @@ function printQRCode() {
     } else {
         alert('QR code non disponible');
     }
+}
+// =============== Suggestions IA + dispo en temps réel (côté employé) ===============
+function onEmpResourceChange() {
+  var sel = document.getElementById('selResource');
+  if (!sel) return;
+  var opt  = sel.options[sel.selectedIndex];
+  var type = opt ? (opt.dataset.type || 'salle') : 'salle';
+  document.getElementById('empResourceType').value = type;
+  var hint = document.getElementById('empResourceHint');
+  if (hint) {
+    if (type === 'materiel') {
+      hint.innerHTML = '📦 Vous réservez un <strong>matériel</strong>.';
+    } else {
+      var cap = opt ? opt.dataset.capacite : '';
+      hint.innerHTML = '🚪 Vous réservez une <strong>salle</strong>'
+                     + (cap ? ' (capacité ' + cap + ')' : '') + '.';
+    }
+  }
+  // Recharger automatiquement les suggestions et la dispo
+  empShowSuggestions();
+  empCheckDispo();
+}
+function empShowSuggestions() {
+  var sel        = document.getElementById('selResource');
+  var resourceId = sel ? sel.value : '';
+  var resourceType = document.getElementById('empResourceType').value || 'salle';
+  var dateInput  = document.getElementById('dateDebut').value;
+  var nbPart     = document.getElementById('nbParticipants').value || 1;
+  var container  = document.getElementById('empSuggestionsContainer');
+  if (!resourceId) {
+    container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ Choisissez d\'abord une salle ou une ressource.</div>';
+    return;
+  }
+  // Date cible : celle saisie, sinon aujourd'hui
+  var date = dateInput ? dateInput.split('T')[0] : new Date().toISOString().split('T')[0];
+  container.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Recherche des meilleurs créneaux...</div>';
+  var url = '/api/suggestions-creneaux/?resource_id=' + encodeURIComponent(resourceId)
+          + '&resource_type=' + encodeURIComponent(resourceType)
+          + '&date=' + encodeURIComponent(date)
+          + '&duree=60'
+          + '&nb_participants=' + encodeURIComponent(nbPart);
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.warning) {
+        container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ ' + data.warning + '</div>';
+        return;
+      }
+      if (!data.suggestions || data.suggestions.length === 0) {
+        container.innerHTML = '<div style="color:var(--text3);font-size:12px">😕 Aucun créneau libre ce jour-là. Essayez une autre date.</div>';
+        return;
+      }
+      var html = '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">'
+               + '✨ <strong>' + data.suggestions.length + ' créneaux libres</strong> le '
+               + new Date(date).toLocaleDateString('fr-FR') + ' :</div>'
+               + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px">';
+      data.suggestions.forEach(function(s) {
+        html += '<button type="button" '
+              + 'style="text-align:left;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);cursor:pointer;transition:.2s" '
+              + 'onmouseover="this.style.background=\'var(--blue3)\';this.style.borderColor=\'var(--blue2)\'" '
+              + 'onmouseout="this.style.background=\'var(--bg2)\';this.style.borderColor=\'var(--border)\'" '
+              + 'onclick="empApplySuggestion(\'' + s.debut + '\',\'' + s.fin + '\')">'
+              + '<div style="font-weight:600;color:var(--blue2);font-size:12px">🕐 ' + s.debut_label + ' → ' + s.fin_label + '</div>'
+              + '<div style="font-size:10px;color:var(--text3);margin-top:2px">⭐ Score: ' + s.score + '</div>'
+              + '</button>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    })
+    .catch(function(err) {
+      container.innerHTML = '<div style="color:var(--red);font-size:12px">❌ Erreur: ' + err + '</div>';
+    });
+}
+function empApplySuggestion(debut, fin) {
+  document.getElementById('dateDebut').value = debut.slice(0, 16);
+  document.getElementById('dateFin').value   = fin.slice(0, 16);
+  empCheckDispo();
+  // Petit retour visuel
+  var msg = document.getElementById('empDispoMsg');
+  msg.style.display = 'block';
+  msg.style.background = 'var(--green3)';
+  msg.style.color      = 'var(--green2)';
+  msg.innerHTML = '✅ Créneau appliqué : ' + debut.slice(11,16) + ' → ' + fin.slice(11,16);
+}
+function empCheckDispo() {
+  var sel        = document.getElementById('selResource');
+  var resourceId = sel ? sel.value : '';
+  var resourceType = document.getElementById('empResourceType').value || 'salle';
+  var debut      = document.getElementById('dateDebut').value;
+  var fin        = document.getElementById('dateFin').value;
+  var msg        = document.getElementById('empDispoMsg');
+  var btn        = document.getElementById('submitBtn');
+  if (!resourceId || !debut || !fin) {
+    msg.style.display = 'none';
+    btn.disabled = false;
+    return;
+  }
+  var endpoint = (resourceType === 'materiel')
+    ? '/api/materiel-disponibilite/' + resourceId + '/'
+    : '/api/bureau-disponibilite/'   + resourceId + '/';
+  fetch(endpoint + '?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      msg.style.display = 'block';
+      if (data.disponible) {
+        msg.style.background = 'var(--green3)';
+        msg.style.color      = 'var(--green2)';
+        msg.innerHTML = '✅ Créneau disponible';
+        btn.disabled = false;
+      } else {
+        msg.style.background = 'var(--red3)';
+        msg.style.color      = 'var(--red2)';
+        msg.innerHTML = '❌ ' + (data.motif || 'Créneau indisponible');
+        btn.disabled = true;
+      }
+    })
+    .catch(function() {
+      msg.style.display = 'none';
+      btn.disabled = false;
+    });
 }
 </script>
 {% endblock %}

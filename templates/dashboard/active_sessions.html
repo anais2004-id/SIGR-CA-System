@@ -339,61 +339,61 @@
                 </tr>
             </thead>
             <tbody id="sessions-body">
-                {% for session in active_sessions %}
-                <tr>
-                    <td>
-                        <div class="user-cell">
-                            <div class="user-avatar" style="background:{% if session.user.is_staff %}#a855f7{% else %}#3b82f6{% endif %}">
-                                {{ session.user.username|slice:":2"|upper }}
-                            </div>
-                            <div class="user-info">
-                                <div class="user-name">{{ session.user.get_full_name|default:session.user.username }}</div>
-                                <div class="user-email">{{ session.user.email|default:"—" }}</div>
-                            </div>
-                        </div>
-                    </div>
-                    <td>
-                        {% if session.user.is_staff %}
-                            <span class="badge badge-info">👑 Administrateur</span>
-                        {% else %}
-                            <span class="badge badge-gray">👤 Employé</span>
-                        {% endif %}
-                    </div>
-                    <td>
-                        <span class="badge badge-gray">
-                            {% if session.device_type == 'desktop' %}💻 Ordinateur
-                            {% elif session.device_type == 'mobile' %}📱 Mobile
-                            {% else %}📟 Tablette{% endif %}
-                        </span>
-                    </div>
-                    <td class="date-cell">{{ session.login_time|date:"d/m/Y H:i:s" }}</div>
-                    <td class="date-cell">{{ session.last_activity|date:"d/m/Y H:i:s" }}</div>
-                    <td class="date-cell">{{ session.ip_address|default:"—" }}</div>
-                    <td>
-                        {% if session.last_activity > now|date:"U"|add:"-300" %}
-                            <span class="badge badge-success">🟢 Actif</span>
-                        {% elif session.last_activity > now|date:"U"|add:"-1800" %}
-                            <span class="badge badge-warning">🟡 Inactif</span>
-                        {% else %}
-                            <span class="badge badge-danger">🔴 Très inactif</span>
-                        {% endif %}
-                    </div>
-                    <td>
-                        {% if session.session_key != request.session.session_key %}
-                            <button class="btn btn-del btn-sm" onclick="terminateSession({{ session.id }}, '{{ session.user.username }}')">🔒 Terminer</button>
-                        {% else %}
-                            <span class="badge badge-gray">Vous</span>
-                        {% endif %}
-                    </div>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="8" style="text-align:center; padding:80px; color:var(--text3)">
-                        🟢 Aucun utilisateur connecté
-                    </div>
-                </tr>
-                {% endfor %}
-            </tbody>
+    {% for session in active_sessions %}
+    <tr>
+        <td>
+            <div class="user-cell">
+                <div class="user-avatar" style="background:{% if session.user.is_staff %}#a855f7{% else %}#3b82f6{% endif %}">
+                    {{ session.user.username|slice:":2"|upper }}
+                </div>
+                <div class="user-info">
+                    <div class="user-name">{{ session.user.get_full_name|default:session.user.username }}</div>
+                    <div class="user-email">{{ session.user.email|default:"—" }}</div>
+                </div>
+            </div>
+        </td>
+        <td>
+            {% if session.user.is_staff %}
+                <span class="badge badge-info">👑 Administrateur</span>
+            {% else %}
+                <span class="badge badge-gray">👤 Employé</span>
+            {% endif %}
+        </td>
+        <td>
+            <span class="badge badge-gray">
+                {% if session.device_type == 'desktop' %}💻 Ordinateur
+                {% elif session.device_type == 'mobile' %}📱 Mobile
+                {% else %}📟 Tablette{% endif %}
+            </span>
+        </td>
+        <td class="date-cell">{{ session.login_time|date:"d/m/Y H:i:s" }}</td>
+        <td class="date-cell">{{ session.last_activity|date:"d/m/Y H:i:s" }}</td>
+        <td class="date-cell">{{ session.ip_address|default:"—" }}</td>
+        <td>
+            {% if session.last_activity > now|date:"U"|add:"-300" %}
+                <span class="badge badge-success">🟢 Actif</span>
+            {% elif session.last_activity > now|date:"U"|add:"-1800" %}
+                <span class="badge badge-warning">🟡 Inactif</span>
+            {% else %}
+                <span class="badge badge-danger">🔴 Très inactif</span>
+            {% endif %}
+        </td>
+        <td>
+            {% if session.session_key != request.session.session_key %}
+                <button class="btn btn-del btn-sm" onclick="terminateSession({{ session.id }}, '{{ session.user.username }}')">🔒 Terminer</button>
+            {% else %}
+                <span class="badge badge-gray">Vous</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="8" style="text-align:center; padding:80px; color:var(--text3)">
+            🟢 Aucun utilisateur connecté
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
         </table>
     </div>
 </div>

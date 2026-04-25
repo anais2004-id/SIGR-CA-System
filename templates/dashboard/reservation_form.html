@@ -42,17 +42,37 @@
         <!-- Salle + Employé -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="form-row">
-            <label class="form-label">Salle / Ressource <span style="color:var(--red)">*</span></label>
-            <select class="form-select" name="bureau_id" id="bureauSelect" onchange="checkDispo(); loadBureauSchedule()" required>
-              <option value="">— Choisir une salle —</option>
-              {% for b in bureaux %}
-              <option value="{{ b.id }}"
-                {% if reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}>
-                {{ b.nom }} {% if b.capacite_max %}(Cap. {{ b.capacite_max }}){% endif %}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
+  <label class="form-label">Salle ou ressource <span style="color:var(--red)">*</span></label>
+  <select class="form-select" name="resource_id" id="resourceSelect" onchange="onResourceChange()" required>
+    <option value="">— Choisir une salle ou une ressource —</option>
+
+    {% if bureaux %}
+    <optgroup label="🚪 Salles / Zones">
+      {% for b in bureaux %}
+      <option value="{{ b.id }}" data-type="salle" data-capacite="{{ b.capacite_max|default:'' }}"
+        {% if reservation.resource_id|stringformat:"s" == b.id or reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}>
+        🚪 {{ b.nom }}{% if b.capacite_max %} (Cap. {{ b.capacite_max }}){% endif %}
+      </option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+
+    {% if materiels %}
+    <optgroup label="📦 Matériel / Équipements">
+      {% for m in materiels %}
+      <option value="{{ m.id }}" data-type="materiel"
+        {% if reservation.resource_id|stringformat:"s" == m.id or reservation.materiel_id|stringformat:"s" == m.id %}selected{% endif %}>
+        {{ m.type_icon|default:"📦" }} {{ m.nom }}{% if m.categorie %} — {{ m.categorie }}{% endif %}
+      </option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+  </select>
+
+  <input type="hidden" name="resource_type" id="resourceType" value="salle">
+
+  <div id="resourceHint" style="margin-top:6px; font-size:11px; color:var(--text3)"></div>
+</div>
           <div class="form-row">
             <label class="form-label">Réservé par <span style="color:var(--red)">*</span></label>
             <select class="form-select" name="employe_id" required>
@@ -130,15 +150,7 @@
         </div>
 
         <!-- Équipements requis -->
-        <div class="form-row">
-          <label class="form-label">Équipements requis</label>
-          <div style="display:flex; gap:12px; flex-wrap:wrap">
-            <label><input type="checkbox" name="equipements" value="videoprojecteur"> 📽️ Vidéoprojecteur</label>
-            <label><input type="checkbox" name="equipements" value="ecran"> 🖥️ Écran</label>
-            <label><input type="checkbox" name="equipements" value="tableau"> ✍️ Tableau blanc</label>
-            <label><input type="checkbox" name="equipements" value="visio"> 🎥 Visioconférence</label>
-          </div>
-        </div>
+        
 
         <!-- Description -->
         <div class="form-row">
@@ -209,61 +221,103 @@
 var dispoTimer = null;
 
 function checkDispo() {
-  var bureauId = document.getElementById("bureauSelect").value;
-  var debut = document.getElementById("dateDebut").value;
-  var fin = document.getElementById("dateFin").value;
-  var indicator = document.getElementById("dispo-indicator");
+  var sel       = document.getElementById('resourceSelect');
+  var resourceId = sel ? sel.value : '';
+  var type      = document.getElementById('resourceType').value || 'salle';
+  var debut     = document.getElementById('dateDebut').value;
+  var fin       = document.getElementById('dateFin').value;
+  var indicator = document.getElementById('dispo-indicator');
+  var submitBtn = document.getElementById('submitBtn');
 
-  if (!bureauId || !debut || !fin) {
-    indicator.style.display = "none";
+  if (!resourceId || !debut || !fin) {
+    indicator.style.display = 'none';
     return;
   }
 
   if (new Date(fin) <= new Date(debut)) {
-    indicator.style.display = "block";
-    indicator.style.background = "var(--red2)";
-    indicator.style.border = "1px solid rgba(248,81,73,.3)";
-    indicator.style.color = "var(--red)";
-    indicator.textContent = "⚠️ La date de fin doit être après la date de début.";
-    document.getElementById("submitBtn").disabled = true;
+    indicator.style.display = 'block';
+    indicator.style.background = 'var(--red2)';
+    indicator.style.border = '1px solid rgba(248,81,73,.3)';
+    indicator.style.color = 'var(--red)';
+    indicator.textContent = '⚠️ La date de fin doit être après la date de début.';
+    submitBtn.disabled = true;
     return;
   }
 
   clearTimeout(dispoTimer);
   dispoTimer = setTimeout(function() {
-    indicator.style.display = "block";
-    indicator.style.background = "var(--blue3)";
-    indicator.style.border = "1px solid rgba(31,111,235,.2)";
-    indicator.style.color = "var(--blue2)";
-    indicator.textContent = "⏳ Vérification de la disponibilité...";
+    indicator.style.display = 'block';
+    indicator.style.background = 'var(--blue3)';
+    indicator.style.border = '1px solid rgba(31,111,235,.2)';
+    indicator.style.color = 'var(--blue2)';
+    indicator.textContent = '⏳ Vérification de la disponibilité...';
 
-    var url = "/api/bureaux/" + bureauId + "/disponibilite/?debut=" + encodeURIComponent(debut) + "&fin=" + encodeURIComponent(fin);
+    var url;
+    if (type === 'materiel') {
+      url = '/api/materiels/' + resourceId + '/disponibilite/?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin);
+    } else {
+      url = '/api/bureaux/'   + resourceId + '/disponibilite/?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin);
+    }
 
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.disponible) {
-          indicator.style.background = "var(--green2)";
-          indicator.style.border = "1px solid rgba(45,186,111,.3)";
-          indicator.style.color = "var(--green)";
-          indicator.textContent = "✅ Salle disponible sur ce créneau !";
-          document.getElementById("submitBtn").disabled = false;
+          indicator.style.background = 'var(--green2)';
+          indicator.style.border = '1px solid rgba(45,186,111,.3)';
+          indicator.style.color = 'var(--green)';
+          indicator.textContent = (type === 'materiel' ? '✅ Matériel disponible' : '✅ Salle disponible') + ' sur ce créneau !';
+          submitBtn.disabled = false;
         } else {
-          indicator.style.background = "var(--red2)";
-          indicator.style.border = "1px solid rgba(248,81,73,.3)";
-          indicator.style.color = "var(--red)";
-          indicator.textContent = "❌ Cette salle est déjà réservée sur ce créneau. Choisissez un autre horaire.";
-          document.getElementById("submitBtn").disabled = true;
+          indicator.style.background = 'var(--red2)';
+          indicator.style.border = '1px solid rgba(248,81,73,.3)';
+          indicator.style.color = 'var(--red)';
+          var motif = data.motif ? ' (' + data.motif + ')' : '';
+          indicator.textContent = (type === 'materiel' ? '❌ Matériel indisponible' : '❌ Salle déjà réservée') + motif + '. Choisissez un autre créneau.';
+          submitBtn.disabled = true;
         }
       })
       .catch(function() {
-        indicator.style.background = "var(--amber2)";
-        indicator.style.border = "1px solid rgba(227,179,65,.3)";
-        indicator.style.color = "var(--amber)";
-        indicator.textContent = "⚠️ Impossible de vérifier la disponibilité.";
-        document.getElementById("submitBtn").disabled = false;
+        indicator.style.background = 'var(--amber2)';
+        indicator.style.border = '1px solid rgba(227,179,65,.3)';
+        indicator.style.color = 'var(--amber)';
+        indicator.textContent = '⚠️ Impossible de vérifier la disponibilité.';
+        submitBtn.disabled = false;
       });
   }, 600);
+}
+
+function loadBureauSchedule() {
+  var sel  = document.getElementById('resourceSelect');
+  var type = document.getElementById('resourceType').value || 'salle';
+  if (type !== 'salle') {
+    var card = document.getElementById('creneaux-card');
+    if (card) card.style.display = 'none';
+    return;
+  }
+  var bureauId = sel ? sel.value : '';
+  var dateField = document.getElementById('dateDebut');
+  if (!bureauId || !dateField.value) return;
+
+  var date = dateField.value.split('T')[0];
+  var card = document.getElementById('creneaux-card');
+
+  fetch('/api/bureaux/' + bureauId + '/schedule/?date=' + date)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      card.style.display = 'block';
+      var body = document.getElementById('creneaux-body');
+      if (data.creneaux && data.creneaux.length > 0) {
+        body.innerHTML = data.creneaux.map(function(c) {
+          return '<div style="padding:8px; background:var(--bg3); border-radius:6px; margin-bottom:6px; font-size:12px">'
+               + '⏰ ' + c.debut + ' → ' + c.fin + ' — ' + (c.titre || 'Réservé')
+               + '</div>';
+        }).join('');
+      } else {
+        body.innerHTML = '<div style="color:var(--text3); font-size:12px">✅ Aucun créneau réservé ce jour-là.</div>';
+      }
+    })
+    .catch(function() {});
 }
 
 function loadBureauSchedule() {
@@ -324,7 +378,97 @@ function showSuggestions() {
       container.innerHTML += `</div>`;
     });
 }
+function showSuggestions() {
+  var sel = document.getElementById('resourceSelect');
+  var resourceId = sel ? sel.value : '';
+  var resourceType = document.getElementById('resourceType').value || 'salle';
+  var dateInput = document.getElementById('dateDebut').value;
+  var nbPart = document.querySelector('input[name="nb_participants"]').value || 1;
 
+  var container = document.getElementById('suggestions-container');
+
+  if (!resourceId) {
+    container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ Choisissez d\'abord une salle ou ressource.</div>';
+    return;
+  }
+
+  // Date cible : celle sélectionnée, sinon aujourd'hui
+  var date = dateInput ? dateInput.split('T')[0] : new Date().toISOString().split('T')[0];
+
+  container.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Recherche des meilleurs créneaux...</div>';
+
+  var url = '/api/suggestions-creneaux/?resource_id=' + encodeURIComponent(resourceId)
+          + '&resource_type=' + encodeURIComponent(resourceType)
+          + '&date=' + encodeURIComponent(date)
+          + '&duree=60'
+          + '&nb_participants=' + encodeURIComponent(nbPart);
+
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.warning) {
+        container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ ' + data.warning + '</div>';
+        return;
+      }
+      if (!data.suggestions || data.suggestions.length === 0) {
+        container.innerHTML = '<div style="color:var(--text3);font-size:12px">Aucun créneau libre ce jour-là. Essayez une autre date.</div>';
+        return;
+      }
+
+      var html = '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">'
+               + '✨ Créneaux disponibles le ' + new Date(date).toLocaleDateString('fr-FR') + ' :</div>'
+               + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">';
+
+      data.suggestions.forEach(function(s) {
+        html += '<button type="button" class="btn btn-ghost btn-sm" '
+              + 'style="text-align:left;padding:10px;border:1px solid var(--border);border-radius:8px" '
+              + 'onclick="applySuggestion(\'' + s.debut + '\',\'' + s.fin + '\')">'
+              + '<div style="font-weight:600;color:var(--blue2)">🕐 ' + s.debut_label + ' → ' + s.fin_label + '</div>'
+              + '<div style="font-size:10px;color:var(--text3);margin-top:2px">Score : ' + s.score + '</div>'
+              + '</button>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    })
+    .catch(function(err) {
+      container.innerHTML = '<div style="color:var(--red);font-size:12px">❌ Erreur : ' + err + '</div>';
+    });
+}
+
+function applySuggestion(debut, fin) {
+  document.getElementById('dateDebut').value = debut.slice(0, 16);
+  document.getElementById('dateFin').value   = fin.slice(0, 16);
+  if (typeof checkDispo === 'function') checkDispo();
+  // Faire défiler vers le formulaire
+  document.getElementById('dateDebut').scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
+// Auto-recharger les suggestions quand l'utilisateur change de salle ou de date
+document.addEventListener('DOMContentLoaded', function() {
+  var sel = document.getElementById('resourceSelect');
+  var dateDebut = document.getElementById('dateDebut');
+  if (sel) sel.addEventListener('change', function() { setTimeout(showSuggestions, 200); });
+  if (dateDebut) dateDebut.addEventListener('change', function() { setTimeout(showSuggestions, 200); });
+});
+function onResourceChange() {
+  var sel  = document.getElementById('resourceSelect');
+  var opt  = sel.options[sel.selectedIndex];
+  var type = opt ? (opt.getAttribute('data-type') || 'salle') : 'salle';
+  document.getElementById('resourceType').value = type;
+
+  var hint = document.getElementById('resourceHint');
+  if (type === 'materiel') {
+    hint.innerHTML = '📦 Ressource matérielle — réservation individuelle.';
+  } else {
+    var cap = opt.getAttribute('data-capacite');
+    hint.innerHTML = '🚪 Salle' + (cap ? ' — capacité maximale : ' + cap + ' personnes.' : '.');
+  }
+
+  checkDispo();
+  loadBureauSchedule();
+}
+
+document.addEventListener('DOMContentLoaded', onResourceChange);
 function applySuggestion(debut, fin) {
   var dateField = document.getElementById("dateDebut");
   var finField = document.getElementById("dateFin");
@@ -353,4 +497,5 @@ window.onload = function() {
     finField.value = fmt(fin);
   }
 };
+
 {% endblock %}

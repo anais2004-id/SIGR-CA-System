@@ -208,6 +208,13 @@ urlpatterns = [
     path('api/chatbot/conversations/',                        views.api_chatbot_conversations,        name='api_chatbot_conversations'),
     path('api/chatbot/conversation/<int:conversation_id>/',   views.api_chatbot_conversation_detail,  name='api_chatbot_conversation_detail'),
     
-    path('api/check-badge/', views.api_check_badge, name='api_check_badge'),
-     path('api/chatbot/message/', views.api_chatbot_message, name='api_chatbot_message'),]
+     path('api/check-badge/', views.api_check_badge, name='api_check_badge'),
+     path('api/chatbot/message/', views.api_chatbot_message, name='api_chatbot_message'),
+     path('api/materiels/<str:materiel_id>/disponibilite/', views.api_materiel_disponibilite, name='api_materiel_dispo'),
+     path('api/indisponibilite/ajouter/',                      views.api_indisponibilite_ajouter,    name='api_indispo_ajouter'),
+     path('api/indisponibilite/<str:indispo_id>/modifier/',    views.api_indisponibilite_modifier,   name='api_indispo_modifier'),
+     path('api/indisponibilite/<str:indispo_id>/supprimer/',   views.api_indisponibilite_supprimer,  name='api_indispo_supprimer'),
+     path('api/indisponibilite/check/',                        views.api_indisponibilite_check,      name='api_indispo_check'),
+     path('ressources/indisponibilites/',                      views.gestion_indisponibilites,       name='gestion_indisponibilites'),
+     path('api/suggestions-creneaux/', views.api_suggestions_creneaux, name='api_suggestions_creneaux'),]
     

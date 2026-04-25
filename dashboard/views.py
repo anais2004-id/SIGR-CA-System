@@ -39,7 +39,69 @@ db = settings.MONGO_DB
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-
+# ====================== HELPER : VÉRIFICATION DISPONIBILITÉ ======================
+def check_ressource_disponibilite(ressource_id, ressource_type, date_debut, date_fin, exclude_resa_id=None):
+    """
+    Vérifie si une ressource (salle ou matériel) est disponible sur un créneau.
+    Prend en compte :
+      - Les réservations existantes (confirmées / en attente)
+      - Les indisponibilités planifiées (maintenance, fermeture, blocage)
+    
+    Retourne un dict :
+      { 'disponible': True/False, 'motif': str, 'conflit_type': 'reservation'|'indisponibilite'|None }
+    """
+    try:
+        ressource_oid = ObjectId(ressource_id)
+    except Exception:
+        return {'disponible': False, 'motif': 'ID ressource invalide', 'conflit_type': None}
+    # 1) Vérifier les INDISPONIBILITÉS PLANIFIÉES
+    indispo = db.indisponibilites.find_one({
+        'ressource_id': ressource_oid,
+        'ressource_type': ressource_type,
+        '$or': [
+            {'date_debut': {'$lt': date_fin}, 'date_fin': {'$gt': date_debut}},
+        ],
+    })
+    if indispo:
+        type_lib = {
+            'maintenance': 'Maintenance programmée',
+            'reservation_bloquee': 'Créneau bloqué',
+            'fermeture': 'Fermeture exceptionnelle',
+        }.get(indispo.get('type_indispo', 'maintenance'), 'Indisponibilité')
+        return {
+            'disponible': False,
+            'motif': f"{type_lib} : {indispo.get('titre', 'sans titre')} "
+                     f"(du {indispo['date_debut'].strftime('%d/%m %H:%M')} "
+                     f"au {indispo['date_fin'].strftime('%d/%m %H:%M')})",
+            'conflit_type': 'indisponibilite',
+            'indispo_id': str(indispo['_id']),
+        }
+    # 2) Vérifier les RÉSERVATIONS existantes (hors annulées)
+    query_resa = {
+        '$or': [
+            {'bureau_id':    ressource_oid},
+            {'materiel_id':  ressource_oid},
+            {'resource_id':  ressource_oid},
+        ],
+        'statut': {'$in': ['confirmee', 'en_attente']},
+        'date_debut': {'$lt': date_fin},
+        'date_fin':   {'$gt': date_debut},
+    }
+    if exclude_resa_id:
+        try:
+            query_resa['_id'] = {'$ne': ObjectId(exclude_resa_id)}
+        except Exception:
+            pass
+    resa_conflit = db.reservations.find_one(query_resa)
+    if resa_conflit:
+        return {
+            'disponible': False,
+            'motif': f"Déjà réservé : {resa_conflit.get('titre', 'sans titre')} "
+                     f"(du {resa_conflit['date_debut'].strftime('%d/%m %H:%M')} "
+                     f"au {resa_conflit['date_fin'].strftime('%d/%m %H:%M')})",
+            'conflit_type': 'reservation',
+        }
+    return {'disponible': True, 'motif': '', 'conflit_type': None}
 # ====================== AUTHENTIFICATION ======================
 
 def login_view(request):
@@ -323,189 +385,274 @@ def employe_espace(request):
 def employe_mes_reservations(request):
     if request.user.is_staff:
         return redirect('dashboard')
-    
+
     from datetime import datetime
     from bson import ObjectId
     import json
-    from django.contrib.auth import get_user_model
-    
-    User = get_user_model()
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+
+    # Récupération de l'employé
+    employe = db.employees.find_one({'django_user_id': request.user.id}) \
+              or db.employees.find_one({'django_username': request.user.username})
+
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
-    
-    if not employe:
+        messages.error(request, "Profil employé introuvable.")
         return redirect('login')
-    
+
     employe['id'] = str(employe['_id'])
-    
-    # Récupérer les réservations
-    reservations = list(db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1))
-    
-    for r in reservations:
-        r['id'] = str(r['_id'])
-        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
-        r['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
-        if 'qr_code' not in r:
-            r['qr_code'] = None
-    
-    now = datetime.now()
-    actives = sum(1 for r in reservations if r.get('statut') == 'confirmee'
-                  and r.get('date_debut') and r['date_debut'] <= now <= r.get('date_fin', now))
-    a_venir = sum(1 for r in reservations if r.get('statut') == 'confirmee'
-                  and r.get('date_debut') and r['date_debut'] > now)
-    en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
-    
-    bureaux = list(db.bureaux.find())
-    for b in bureaux:
-        b['id'] = str(b['_id'])
-        b['capacite_max'] = b.get('capacite_max', 10)
-    
-    # CRÉATION DU JSON POUR LE CALENDRIER
-    reservations_list = []
-    for r in reservations:
-        if r.get('date_debut'):
-            reservations_list.append({
-                'id': str(r['_id']),
-                'titre': r.get('titre', ''),
-                'bureau_nom': r.get('bureau_nom', ''),
-                'statut': r.get('statut', ''),
-                'date_debut': r['date_debut'].isoformat() if r.get('date_debut') else None,
-                'date_fin': r['date_fin'].isoformat() if r.get('date_fin') else None,
-            })
-    
-    reservations_json = json.dumps(reservations_list, default=str)
-    
+
+    # ============ TRAITEMENT POST (création de réservation) ============
     if request.method == 'POST':
         try:
-            date_debut = datetime.strptime(request.POST.get('date_debut'), '%Y-%m-%dT%H:%M')
-            date_fin = datetime.strptime(request.POST.get('date_fin'), '%Y-%m-%dT%H:%M')
-            bureau_id = request.POST.get('bureau_id')
-            
+            titre         = (request.POST.get('titre') or '').strip()
+            description   = (request.POST.get('description') or '').strip()
+            resource_id   = request.POST.get('resource_id') or request.POST.get('bureau_id')
+            resource_type = request.POST.get('resource_type', 'salle')
+            date_debut_s  = request.POST.get('date_debut')
+            date_fin_s    = request.POST.get('date_fin')
+            nb_part       = int(request.POST.get('nb_participants', 1) or 1)
+
+            # --- Validations ---
+            if not titre:
+                messages.error(request, "Le titre est obligatoire.")
+                return redirect('employe_mes_reservations')
+
+            if not resource_id:
+                messages.error(request, "Veuillez choisir une salle ou une ressource.")
+                return redirect('employe_mes_reservations')
+
+            if not date_debut_s or not date_fin_s:
+                messages.error(request, "Les dates de début et de fin sont obligatoires.")
+                return redirect('employe_mes_reservations')
+
+            try:
+                date_debut = datetime.strptime(date_debut_s, '%Y-%m-%dT%H:%M')
+                date_fin   = datetime.strptime(date_fin_s,   '%Y-%m-%dT%H:%M')
+            except ValueError:
+                messages.error(request, "Format de date invalide.")
+                return redirect('employe_mes_reservations')
+
             if date_fin <= date_debut:
                 messages.error(request, "La date de fin doit être après la date de début.")
-            else:
-                chevauchement = db.reservations.find_one({
-                    'bureau_id': ObjectId(bureau_id),
-                    'statut': {'$in': ['confirmee', 'en_attente']},
-                    'date_debut': {'$lt': date_fin},
-                    'date_fin': {'$gt': date_debut},
-                })
-                
-                if chevauchement:
-                    messages.error(request, "Cette salle est déjà réservée sur ce créneau.")
-                else:
-                    # Vérifier les indisponibilités planifiées
-                    try:
-                        indispo_emp = db.indisponibilites.find_one({
-                            'ressource_type': 'salle',
-                            'ressource_id': ObjectId(bureau_id),
-                            'date_debut': {'$lt': date_fin},
-                            'date_fin':   {'$gt': date_debut},
-                        }) if 'indisponibilites' in db.list_collection_names() else None
-                        if indispo_emp:
-                            messages.error(request,
-                                f"Cette salle est indisponible ({indispo_emp.get('titre','maintenance')}) "
-                                f"du {indispo_emp['date_debut'].strftime('%d/%m/%Y %H:%M')} "
-                                f"au {indispo_emp['date_fin'].strftime('%d/%m/%Y %H:%M')}.")
-                            return render(request, 'dashboard/employe_mes_reservations.html', {
-                                'employe': employe, 'reservations': [], 'bureaux': bureaux,
-                                'reservations_json': '[]',
-                            })
-                    except Exception:
-                        pass
-                    # Récupérer la salle pour les notifications
-                    bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
-                    bureau_nom = bureau['nom'] if bureau else 'Salle inconnue'
-                    
-                    reservation_data = {
-                        'titre': request.POST.get('titre', '').strip(),
-                        'description': request.POST.get('description', '').strip(),
-                        'bureau_id': ObjectId(bureau_id),
-                        'bureau_nom': bureau_nom,
-                        'employe_id': str(employe['_id']),
-                        'employe_nom': f"{employe.get('nom', '')} {employe.get('prenom', '')}",
-                        'date_debut': date_debut,
-                        'date_fin': date_fin,
-                        'nb_participants': int(request.POST.get('nb_participants', 1)),
-                        'statut': 'en_attente',
-                        'qr_code': None,
-                        'created_at': datetime.now(),
-                        'created_by': request.user.username,
-                    }
-                    result = db.reservations.insert_one(reservation_data)
-                    reservation_id = str(result.inserted_id)
-                    
-                    # === NOTIFICATION À L'EMPLOYÉ ===
-                    notification_employe = {
-                        'employe_id': str(employe['_id']),
-                        'titre': '📝 Réservation créée',
-                        'message': f"Votre réservation '{reservation_data.get('titre')}' a été créée et est en attente de validation.",
-                        'categorie': 'reservation',
-                        'icon': '📝',
-                        'status': 'non_lu',
-                        'action_url': '/employe/reservations/',
-                        'reservation_id': reservation_id,
-                        'created_at': datetime.now()
-                    }
-                    db.notifications.insert_one(notification_employe)
-                    
-                    # === NOTIFICATION AUX ADMINISTRATEURS ===
-                    admins = User.objects.filter(is_staff=True, is_active=True)
-                    admin_message = f"""
-🆕 NOUVELLE RÉSERVATION EN ATTENTE
+                return redirect('employe_mes_reservations')
 
-👤 Employé: {employe.get('prenom', '')} {employe.get('nom', '')}
-📋 Titre: {reservation_data.get('titre')}
-🚪 Salle: {bureau_nom}
-📅 Date: {date_debut.strftime('%d/%m/%Y')}
-⏰ Horaire: {date_debut.strftime('%H:%M')} → {date_fin.strftime('%H:%M')}
-👥 Participants: {reservation_data.get('nb_participants', 1)}
+            if date_debut < datetime.now():
+                messages.error(request, "Impossible de réserver dans le passé.")
+                return redirect('employe_mes_reservations')
 
-🔗 Cliquez pour traiter cette réservation: /reservations/
-"""
-                    
-                    for admin in admins:
-                        admin_notification = {
-                            'admin_id': admin.id,
-                            'titre': '🆕 Nouvelle réservation en attente',
-                            'message': f"{employe.get('prenom', '')} {employe.get('nom', '')} a demandé une réservation pour '{reservation_data.get('titre')}' le {date_debut.strftime('%d/%m/%Y à %H:%M')} dans la salle {bureau_nom}.",
-                            'categorie': 'reservation',
-                            'icon': '🆕',
-                            'status': 'non_lu',
-                            'action_url': f'/reservations/{reservation_id}/',
-                            'reservation_id': reservation_id,
-                            'created_at': datetime.now()
-                        }
-                        db.admin_notifications.insert_one(admin_notification)
-                        
-                        # Email admin — utils_email (Python 3.12 compatible)
-                        if admin.email:
-                            try:
-                                from dashboard.utils_email import envoyer_email
-                                envoyer_email(admin.email,
-                                    f"🆕 Nouvelle réservation — {reservation_data.get('titre')}",
-                                    admin_message)
-                            except Exception as _ee:
-                                logger.warning(f"Email admin: {_ee}")
-                    
-                    messages.success(request, "Réservation créée avec succès ! En attente de validation.")
+            # --- Vérification disponibilité (réservations + indisponibilités) ---
+            check = check_ressource_disponibilite(
+                resource_id, resource_type, date_debut, date_fin
+            )
+            if not check['disponible']:
+                messages.error(request, f"❌ {check['motif']}")
+                return redirect('employe_mes_reservations')
+
+            # --- Vérification capacité (salles uniquement) ---
+            try:
+                resource_oid = ObjectId(resource_id)
+            except Exception:
+                messages.error(request, "Identifiant de ressource invalide.")
+                return redirect('employe_mes_reservations')
+
+            if resource_type == 'salle':
+                bureau = db.bureaux.find_one({'_id': resource_oid})
+                if not bureau:
+                    messages.error(request, "Salle introuvable.")
                     return redirect('employe_mes_reservations')
-                    
+                cap_max = bureau.get('capacite_max')
+                if cap_max and nb_part > cap_max:
+                    messages.error(request,
+                        f"⚠️ Capacité dépassée : la salle « {bureau['nom']} » "
+                        f"accepte {cap_max} personnes maximum.")
+                    return redirect('employe_mes_reservations')
+                ressource_nom   = bureau['nom']
+                ressource_label = f"🚪 Salle: {ressource_nom}"
+            else:
+                materiel = db.materiels.find_one({'_id': resource_oid})
+                if not materiel:
+                    messages.error(request, "Matériel introuvable.")
+                    return redirect('employe_mes_reservations')
+                ressource_nom   = materiel['nom']
+                ressource_label = f"📦 Matériel: {ressource_nom}"
+
+            # --- Construction de la réservation (ObjectId partout pour cohérence) ---
+            reservation_data = {
+                'titre':           titre,
+                'description':     description,
+                'employe_id':      str(employe['_id']),
+                'employe_nom':     f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip(),
+                'date_debut':      date_debut,
+                'date_fin':        date_fin,
+                'nb_participants': nb_part,
+                'statut':          'en_attente',
+                'qr_code':         None,
+                'resource_type':   resource_type,
+                'resource_id':     resource_oid,        # champ générique
+                'bureau_nom':      ressource_nom,       # affichage homogène
+                'created_at':      datetime.now(),
+                'created_by':      request.user.username,
+            }
+
+            if resource_type == 'salle':
+                reservation_data['bureau_id'] = resource_oid
+            else:
+                reservation_data['materiel_id']  = resource_oid   # ObjectId, pas string
+                reservation_data['materiel_nom'] = ressource_nom
+
+            result = db.reservations.insert_one(reservation_data)
+            reservation_id = str(result.inserted_id)
+
+            # --- Notification employé ---
+            db.notifications.insert_one({
+                'employe_id':     str(employe['_id']),
+                'titre':          '📝 Réservation créée',
+                'message':        f"Votre réservation '{titre}' a été créée et est en attente de validation.",
+                'categorie':      'reservation',
+                'icon':           '📝',
+                'status':         'non_lu',
+                'action_url':     '/employe/reservations/',
+                'reservation_id': reservation_id,
+                'created_at':     datetime.now(),
+            })
+
+            # --- Notifications admins ---
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            admins = User.objects.filter(is_staff=True, is_active=True)
+
+            admin_message = (
+                f"🆕 NOUVELLE RÉSERVATION EN ATTENTE\n\n"
+                f"👤 Employé: {employe.get('prenom', '')} {employe.get('nom', '')}\n"
+                f"📋 Titre: {titre}\n"
+                f"{ressource_label}\n"
+                f"📅 Date: {date_debut.strftime('%d/%m/%Y')}\n"
+                f"⏰ Horaire: {date_debut.strftime('%H:%M')} → {date_fin.strftime('%H:%M')}\n"
+                f"👥 Participants: {nb_part}\n\n"
+                f"🔗 Cliquez pour traiter cette réservation: /reservations/"
+            )
+
+            for admin in admins:
+                db.admin_notifications.insert_one({
+                    'admin_id':       admin.id,
+                    'titre':          '🆕 Nouvelle réservation en attente',
+                    'message':        (
+                        f"{employe.get('prenom', '')} {employe.get('nom', '')} "
+                        f"a demandé une réservation pour '{titre}' "
+                        f"({ressource_label}) le {date_debut.strftime('%d/%m/%Y à %H:%M')}."
+                    ),
+                    'categorie':      'reservation',
+                    'icon':           '🆕',
+                    'status':         'non_lu',
+                    'action_url':     f'/reservations/{reservation_id}/',
+                    'reservation_id': reservation_id,
+                    'created_at':     datetime.now(),
+                })
+                if admin.email:
+                    try:
+                        from dashboard.utils_email import envoyer_email
+                        envoyer_email(
+                            admin.email,
+                            f"🆕 Nouvelle réservation — {titre}",
+                            admin_message,
+                        )
+                    except Exception as _ee:
+                        logger.warning(f"Email admin échoué: {_ee}")
+
+            messages.success(request, "✅ Réservation créée avec succès ! En attente de validation.")
+            return redirect('employe_mes_reservations')
+
         except Exception as e:
+            logger.exception("Erreur création réservation employé")
             messages.error(request, f"Erreur: {str(e)}")
-    
+            return redirect('employe_mes_reservations')
+
+    # ============ AFFICHAGE GET ============
+
+    # Récupérer les réservations de l'employé
+    reservations = list(
+        db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1)
+    )
+
+    for r in reservations:
+        r['id'] = str(r['_id'])
+
+        # Salle ou matériel : on lit d'abord resource_type, sinon on devine
+        rtype = r.get('resource_type') or ('materiel' if r.get('materiel_id') else 'salle')
+
+        if rtype == 'materiel':
+            mat_id = r.get('materiel_id') or r.get('resource_id')
+            mat = None
+            if mat_id is not None:
+                try:
+                    mat = db.materiels.find_one({'_id': mat_id if isinstance(mat_id, ObjectId) else ObjectId(str(mat_id))})
+                except Exception:
+                    mat = None
+            r['bureau_nom']     = (mat['nom'] if mat else r.get('materiel_nom') or r.get('bureau_nom') or 'Matériel inconnu')
+            r['ressource_icon'] = '📦'
+        else:
+            bur_id = r.get('bureau_id') or r.get('resource_id')
+            bureau = None
+            if bur_id is not None:
+                try:
+                    bureau = db.bureaux.find_one({'_id': bur_id if isinstance(bur_id, ObjectId) else ObjectId(str(bur_id))})
+                except Exception:
+                    bureau = None
+            r['bureau_nom']     = (bureau['nom'] if bureau else r.get('bureau_nom') or 'Salle inconnue')
+            r['ressource_icon'] = '🚪'
+
+        r.setdefault('qr_code', None)
+
+    # KPIs
+    now = datetime.now()
+    actives = sum(
+        1 for r in reservations
+        if r.get('statut') == 'confirmee'
+        and r.get('date_debut') and r.get('date_fin')
+        and r['date_debut'] <= now <= r['date_fin']
+    )
+    a_venir = sum(
+        1 for r in reservations
+        if r.get('statut') == 'confirmee'
+        and r.get('date_debut') and r['date_debut'] > now
+    )
+    en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+
+    # Listes pour le formulaire
+    bureaux = list(db.bureaux.find())
+    for b in bureaux:
+        b['id']           = str(b['_id'])
+        b['capacite_max'] = b.get('capacite_max', 10)
+
+    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+    for m in materiels:
+        m['id']        = str(m['_id'])
+        m['type_icon'] = get_materiel_icon(m.get('categorie', 'autre'))
+
+    # JSON pour le calendrier (dates en ISO, pas d'ObjectId)
+    reservations_list = [
+        {
+            'id':         r['id'],
+            'titre':      r.get('titre', ''),
+            'bureau_nom': r.get('bureau_nom', ''),
+            'statut':     r.get('statut', ''),
+            'date_debut': r['date_debut'].isoformat() if r.get('date_debut') else None,
+            'date_fin':   r['date_fin'].isoformat()   if r.get('date_fin')   else None,
+        }
+        for r in reservations if r.get('date_debut')
+    ]
+    reservations_json = json.dumps(reservations_list, default=str)
+
     return render(request, 'dashboard/employe_mes_reservations.html', {
-        'employe': employe,
-        'reservations': reservations,
-        'bureaux': bureaux,
-        'total': len(reservations),
-        'actives': actives,
-        'a_venir': a_venir,
-        'en_attente': en_attente,
+        'employe':           employe,
+        'reservations':      reservations,
+        'bureaux':           bureaux,
+        'materiels':         materiels,
+        'total':             len(reservations),
+        'actives':           actives,
+        'a_venir':           a_venir,
+        'en_attente':        en_attente,
         'reservations_json': reservations_json,
     })
-
 @login_required
 def employe_annuler_reservation(request, reservation_id):
     if request.user.is_staff:
@@ -784,26 +931,20 @@ def api_reservations_calendrier(request):
 
 @login_required
 def api_disponibilite_bureau(request, bureau_id):
+    """API : disponibilité d'une salle (réservations + indisponibilités)"""
+    debut = request.GET.get('debut')
+    fin   = request.GET.get('fin')
+    if not debut or not fin:
+        return JsonResponse({'disponible': False, 'motif': 'Dates manquantes'})
     try:
-        date_debut_str = request.GET.get('debut')
-        date_fin_str = request.GET.get('fin')
-        
-        if not date_debut_str or not date_fin_str:
-            return JsonResponse({'disponible': True})
-        
-        date_debut = datetime.fromisoformat(date_debut_str)
-        date_fin = datetime.fromisoformat(date_fin_str)
-        
-        conflit = db.reservations.find_one({
-            'bureau_id': ObjectId(bureau_id),
-            'statut': {'$in': ['confirmee', 'en_attente']},
-            'date_debut': {'$lt': date_fin},
-            'date_fin': {'$gt': date_debut},
-        })
-        
-        return JsonResponse({'disponible': conflit is None})
-    except Exception as e:
-        return JsonResponse({'disponible': True, 'error': str(e)})
+        date_debut = datetime.fromisoformat(debut)
+        date_fin   = datetime.fromisoformat(fin)
+    except Exception:
+        return JsonResponse({'disponible': False, 'motif': 'Format de date invalide'})
+    result = check_ressource_disponibilite(bureau_id, 'salle', date_debut, date_fin)
+    return JsonResponse(result)
+
+    
 
 
 # ====================== DASHBOARD ADMIN ======================
@@ -3193,6 +3334,8 @@ def reservation_annuler(request, reservation_id):
                                    {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now()}})
         messages.success(request, "Réservation annulée.")
     return redirect('reservation_list')
+
+    
 
 
 # ====================== API HISTORIQUE EMPLOYÉ ======================
@@ -7187,298 +7330,345 @@ def gestion_indisponibilites(request):
     """Gestion des indisponibilités planifiées (maintenance, réservations bloquées)"""
     if not request.user.is_staff:
         return redirect('employe_espace')
-    
+
     from datetime import datetime, timedelta
-    
+
     # Créer la collection si elle n'existe pas
     if 'indisponibilites' not in db.list_collection_names():
         db.create_collection('indisponibilites')
-    
+
     # Récupérer toutes les indisponibilités
-    indispos = list(db.indisponibilites.find().sort('date_debut', -1))
-    for i in indispos:
-        i['id'] = str(i['_id'])
-        
-        # Récupérer le nom de la ressource
+    now = datetime.now()
+    indispos_raw = list(db.indisponibilites.find().sort('date_debut', -1))
+
+    # Liste affichée dans le template (peut garder les datetime pour |date)
+    indispos = []
+    # Liste JSON-safe pour json_script (uniquement des types sérialisables)
+    indispos_json = []
+
+    for i in indispos_raw:
+        indispo_id = str(i['_id'])
+
+        # Statut calculé
+        if i.get('date_debut') and i.get('date_fin'):
+            if i['date_debut'] <= now <= i['date_fin']:
+                statut = 'en_cours'
+            elif i['date_debut'] > now:
+                statut = 'a_venir'
+            else:
+                statut = 'passee'
+        else:
+            statut = 'a_venir'
+
+        # Nom de la ressource
+        ressource_nom = ''
         if i.get('ressource_type') == 'salle':
             salle = db.bureaux.find_one({'_id': i.get('ressource_id')})
-            i['ressource_nom'] = salle['nom'] if salle else 'Inconnue'
+            ressource_nom = salle['nom'] if salle else 'Inconnue'
         elif i.get('ressource_type') == 'materiel':
             materiel = db.materiels.find_one({'_id': i.get('ressource_id')})
-            i['ressource_nom'] = materiel['nom'] if materiel else 'Inconnu'
-    
-    # Récupérer les ressources pour le formulaire
+            ressource_nom = materiel['nom'] if materiel else 'Inconnu'
+
+        # ---- Objet pour l'affichage HTML (Django sait formater les datetime) ----
+        indispos.append({
+            'id':            indispo_id,
+            'titre':         i.get('titre', ''),
+            'description':   i.get('description', ''),
+            'type_indispo':  i.get('type_indispo', 'maintenance'),
+            'date_debut':    i.get('date_debut'),
+            'date_fin':      i.get('date_fin'),
+            'statut':        statut,
+            'ressource_nom': ressource_nom,
+            'ressource_id':  str(i.get('ressource_id')) if i.get('ressource_id') else '',
+            'ressource_type': i.get('ressource_type', ''),
+        })
+
+        # ---- Objet 100% JSON-safe pour json_script (pas d'ObjectId, dates en ISO) ----
+        indispos_json.append({
+            'id':            indispo_id,
+            'titre':         i.get('titre', ''),
+            'description':   i.get('description', ''),
+            'type_indispo':  i.get('type_indispo', 'maintenance'),
+            'date_debut':    i['date_debut'].isoformat() if i.get('date_debut') else '',
+            'date_fin':      i['date_fin'].isoformat()   if i.get('date_fin')   else '',
+            'statut':        statut,
+            'ressource_nom': ressource_nom,
+            'ressource_id':  str(i.get('ressource_id')) if i.get('ressource_id') else '',
+            'ressource_type': i.get('ressource_type', ''),
+        })
+
+    # Ressources construites une seule fois
     salles = list(db.bureaux.find())
     for s in salles:
         s['id'] = str(s['_id'])
         s['type'] = 'salle'
         s['type_icon'] = '🚪'
-    
+        s.pop('_id', None)  # éviter tout ObjectId résiduel
+
     materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
     for m in materiels:
         m['id'] = str(m['_id'])
         m['type'] = 'materiel'
-        m['type_icon'] = '🖥️'
-    
+        m['type_icon'] = get_materiel_icon(m.get('categorie', 'autre'))
+        m.pop('_id', None)
+
     ressources = salles + materiels
-    
-    # Statistiques
-    now = datetime.now()
+
+    # Stats calculées une seule fois
     stats = {
         'en_cours': db.indisponibilites.count_documents({
             'date_debut': {'$lte': now},
-            'date_fin': {'$gte': now}
+            'date_fin':   {'$gte': now},
         }),
         'a_venir': db.indisponibilites.count_documents({'date_debut': {'$gt': now}}),
         'passees': db.indisponibilites.count_documents({'date_fin': {'$lt': now}}),
-        'total': db.indisponibilites.count_documents({}),
+        'total':   db.indisponibilites.count_documents({}),
     }
-    
-    return render(request, 'dashboard/gestion_indisponibilites.html', {
-        'indisponibilites': indispos,
-        'ressources': ressources,
-        'stats': stats,
-    })
 
+    return render(request, 'dashboard/gestion_indisponibilites.html', {
+        'indisponibilites':      indispos,
+        'indisponibilites_json': indispos_json,  # <-- pour json_script
+        'ressources':            ressources,
+        'stats':                 stats,
+        'now':                   now,
+    })
 
 @login_required
 def api_indisponibilite_ajouter(request):
     """API pour ajouter une indisponibilité planifiée"""
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+ 
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
+ 
     try:
         data = json.loads(request.body)
-        
-        ressource_id = data.get('ressource_id')
+ 
+        ressource_id   = data.get('ressource_id')
         ressource_type = data.get('ressource_type')
-        titre = data.get('titre', '').strip()
-        description = data.get('description', '')
-        date_debut = datetime.fromisoformat(data.get('date_debut'))
-        date_fin = datetime.fromisoformat(data.get('date_fin'))
-        type_indispo = data.get('type_indispo', 'maintenance')  # maintenance, reservation_bloquee, fermeture
-        recurrence = data.get('recurrence', 'none')
+        titre          = data.get('titre', '').strip()
+        description    = data.get('description', '')
+        date_debut     = datetime.fromisoformat(data.get('date_debut'))
+        date_fin       = datetime.fromisoformat(data.get('date_fin'))
+        type_indispo   = data.get('type_indispo', 'maintenance')
+        recurrence     = data.get('recurrence', 'none')
         recurrence_end = data.get('recurrence_end')
-        
+ 
         if not ressource_id or not ressource_type:
             return JsonResponse({'error': 'Ressource non spécifiée'}, status=400)
-        
+ 
+        if not titre:
+            return JsonResponse({'error': 'Le titre est obligatoire'}, status=400)
+ 
         if date_fin <= date_debut:
             return JsonResponse({'error': 'La date de fin doit être après la date de début'}, status=400)
-        
-        # Vérifier les conflits avec d'autres indisponibilités
+ 
+        # Vérifier les conflits
         conflit = db.indisponibilites.find_one({
             'ressource_id': ObjectId(ressource_id),
             '$or': [
-                {'date_debut': {'$lt': date_fin, '$gte': date_debut}},
-                {'date_fin': {'$gt': date_debut, '$lte': date_fin}},
-                {'date_debut': {'$lte': date_debut}, 'date_fin': {'$gte': date_fin}}
-            ]
+                {'date_debut': {'$lt': date_fin,  '$gte': date_debut}},
+                {'date_fin':   {'$gt': date_debut, '$lte': date_fin}},
+                {'date_debut': {'$lte': date_debut}, 'date_fin': {'$gte': date_fin}},
+            ],
         })
-        
+ 
         if conflit:
             return JsonResponse({
                 'error': 'Un conflit existe avec une autre indisponibilité sur cette période'
             }, status=400)
-        
-        # Créer l'indisponibilité
+ 
         indispo = {
-            'ressource_id': ObjectId(ressource_id),
+            'ressource_id':   ObjectId(ressource_id),
             'ressource_type': ressource_type,
-            'titre': titre,
-            'description': description,
-            'date_debut': date_debut,
-            'date_fin': date_fin,
-            'type_indispo': type_indispo,
-            'recurrence': recurrence if recurrence != 'none' else None,
-            'created_at': datetime.now(),
-            'created_by': request.user.username,
+            'titre':          titre,
+            'description':    description,
+            'date_debut':     date_debut,
+            'date_fin':       date_fin,
+            'type_indispo':   type_indispo,
+            'recurrence':     recurrence if recurrence != 'none' else None,
+            'created_at':     datetime.now(),
+            'created_by':     request.user.username,
         }
-        
+ 
         if recurrence_end and recurrence != 'none':
             indispo['recurrence_end'] = datetime.fromisoformat(recurrence_end)
-        
+ 
         result = db.indisponibilites.insert_one(indispo)
-        
-        # Si récurrence, générer les occurrences
+ 
         if recurrence != 'none' and recurrence_end:
             generate_recurring_indisponibilities(indispo, result.inserted_id)
-        
+ 
         # Notifier les admins
         from dashboard.views import send_notification_to_all_admins
         ressource_nom = get_ressource_name(ressource_id, ressource_type)
-        send_notification_to_all_admins(
+        # FIX: nb_notifies initialisé avant utilisation
+        nb_notifies = send_notification_to_all_admins(
             titre=f"🔧 Indisponibilité planifiée",
-            message=f"{ressource_nom} sera indisponible du {date_debut.strftime('%d/%m/%Y %H:%M')} au {date_fin.strftime('%d/%m/%Y %H:%M')}",
+            message=(
+                f"{ressource_nom} sera indisponible du "
+                f"{date_debut.strftime('%d/%m/%Y %H:%M')} au "
+                f"{date_fin.strftime('%d/%m/%Y %H:%M')}"
+            ),
             categorie='maintenance',
-            icon='🔧'
+            icon='🔧',
         )
-        
-        return JsonResponse({'status': 'success', 'id': str(result.inserted_id)})
-        
+        nb_notifies = nb_notifies or 0
+ 
+        return JsonResponse({
+            'status':      'success',
+            'success':     True,
+            'id':          str(result.inserted_id),
+            'nb_notifies': nb_notifies,
+            'message':     f"Indisponibilité créée. {nb_notifies} employé(s) notifié(s).",
+        })
+ 
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-
 @login_required
 def api_indisponibilite_modifier(request, indispo_id):
     """API pour modifier une indisponibilité"""
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+ 
+    # FIX: accepter PUT (aligné avec le fetch du frontend)
     if request.method != 'PUT':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
+ 
     try:
         data = json.loads(request.body)
-        
+ 
         update_data = {
-            'titre': data.get('titre'),
+            'titre':       data.get('titre'),
             'description': data.get('description'),
             'type_indispo': data.get('type_indispo'),
-            'updated_at': datetime.now(),
-            'updated_by': request.user.username,
+            'updated_at':  datetime.now(),
+            'updated_by':  request.user.username,
         }
-        
+ 
         if data.get('date_debut'):
-            update_data['date_debut'] = datetime.fromisoformat(data.get('date_debut'))
+            update_data['date_debut'] = datetime.fromisoformat(data['date_debut'])
         if data.get('date_fin'):
-            update_data['date_fin'] = datetime.fromisoformat(data.get('date_fin'))
-        
+            update_data['date_fin'] = datetime.fromisoformat(data['date_fin'])
+ 
         result = db.indisponibilites.update_one(
             {'_id': ObjectId(indispo_id)},
-            {'$set': update_data}
+            {'$set': update_data},
         )
-        
+ 
         if result.modified_count > 0:
-            return JsonResponse({'status': 'success'})
+            return JsonResponse({'status': 'success', 'success': True, 'message': 'Indisponibilité modifiée.'})
         else:
             return JsonResponse({'status': 'error', 'message': 'Non modifié'}, status=400)
-            
+ 
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-
 @login_required
 def api_indisponibilite_supprimer(request, indispo_id):
     """API pour supprimer une indisponibilité"""
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+ 
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
+ 
     try:
         result = db.indisponibilites.delete_one({'_id': ObjectId(indispo_id)})
-        
+ 
         if result.deleted_count > 0:
-            return JsonResponse({'status': 'success'})
+            return JsonResponse({'status': 'success', 'success': True, 'message': 'Indisponibilité supprimée.'})
         else:
             return JsonResponse({'status': 'error', 'message': 'Non trouvé'}, status=404)
-            
+ 
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-
 @login_required
 def api_ressources_disponibles(request):
     """API pour récupérer les ressources disponibles sur une période"""
     date_debut_str = request.GET.get('date_debut')
-    date_fin_str = request.GET.get('date_fin')
-    type_ressource = request.GET.get('type', 'all')  # all, salle, materiel
-    
+    date_fin_str   = request.GET.get('date_fin')
+    type_ressource = request.GET.get('type', 'all')
+ 
     if not date_debut_str or not date_fin_str:
         return JsonResponse({'ressources': []})
-    
+ 
     try:
         date_debut = datetime.fromisoformat(date_debut_str)
-        date_fin = datetime.fromisoformat(date_fin_str)
-        
-        # Récupérer les indisponibilités sur cette période
+        date_fin   = datetime.fromisoformat(date_fin_str)
+ 
         indispos = list(db.indisponibilites.find({
             'date_debut': {'$lt': date_fin},
-            'date_fin': {'$gt': date_debut}
+            'date_fin':   {'$gt': date_debut},
         }))
-        
-        ressources_indispo_ids = set()
-        for i in indispos:
-            ressources_indispo_ids.add(str(i['ressource_id']))
-        
-        # Récupérer les ressources disponibles
+ 
+        ressources_indispo_ids = {str(i['ressource_id']) for i in indispos}
         ressources_disponibles = []
-        
+ 
         if type_ressource in ['all', 'salle']:
-            salles = list(db.bureaux.find({'statut': 'actif'}))
-            for s in salles:
+            for s in db.bureaux.find({'statut': 'actif'}):
                 if str(s['_id']) not in ressources_indispo_ids:
                     ressources_disponibles.append({
-                        'id': str(s['_id']),
-                        'nom': s['nom'],
-                        'type': 'salle',
+                        'id':       str(s['_id']),
+                        'nom':      s['nom'],
+                        'type':     'salle',
                         'capacite': s.get('capacite_max', 10),
-                        'icone': '🚪'
+                        'icone':    '🚪',
                     })
-        
+ 
         if type_ressource in ['all', 'materiel']:
             if 'materiels' in db.list_collection_names():
-                materiels = list(db.materiels.find({'statut': 'disponible'}))
-                for m in materiels:
+                for m in db.materiels.find({'statut': 'disponible'}):
                     if str(m['_id']) not in ressources_indispo_ids:
                         ressources_disponibles.append({
-                            'id': str(m['_id']),
-                            'nom': m['nom'],
-                            'type': 'materiel',
+                            'id':        str(m['_id']),
+                            'nom':       m['nom'],
+                            'type':      'materiel',
                             'categorie': m.get('categorie', 'autre'),
-                            'icone': get_materiel_icon(m.get('categorie', 'autre'))
+                            'icone':     get_materiel_icon(m.get('categorie', 'autre')),
                         })
-        
+ 
         return JsonResponse({'ressources': ressources_disponibles})
-        
+ 
     except Exception as e:
         return JsonResponse({'ressources': [], 'error': str(e)})
-
-
+ 
 def generate_recurring_indisponibilities(parent_indispo, parent_id):
     """Génère les occurrences récurrentes d'une indisponibilité"""
-    recurrence = parent_indispo.get('recurrence')
+    recurrence     = parent_indispo.get('recurrence')
     recurrence_end = parent_indispo.get('recurrence_end')
-    date_debut = parent_indispo['date_debut']
-    date_fin = parent_indispo['date_fin']
-    duration = date_fin - date_debut
-    
+    date_debut     = parent_indispo['date_debut']
+    date_fin       = parent_indispo['date_fin']
+    duration       = date_fin - date_debut
+ 
     if not recurrence_end:
         return
-    
+ 
     current_start = date_debut
-    occurrences = []
-    
+    occurrences   = []
+ 
     while current_start <= recurrence_end:
         if current_start != date_debut:  # Ne pas dupliquer l'original
-            occurrence = parent_indispo.copy()
-            occurrence['_id'] = None
-            occurrence['parent_id'] = parent_id
+            occurrence = {k: v for k, v in parent_indispo.items() if k != '_id'}  # FIX: exclure _id
+            occurrence['parent_id']  = parent_id
             occurrence['date_debut'] = current_start
-            occurrence['date_fin'] = current_start + duration
+            occurrence['date_fin']   = current_start + duration
             occurrence['created_at'] = datetime.now()
             occurrences.append(occurrence)
-        
-        # Avancer selon la récurrence
+ 
         if recurrence == 'daily':
             current_start += timedelta(days=1)
         elif recurrence == 'weekly':
-            current_start += timedelta(days=7)
+            current_start += timedelta(weeks=1)
         elif recurrence == 'monthly':
-            # Ajouter un mois
-            if current_start.month == 12:
-                current_start = current_start.replace(year=current_start.year + 1, month=1)
-            else:
-                current_start = current_start.replace(month=current_start.month + 1)
-    
+            month = current_start.month + 1
+            year  = current_start.year + (1 if month > 12 else 0)
+            month = month if month <= 12 else 1
+            current_start = current_start.replace(year=year, month=month)
+ 
     if occurrences:
         db.indisponibilites.insert_many(occurrences)
+
 
 
 def get_ressource_name(ressource_id, ressource_type):
@@ -8427,5 +8617,143 @@ def _generate_recurring_indisponibilities(parent, parent_id):
 
     if occurrences:
         db.indisponibilites.insert_many(occurrences)
-
         
+
+@login_required
+def api_materiel_disponibilite(request, materiel_id):
+    """Verifie si un materiel est libre sur un creneau donne."""
+    from datetime import datetime
+    from bson import ObjectId
+
+    debut_str = request.GET.get('debut', '').strip()
+    fin_str = request.GET.get('fin', '').strip()
+
+    if not (debut_str and fin_str):
+        return JsonResponse({'disponible': False, 'erreur': 'parametres manquants'})
+
+    try:
+        date_debut = datetime.strptime(debut_str, '%Y-%m-%dT%H:%M')
+        date_fin = datetime.strptime(fin_str, '%Y-%m-%dT%H:%M')
+    except ValueError:
+        return JsonResponse({'disponible': False, 'erreur': 'dates invalides'})
+
+    if date_fin <= date_debut:
+        return JsonResponse({'disponible': False, 'erreur': 'la fin doit etre apres le debut'})
+
+    try:
+        mat_oid = ObjectId(materiel_id)
+    except Exception:
+        mat_oid = materiel_id
+
+    conflit = db.reservations.find_one({
+        '$or': [{'materiel_id': materiel_id}, {'materiel_id': mat_oid}],
+        'statut': {'$in': ['confirmee', 'en_attente']},
+        'date_debut': {'$lt': date_fin},
+        'date_fin': {'$gt': date_debut},
+    })
+
+    if conflit:
+        return JsonResponse({
+            'disponible': False,
+            'motif': "deja reserve de " + conflit['date_debut'].strftime('%d/%m %H:%M') + " a " + conflit['date_fin'].strftime('%H:%M'),
+        })
+
+    try:
+        if 'indisponibilites' in db.list_collection_names():
+            indispo = db.indisponibilites.find_one({
+                'ressource_type': 'materiel',
+                'ressource_id': mat_oid,
+                'date_debut': {'$lt': date_fin},
+                'date_fin': {'$gt': date_debut},
+            })
+            if indispo:
+                return JsonResponse({
+                    'disponible': False,
+                    'motif': "en maintenance (" + indispo.get('titre', 'planifiee') + ")",
+                })
+    except Exception:
+        pass
+
+    return JsonResponse({'disponible': True})
+
+@login_required
+def api_suggestions_creneaux(request):
+    """
+    Suggère des créneaux libres pour une ressource donnée.
+    Paramètres GET :
+      - resource_id, resource_type
+      - date (YYYY-MM-DD) : jour cible
+      - duree (minutes, défaut 60)
+      - nb_participants (optionnel, pour filtrer les salles trop petites)
+    """
+    resource_id   = request.GET.get('resource_id')
+    resource_type = request.GET.get('resource_type', 'salle')
+    date_str      = request.GET.get('date')
+    duree_min     = int(request.GET.get('duree', 60))
+    nb_part       = int(request.GET.get('nb_participants', 1))
+
+    if not resource_id or not date_str:
+        return JsonResponse({'suggestions': [], 'error': 'Paramètres manquants'})
+
+    try:
+        jour = datetime.fromisoformat(date_str + 'T00:00:00')
+    except Exception:
+        return JsonResponse({'suggestions': [], 'error': 'Date invalide'})
+
+    # Vérifier capacité (pour les salles)
+    if resource_type == 'salle':
+        try:
+            salle = db.bureaux.find_one({'_id': ObjectId(resource_id)})
+            if salle and salle.get('capacite_max') and nb_part > salle['capacite_max']:
+                return JsonResponse({
+                    'suggestions': [],
+                    'warning': f"Capacité insuffisante ({salle['capacite_max']} places max)",
+                })
+        except Exception:
+            pass
+
+    # Plage horaire de travail : 8h → 19h, créneaux toutes les 30 min
+    suggestions = []
+    heure_debut, heure_fin = 8, 19
+    pas = 30  # minutes
+
+    current = jour.replace(hour=heure_debut, minute=0)
+    limite  = jour.replace(hour=heure_fin, minute=0)
+    duree   = timedelta(minutes=duree_min)
+
+    while current + duree <= limite:
+        creneau_debut = current
+        creneau_fin   = current + duree
+
+        check = check_ressource_disponibilite(
+            resource_id, resource_type, creneau_debut, creneau_fin
+        )
+
+        if check['disponible']:
+            # Score : on privilégie les heures « rondes » + matinée
+            score = 100
+            if current.minute == 0:
+                score += 20
+            if 9 <= current.hour <= 11:   # matinée productive
+                score += 15
+            if current.hour == 14:        # début d'après-midi
+                score += 10
+
+            suggestions.append({
+                'debut':       creneau_debut.isoformat(),
+                'fin':         creneau_fin.isoformat(),
+                'debut_label': creneau_debut.strftime('%H:%M'),
+                'fin_label':   creneau_fin.strftime('%H:%M'),
+                'duree_min':   duree_min,
+                'score':       score,
+            })
+
+        current += timedelta(minutes=pas)
+
+    # Trier par score décroissant et garder les 6 meilleurs
+    suggestions.sort(key=lambda s: -s['score'])
+    suggestions = suggestions[:6]
+    # Re-trier par heure pour l'affichage
+    suggestions.sort(key=lambda s: s['debut'])
+
+    return JsonResponse({'suggestions': suggestions})
