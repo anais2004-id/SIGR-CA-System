@@ -216,5 +216,18 @@ urlpatterns = [
      path('api/indisponibilite/<str:indispo_id>/supprimer/',   views.api_indisponibilite_supprimer,  name='api_indispo_supprimer'),
      path('api/indisponibilite/check/',                        views.api_indisponibilite_check,      name='api_indispo_check'),
      path('ressources/indisponibilites/',                      views.gestion_indisponibilites,       name='gestion_indisponibilites'),
-     path('api/suggestions-creneaux/', views.api_suggestions_creneaux, name='api_suggestions_creneaux'),]
+     path('api/suggestions-creneaux/', views.api_suggestions_creneaux, name='api_suggestions_creneaux'),
+     path('api/ia/predict-occupation/<str:resource_id>/', views.api_predict_occupation, name='api_predict_occupation'),
+     path('api/ia/recommandations/',                       views.api_recommandations,    name='api_recommandations'),
+     path('api/ia/anomalies/',                             views.api_anomalies,          name='api_anomalies'),
+     path('api/ia/train/',                                 views.api_train_models,       name='api_train_models'),
+         # ===== Paramètres =====
+   # dashboard/urls.py
+
+    # ... autres URLs ...
+    path('parametres/', views.parametres, name='parametres'),
+    path('api/parametres/save/', views.api_parametres_save, name='api_parametres_save'),
+    path('api/parametres/reset/', views.api_parametres_reset, name='api_parametres_reset'),
+    path('api/parametres/sysinfo/', views.api_system_info, name='api_system_info'),
+]
     

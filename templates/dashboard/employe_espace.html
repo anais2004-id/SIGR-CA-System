@@ -264,40 +264,23 @@
     </div>
 
     <!-- Suggestions IA personnalisées -->
-    <div class="card">
-        <div class="card-head">
-            <span>🤖</span>
-            <span class="card-title">Suggestions personnalisées</span>
-            <span class="card-sub">Basées sur vos habitudes</span>
-        </div>
-        <div class="card-body">
-            <div id="ai-suggestions">
-                <div class="alert-box info" style="margin-bottom: 12px;">
-                    <div class="alert-ico">💡</div>
-                    <div>
-                        <div class="alert-text">Vous réservez souvent le {{ frequent_day|default:"mercredi" }}</div>
-                        <div class="alert-meta">Pensez à planifier vos prochaines réunions</div>
-                    </div>
-                </div>
-                <div class="alert-box info" style="margin-bottom: 12px;">
-                    <div class="alert-ico">🚪</div>
-                    <div>
-                        <div class="alert-text">Salle recommandée: {{ recommended_room|default:"Salle de réunion" }}</div>
-                        <div class="alert-meta">Disponible cet après-midi</div>
-                    </div>
-                </div>
-                <div class="alert-box info">
-                    <div class="alert-ico">⏰</div>
-                    <div>
-                        <div class="alert-text">Meilleur créneau: {{ best_time|default:"09h00-11h00" }}</div>
-                        <div class="alert-meta">Taux d'occupation: {{ occupancy_rate|default:35 }}%</div>
-                    </div>
-                </div>
+<div class="card">
+    <div class="card-head">
+        <span>🤖</span>
+        <span class="card-title">Suggestions personnalisées</span>
+        <span class="card-sub">Basées sur vos habitudes</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadAISuggestions()" style="margin-left:auto;">
+            ↻ Actualiser
+        </button>
+    </div>
+    <div class="card-body">
+        <div id="ai-suggestions">
+            <div style="text-align:center; padding:30px; color:var(--text3);">
+                ⏳ Analyse de vos habitudes en cours...
             </div>
         </div>
     </div>
 </div>
-
 <!-- Statistiques personnelles -->
 <div class="card" style="margin-top: 24px;">
     <div class="card-head">
@@ -706,6 +689,82 @@ function handleChatbotKeyPress(event) {
         sendChatbotMessage();
     }
 }
+// =============== Widget Suggestions IA ===============
+function loadAISuggestions() {
+  var container = document.getElementById('ai-suggestions');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text3);">'
+                      + '⏳ Analyse de vos habitudes en cours...</div>';
+  fetch('/api/ia/recommandations/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.recommendations || data.recommendations.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text3);">'
+                            + '<div style="font-size:36px; margin-bottom:8px;">🌱</div>'
+                            + '<div>L\'IA apprend encore de vos habitudes.</div>'
+                            + '<div style="font-size:11px; margin-top:6px;">Faites quelques réservations pour des suggestions personnalisées.</div>'
+                            + '</div>';
+        return;
+      }
+      var html = '';
+      data.recommendations.forEach(function(r, i) {
+        var medaille = (i === 0) ? '🥇' : (i === 1) ? '🥈' : '🥉';
+        html += '<div class="reco-card" onclick="reserverRessource(\'' + r.resource_id + '\',\'' + r.type + '\',\'' + escapeJs(r.nom) + '\')" '
+              + 'style="display:flex; align-items:center; gap:12px; padding:14px; background:var(--bg3); '
+              + 'border:1px solid var(--border2); border-radius:10px; margin-bottom:10px; cursor:pointer; transition:.2s;" '
+              + 'onmouseover="this.style.borderColor=\'var(--blue)\'; this.style.transform=\'translateY(-2px)\';" '
+              + 'onmouseout="this.style.borderColor=\'var(--border2)\'; this.style.transform=\'translateY(0)\';">'
+              + '<div style="font-size:28px;">' + r.icon + '</div>'
+              + '<div style="flex:1; min-width:0;">'
+              + '<div style="font-weight:600; font-size:14px; margin-bottom:2px;">'
+              + medaille + ' ' + escapeHtml(r.nom) + '</div>'
+              + '<div style="font-size:11px; color:var(--text3);">💡 ' + escapeHtml(r.raison) + '</div>'
+              + '</div>'
+              + '<div style="text-align:right;">'
+              + '<div style="font-size:11px; color:var(--blue2); font-weight:600;">⭐ ' + r.score + '</div>'
+              + '<div style="font-size:10px; color:var(--text3); margin-top:2px;">Cliquer pour réserver</div>'
+              + '</div>'
+              + '</div>';
+      });
+      container.innerHTML = html;
+    })
+    .catch(function(err) {
+      container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3); font-size:12px;">'
+                          + '⚠️ Suggestions indisponibles pour le moment.</div>';
+      console.error('Erreur recommandations:', err);
+    });
+}
+function reserverRessource(resourceId, resourceType, resourceNom) {
+  // Si le modal de réservation existe sur cette page, on l'ouvre pré-rempli
+  if (typeof openResaModal === 'function') {
+    openResaModal();
+    setTimeout(function() {
+      var sel = document.getElementById('selResource') || document.getElementById('resourceSelect');
+      if (sel) {
+        sel.value = resourceId;
+        if (typeof onEmpResourceChange === 'function') onEmpResourceChange();
+      }
+      var titre = document.querySelector('input[name="titre"]');
+      if (titre && !titre.value) titre.value = 'Réservation ' + resourceNom;
+    }, 200);
+  } else {
+    // Sinon, on redirige vers la page des réservations avec la ressource pré-sélectionnée
+    window.location.href = '/employe/reservations/?resource_id=' + encodeURIComponent(resourceId)
+                         + '&resource_type=' + encodeURIComponent(resourceType);
+  }
+}
+function escapeHtml(text) {
+  if (text === null || text === undefined) return '';
+  var div = document.createElement('div');
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+function escapeJs(text) {
+  if (!text) return '';
+  return String(text).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+// Charger automatiquement les suggestions au chargement de la page
+document.addEventListener('DOMContentLoaded', loadAISuggestions);
 </script>
 
 <style>

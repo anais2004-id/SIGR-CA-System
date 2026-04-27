@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+
 {% block title %}Paramètres - SIGR-CA{% endblock %}
 {% block nav_settings %}active{% endblock %}
 {% block page_title %}Configuration système{% endblock %}
@@ -10,10 +11,120 @@
 <button class="btn btn-ghost btn-sm" onclick="exportSettings()">⬇️ Exporter la configuration</button>
 {% endblock %}
 
+{{ config|json_script:"config-data" }}
+
 {% block content %}
 
+<style>
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.tab-btn:hover { background: var(--bg4); color: var(--text); }
+.tab-btn.active { background: var(--blue); color: white; }
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.toggle-info {
+  flex: 1;
+}
+.toggle-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.toggle-desc {
+  font-size: 10px;
+  color: var(--text3);
+}
+.toggle-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.risk {
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 700;
+}
+.risk-h { background: rgba(248,81,73,0.15); color: #f85149; }
+.risk-m { background: rgba(227,179,65,0.15); color: #e3b341; }
+.risk-l { background: rgba(45,186,111,0.15); color: #2dba6f; }
+
+.tswitch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+.tswitch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.tslider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+.tslider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+input:checked + .tslider {
+  background-color: var(--blue);
+}
+input:checked + .tslider:before {
+  transform: translateX(20px);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.progress-bar {
+  background: var(--bg3);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.progress-fill {
+  background: var(--blue);
+  height: 6px;
+  width: 0%;
+  transition: width 0.3s;
+}
+</style>
+
 <!-- Onglets de navigation -->
-<div style="display:flex; gap:4px; background:var(--bg3); padding:4px; border-radius:10px; border:1px solid var(--border); margin-bottom:20px">
+<div style="display:flex; gap:4px; background:var(--bg3); padding:4px; border-radius:10px; border:1px solid var(--border); margin-bottom:20px; flex-wrap:wrap;">
   <button class="tab-btn active" onclick="switchSettingsTab('security')">🔐 Sécurité & Authentification</button>
   <button class="tab-btn" onclick="switchSettingsTab('system')">⚙️ Système</button>
   <button class="tab-btn" onclick="switchSettingsTab('notifications')">📧 Notifications</button>
@@ -25,7 +136,6 @@
 <!-- Panneau Sécurité -->
 <div id="security-tab" class="settings-tab">
   <div class="g2">
-    <!-- Authentification et sécurité -->
     <div class="card">
       <div class="card-head">
         <span>🔐</span>
@@ -33,18 +143,17 @@
         <span class="card-sub">Contrôle d'accès avancé</span>
       </div>
       <div class="card-body" style="padding:12px 16px">
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">2FA (Double authentification) globale</div>
             <div class="toggle-desc">RFID + QR Code dynamique pour toutes les zones critiques</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="s-2fa-global" checked><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" id="s_2fa_global" {% if config.s_2fa_global %}checked{% endif %}><span class="tslider"></span></label>
         </div>
 
         <div style="margin:12px 0 8px 0; font-size:11px; color:var(--text2); padding-left:8px; border-left:2px solid var(--blue)">📌 Configuration par zone</div>
         
-        <div class="zone-security-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Direction Générale</div>
@@ -52,10 +161,9 @@
             </div>
             <div class="toggle-right">
               <span class="risk risk-h">CRITIQUE</span>
-              <label class="tswitch"><input type="checkbox" checked id="t-direction"><span class="tslider"></span></label>
+              <label class="tswitch"><input type="checkbox" {% if config.t_direction %}checked{% endif %} id="t_direction"><span class="tslider"></span></label>
             </div>
           </div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Salle Serveur</div>
@@ -63,10 +171,9 @@
             </div>
             <div class="toggle-right">
               <span class="risk risk-h">CRITIQUE</span>
-              <label class="tswitch"><input type="checkbox" checked id="t-serveur"><span class="tslider"></span></label>
+              <label class="tswitch"><input type="checkbox" {% if config.t_serveur %}checked{% endif %} id="t_serveur"><span class="tslider"></span></label>
             </div>
           </div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Archives</div>
@@ -74,10 +181,9 @@
             </div>
             <div class="toggle-right">
               <span class="risk risk-h">HAUTE</span>
-              <label class="tswitch"><input type="checkbox" checked id="t-archives"><span class="tslider"></span></label>
+              <label class="tswitch"><input type="checkbox" {% if config.t_archives %}checked{% endif %} id="t_archives"><span class="tslider"></span></label>
             </div>
           </div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Laboratoire</div>
@@ -85,10 +191,9 @@
             </div>
             <div class="toggle-right">
               <span class="risk risk-h">HAUTE</span>
-              <label class="tswitch"><input type="checkbox" checked id="t-lab"><span class="tslider"></span></label>
+              <label class="tswitch"><input type="checkbox" {% if config.t_lab %}checked{% endif %} id="t_lab"><span class="tslider"></span></label>
             </div>
           </div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Salle de réunion</div>
@@ -96,10 +201,9 @@
             </div>
             <div class="toggle-right">
               <span class="risk risk-m">MOYENNE</span>
-              <label class="tswitch"><input type="checkbox" id="t-reunion"><span class="tslider"></span></label>
+              <label class="tswitch"><input type="checkbox" {% if config.t_reunion %}checked{% endif %} id="t_reunion"><span class="tslider"></span></label>
             </div>
           </div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Entrée principale</div>
@@ -107,15 +211,13 @@
             </div>
             <div class="toggle-right">
               <span class="risk risk-l">NORMALE</span>
-              <label class="tswitch"><input type="checkbox" checked id="t-entree"><span class="tslider"></span></label>
+              <label class="tswitch"><input type="checkbox" {% if config.t_entree %}checked{% endif %} id="t_entree"><span class="tslider"></span></label>
             </div>
           </div>
         </div>
-
       </div>
     </div>
 
-    <!-- Politique de sécurité -->
     <div class="card">
       <div class="card-head">
         <span>🛡️</span>
@@ -128,40 +230,37 @@
             <div class="toggle-desc">Déconnexion automatique après inactivité</div>
           </div>
           <div>
-            <select id="session-timeout" class="form-select" style="width:100px">
-              <option value="15">15 min</option>
-              <option value="30" selected>30 min</option>
-              <option value="60">1 heure</option>
-              <option value="120">2 heures</option>
+            <select id="session_timeout" class="form-select" style="width:100px">
+              <option value="15" {% if config.session_timeout == '15' %}selected{% endif %}>15 min</option>
+              <option value="30" {% if config.session_timeout == '30' or not config.session_timeout %}selected{% endif %}>30 min</option>
+              <option value="60" {% if config.session_timeout == '60' %}selected{% endif %}>1 heure</option>
+              <option value="120" {% if config.session_timeout == '120' %}selected{% endif %}>2 heures</option>
             </select>
           </div>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Verrouillage après échecs</div>
             <div class="toggle-desc">Nombre de tentatives avant blocage temporaire</div>
           </div>
           <div>
-            <select id="max-failures" class="form-select" style="width:80px">
-              <option value="3">3</option>
-              <option value="5" selected>5</option>
-              <option value="10">10</option>
+            <select id="max_failures" class="form-select" style="width:80px">
+              <option value="3" {% if config.max_failures == '3' %}selected{% endif %}>3</option>
+              <option value="5" {% if config.max_failures == '5' or not config.max_failures %}selected{% endif %}>5</option>
+              <option value="10" {% if config.max_failures == '10' %}selected{% endif %}>10</option>
             </select>
           </div>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">IP Whitelist</div>
             <div class="toggle-desc">Restreindre l'accès à certaines adresses IP</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="ip-whitelist"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" id="ip_whitelist" {% if config.ip_whitelist %}checked{% endif %}><span class="tslider"></span></label>
         </div>
-
         <div id="ip-list" style="display:none; margin-top:12px">
           <label class="form-label">IP autorisées (une par ligne)</label>
-          <textarea class="form-input" rows="3" placeholder="192.168.1.0/24&#10;10.0.0.1"></textarea>
+          <textarea class="form-input" id="ip_whitelist_list" rows="3" placeholder="192.168.1.0/24&#10;10.0.0.1">{{ config.ip_whitelist_list|default:'' }}</textarea>
         </div>
       </div>
     </div>
@@ -182,51 +281,45 @@
             <div class="toggle-name">QR Code dynamique (24h)</div>
             <div class="toggle-desc">Renouvellement automatique quotidien des codes</div>
           </div>
-          <label class="tswitch"><input type="checkbox" checked id="s-qr-dyn"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.s_qr_dyn %}checked{% endif %} id="s_qr_dyn"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">QR visiteur usage unique</div>
             <div class="toggle-desc">Invalidé après première utilisation</div>
           </div>
-          <label class="tswitch"><input type="checkbox" checked id="s-qr-single"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.s_qr_single %}checked{% endif %} id="s_qr_single"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Alerte après 3 échecs consécutifs</div>
             <div class="toggle-desc">Notification immédiate à l'administrateur</div>
           </div>
-          <label class="tswitch"><input type="checkbox" checked id="s-alert3"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.s_alert3 %}checked{% endif %} id="s_alert3"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Blocage automatique après 5 échecs</div>
             <div class="toggle-desc">Badge suspendu temporairement (15 minutes)</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="s-block5"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.s_block5 %}checked{% endif %} id="s_block5"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Conserver l'historique des employés archivés</div>
             <div class="toggle-desc">Logs conservés même après archivage</div>
           </div>
-          <label class="tswitch"><input type="checkbox" checked id="s-keep"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.s_keep %}checked{% endif %} id="s_keep"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Auto-refresh Surveillance Live</div>
             <div class="toggle-desc">Actualisation toutes les 10 secondes</div>
           </div>
-          <label class="tswitch"><input type="checkbox" checked id="s-refresh"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.s_refresh %}checked{% endif %} id="s_refresh"><span class="tslider"></span></label>
         </div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-head">
         <span>🎨</span>
@@ -238,23 +331,21 @@
             <div class="toggle-name">Mode sombre par défaut</div>
             <div class="toggle-desc">Thème sombre à la connexion</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="dark-default" checked><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.dark_default %}checked{% endif %} id="dark_default"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Animations UI</div>
             <div class="toggle-desc">Activer les animations et transitions</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="ui-animations" checked><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.ui_animations %}checked{% endif %} id="ui_animations"><span class="tslider"></span></label>
         </div>
-
         <div class="form-row" style="margin-top:12px">
           <label class="form-label">Langue par défaut</label>
-          <select class="form-select" id="default-language">
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-            <option value="ar">العربية</option>
+          <select class="form-select" id="default_language">
+            <option value="fr" {% if config.default_language == 'fr' or not config.default_language %}selected{% endif %}>Français</option>
+            <option value="en" {% if config.default_language == 'en' %}selected{% endif %}>English</option>
+            <option value="ar" {% if config.default_language == 'ar' %}selected{% endif %}>العربية</option>
           </select>
         </div>
       </div>
@@ -278,21 +369,21 @@
               <div class="toggle-name">Confirmation de réservation</div>
               <div class="toggle-desc">Email lors d'une nouvelle réservation</div>
             </div>
-            <label class="tswitch"><input type="checkbox" checked id="n-email-resa"><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" {% if config.n_email_resa %}checked{% endif %} id="n_email_resa"><span class="tslider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Rappel 30 minutes avant</div>
               <div class="toggle-desc">Notification de rappel</div>
             </div>
-            <label class="tswitch"><input type="checkbox" checked id="n-reminder"><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" {% if config.n_reminder %}checked{% endif %} id="n_reminder"><span class="tslider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Rapport hebdomadaire</div>
               <div class="toggle-desc">Envoi chaque lundi matin</div>
             </div>
-            <label class="tswitch"><input type="checkbox" id="n-weekly"><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" {% if config.n_weekly %}checked{% endif %} id="n_weekly"><span class="tslider"></span></label>
           </div>
         </div>
         <div>
@@ -302,29 +393,28 @@
               <div class="toggle-name">Accès non autorisé</div>
               <div class="toggle-desc">Notification instantanée</div>
             </div>
-            <label class="tswitch"><input type="checkbox" checked id="n-unauth"><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" {% if config.n_unauth %}checked{% endif %} id="n_unauth"><span class="tslider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Maintenance équipement</div>
               <div class="toggle-desc">Panne ou maintenance programmée</div>
             </div>
-            <label class="tswitch"><input type="checkbox" checked id="n-maintenance"><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" {% if config.n_maintenance %}checked{% endif %} id="n_maintenance"><span class="tslider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">SMS accès critiques</div>
               <div class="toggle-desc">SMS pour zones haute sécurité</div>
             </div>
-            <label class="tswitch"><input type="checkbox" id="n-sms"><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" {% if config.n_sms %}checked{% endif %} id="n_sms"><span class="tslider"></span></label>
           </div>
         </div>
       </div>
-      
       <div class="form-row" style="margin-top:20px">
         <label class="form-label">Email de notification</label>
         <div style="display:flex; gap:8px">
-          <input class="form-input" id="notification-email" value="admin@ge.dz" placeholder="admin@ge.dz">
+          <input class="form-input" id="notification_email" value="{{ config.notification_email|default:user.email }}" placeholder="admin@ge.dz">
           <button class="btn btn-sm btn-primary" onclick="testNotification()">📧 Tester</button>
         </div>
       </div>
@@ -346,28 +436,25 @@
             <div class="toggle-name">Sauvegarde quotidienne</div>
             <div class="toggle-desc">À 02h00 chaque nuit</div>
           </div>
-          <label class="tswitch"><input type="checkbox" checked id="backup-auto"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.backup_auto %}checked{% endif %} id="backup_auto"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Export vers FTP/SFTP</div>
             <div class="toggle-desc">Export automatique des logs</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="backup-ftp"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.backup_ftp %}checked{% endif %} id="backup_ftp"><span class="tslider"></span></label>
         </div>
-
         <div class="form-row" style="margin-top:12px">
           <label class="form-label">Conservation logs (jours)</label>
           <div style="display:flex; align-items:center; gap:12px">
-            <input type="range" id="log-retention-slider" min="30" max="1095" step="30" value="365" style="flex:1">
-            <input type="number" id="log-retention" value="365" min="30" max="1095" step="30" style="width:80px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:6px 8px">
+            <input type="range" id="log_retention_slider" min="30" max="1095" step="30" value="{{ config.log_retention|default:'365' }}" style="flex:1">
+            <input type="number" id="log_retention" value="{{ config.log_retention|default:'365' }}" min="30" max="1095" step="30" style="width:80px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:6px 8px">
             <span style="font-size:11px">jours</span>
           </div>
         </div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-head">
         <span>📁</span>
@@ -381,7 +468,7 @@
             <div class="progress-fill" id="backup-progress" style="width:0%"></div>
           </div>
           <div id="last-backup-info" style="font-size:11px; color:var(--text3); text-align:center">
-            Dernière sauvegarde: {{ last_backup|date:"d/m/Y H:i"|default:"Aucune" }}
+            Dernière sauvegarde: {{ config.last_backup_date|default:"Aucune" }}
           </div>
         </div>
       </div>
@@ -403,48 +490,43 @@
             <div class="toggle-name">API REST externe</div>
             <div class="toggle-desc">Permet l'intégration avec des systèmes tiers</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="api-external"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.api_external %}checked{% endif %} id="api_external"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">LDAP / Active Directory</div>
             <div class="toggle-desc">Authentification centralisée</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="ldap-auth"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.ldap_auth %}checked{% endif %} id="ldap_auth"><span class="tslider"></span></label>
         </div>
-
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Webhook pour alertes</div>
             <div class="toggle-desc">Envoi des alertes vers Slack, Teams...</div>
           </div>
-          <label class="tswitch"><input type="checkbox" id="webhook-alerts"><span class="tslider"></span></label>
+          <label class="tswitch"><input type="checkbox" {% if config.webhook_alerts %}checked{% endif %} id="webhook_alerts"><span class="tslider"></span></label>
         </div>
-
         <div class="form-row" style="margin-top:12px">
           <label class="form-label">Clé API (lecture seule)</label>
           <div style="display:flex; gap:8px">
-            <input class="form-input" id="api-key" value="sk_live_ge_8x7k9m2n4p6q8r" readonly style="font-family:var(--mono); background:var(--bg4)">
+            <input class="form-input" id="api_key" value="{{ config.api_key|default:'sk_live_ge_8x7k9m2n4p6q8r' }}" readonly style="font-family:var(--mono); background:var(--bg4)">
             <button class="btn btn-sm btn-ghost" onclick="copyApiKey()">📋 Copier</button>
             <button class="btn btn-sm btn-ghost" onclick="regenerateApiKey()">🔄 Regénérer</button>
           </div>
         </div>
-
         <div class="form-row">
           <label class="form-label">Webhook URL</label>
-          <input class="form-input" id="webhook-url" placeholder="https://hooks.slack.com/services/...">
+          <input class="form-input" id="webhook_url" value="{{ config.webhook_url|default:'' }}" placeholder="https://hooks.slack.com/services/...">
         </div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-head">
         <span>📊</span>
         <span class="card-title">Statistiques API</span>
       </div>
       <div class="card-body">
-        <div class="kpi-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
           <div class="kpi k-blue" style="padding:12px">
             <div class="kpi-label">Appels aujourd'hui</div>
             <div class="kpi-value" id="api-calls-today">0</div>
@@ -472,103 +554,65 @@
       <div style="display:flex; gap:24px; margin-bottom:24px; flex-wrap:wrap">
         <div style="text-align:center">
           <div class="profile-avatar" style="width:100px; height:100px; background:linear-gradient(135deg,var(--blue),var(--cyan)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:36px; font-weight:600; margin-bottom:12px">
-            {{ admin_user.first_name|slice:":1"|upper }}{{ admin_user.last_name|slice:":1"|upper }}
+            {{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}
           </div>
           <button class="btn btn-sm btn-ghost" onclick="changeAvatar()">📷 Changer l'avatar</button>
         </div>
-        
-        <form id="adminProfileForm" style="flex:1">
-          {% csrf_token %}
+        <div style="flex:1">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
             <div class="form-row">
               <label class="form-label">Nom d'utilisateur</label>
-              <input class="form-input" type="text" name="username" value="{{ admin_user.username }}" required>
+              <input class="form-input" type="text" id="profile_username" value="{{ user.username }}" disabled>
             </div>
             <div class="form-row">
               <label class="form-label">Email</label>
-              <input class="form-input" type="email" name="email" value="{{ admin_user.email }}" required>
+              <input class="form-input" type="email" id="profile_email" value="{{ user.email }}">
             </div>
             <div class="form-row">
               <label class="form-label">Prénom</label>
-              <input class="form-input" type="text" name="first_name" value="{{ admin_user.first_name }}">
+              <input class="form-input" type="text" id="profile_firstname" value="{{ user.first_name }}">
             </div>
             <div class="form-row">
               <label class="form-label">Nom</label>
-              <input class="form-input" type="text" name="last_name" value="{{ admin_user.last_name }}">
+              <input class="form-input" type="text" id="profile_lastname" value="{{ user.last_name }}">
             </div>
             <div class="form-row">
               <label class="form-label">Téléphone</label>
-              <input class="form-input" type="tel" name="phone" value="{{ admin_phone|default:'' }}" placeholder="+213 5XX XX XX XX">
+              <input class="form-input" type="tel" id="profile_phone" value="{{ admin_profile.phone|default:'' }}">
             </div>
             <div class="form-row">
               <label class="form-label">Fonction</label>
-              <input class="form-input" type="text" name="role" value="{{ admin_role|default:'Administrateur Système' }}">
+              <input class="form-input" type="text" id="profile_role" value="{{ admin_profile.role|default:'Administrateur Système' }}">
             </div>
           </div>
-
-          <div style="background:var(--bg3); border-radius:var(--radius); padding:20px; margin:20px 0">
+          <div style="background:var(--bg3); border-radius:8px; padding:20px; margin:20px 0">
             <div style="font-size:12px; font-weight:600; margin-bottom:16px; color:var(--amber)">🔐 Changer le mot de passe</div>
             <div class="form-row">
               <label class="form-label">Mot de passe actuel</label>
-              <input class="form-input" type="password" name="current_password" placeholder="••••••••">
+              <input class="form-input" type="password" id="current_password" placeholder="••••••••">
             </div>
             <div class="form-row">
               <label class="form-label">Nouveau mot de passe</label>
-              <input class="form-input" type="password" name="new_password" id="new_password" placeholder="••••••••">
+              <input class="form-input" type="password" id="new_password" placeholder="••••••••">
               <div id="password-strength" style="font-size:10px; margin-top:5px"></div>
             </div>
             <div class="form-row">
               <label class="form-label">Confirmer le nouveau mot de passe</label>
-              <input class="form-input" type="password" name="confirm_password" id="confirm_password" placeholder="••••••••">
+              <input class="form-input" type="password" id="confirm_password" placeholder="••••••••">
               <div id="password-match" style="font-size:10px; margin-top:5px"></div>
             </div>
           </div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">Double authentification (2FA)</div>
               <div class="toggle-desc">Renforcer la sécurité de votre compte</div>
             </div>
-            <label class="tswitch"><input type="checkbox" id="admin-2fa" {% if admin_2fa %}checked{% endif %}><span class="tslider"></span></label>
+            <label class="tswitch"><input type="checkbox" id="admin_2fa" {% if admin_profile.two_factor_enabled %}checked{% endif %}><span class="tslider"></span></label>
           </div>
-          
-          <div id="2fa-setup" style="display:none; margin-top:12px; padding:12px; background:var(--blue3); border-radius:8px">
-            <div style="font-size:11px; margin-bottom:8px">📱 Configurez l'authentification à deux facteurs :</div>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-              <code style="background:var(--bg4); padding:8px; border-radius:6px; font-family:monospace; font-size:12px" id="2fa-secret">XXXX-XXXX-XXXX-XXXX</code>
-              <button type="button" class="btn btn-sm btn-primary" onclick="show2FAQR()">📱 Afficher QR Code</button>
-            </div>
-          </div>
-
           <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:24px; padding-top:20px; border-top:1px solid var(--border)">
             <button type="button" class="btn btn-ghost" onclick="resetAdminForm()">Annuler</button>
-            <button type="submit" class="btn btn-primary" id="saveAdminBtn">💾 Enregistrer les modifications</button>
+            <button type="button" class="btn btn-primary" onclick="saveAdminProfile()">💾 Enregistrer les modifications</button>
           </div>
-        </form>
-      </div>
-
-      <!-- Historique des connexions -->
-      <div style="margin-top:24px">
-        <div style="font-size:12px; font-weight:600; margin-bottom:16px; color:var(--cyan)">
-          🕐 Historique des connexions
-        </div>
-        <div style="max-height:250px; overflow-y:auto">
-          <table class="tbl" style="width:100%">
-            <thead>
-              <tr><th>Date & Heure</th><th>Adresse IP</th><th>Agent</th><th>Statut</th> </thead>
-            <tbody id="login-history-body">
-              {% for login in admin_login_history|slice:":10" %}
-              <tr>
-                <td style="font-family:monospace; font-size:11px">{{ login.timestamp|date:"d/m/Y H:i:s" }}</td>
-                <td style="font-family:monospace; font-size:11px">{{ login.ip_address }}</td>
-                <td style="font-size:11px">{{ login.user_agent|truncatechars:35 }}</td>
-                <td>{% if login.success %}<span class="badge b-green">Succès</span>{% else %}<span class="badge b-red">Échec</span>{% endif %}</td>
-              </tr>
-              {% empty %}
-              <tr><td colspan="4" style="text-align:center; padding:20px">Aucun historique disponible</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -591,337 +635,159 @@
       </div>
       <div class="sys-info" style="background:var(--bg3); border-radius:10px; padding:12px">
         <div style="font-size:10px; color:var(--text3)">Base de données</div>
-        <div style="font-size:16px; color:var(--green)">● MongoDB 6.0</div>
+        <div style="font-size:16px; color:var(--green)">● MongoDB</div>
         <div style="font-size:9px">Statut: Connecté</div>
       </div>
       <div class="sys-info" style="background:var(--bg3); border-radius:10px; padding:12px">
         <div style="font-size:10px; color:var(--text3)">Framework</div>
-        <div style="font-size:16px">Django 5.1</div>
+        <div style="font-size:16px">Django</div>
         <div style="font-size:9px">Python 3.12</div>
       </div>
-      <div class="sys-info" style="background:var(--bg3); border-radius:10px; padding:12px">
-        <div style="font-size:10px; color:var(--text3)">Uptime</div>
-        <div style="font-size:16px">14j 8h 32m</div>
-        <div style="font-size:9px">Cache: 234 MB</div>
-      </div>
     </div>
   </div>
 </div>
 
-<!-- Actions système -->
-<div class="card" style="border-color: var(--amber); margin-top:20px">
-  <div class="card-head">
-    <span>🛠️</span>
-    <span class="card-title">Actions système avancées</span>
-    <span class="card-sub">Opérations avec prudence</span>
-  </div>
-  <div class="card-body">
-    <div style="display:flex; gap:12px; flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="clearCache()">🗑️ Vider le cache</button>
-      <button class="btn btn-ghost btn-sm" onclick="rebuildIndexes()">🔄 Reconstruire les index</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportSystemLogs()">📋 Exporter les logs système</button>
-      <button class="btn btn-ghost btn-sm" onclick="checkSystemHealth()">🏥 Diagnostic système</button>
-      <button class="btn btn-del btn-sm" onclick="factoryReset()" style="background:var(--red2); color:var(--red)">⚠️ Réinitialisation usine</button>
-    </div>
-  </div>
-</div>
+<script>
+function switchSettingsTab(name) {
+  var tabs = document.querySelectorAll('.settings-tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].style.display = 'none';
+  var btns = document.querySelectorAll('.tab-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  var panel = document.getElementById(name + '-tab');
+  if (panel) panel.style.display = 'block';
+  var activeBtn = document.querySelector('.tab-btn[onclick="switchSettingsTab(\'' + name + '\')"]');
+  if (activeBtn) activeBtn.classList.add('active');
+}
 
-<!-- Modal QR Code 2FA -->
-<div class="modal-overlay" id="qrcodeModal" style="display:none" onclick="if(event.target===this)closeQRModal()">
-  <div class="modal" style="width:380px; text-align:center">
-    <div class="modal-title">📱 Configurer l'authentification 2FA</div>
-    <div class="modal-sub">Scannez ce QR code avec votre application d'authentification</div>
-    <div id="qrcode-container" style="margin:20px auto; width:220px; height:220px; background:white; padding:10px; border-radius:10px">
-      <canvas id="qrcode-canvas" width="200" height="200"></canvas>
-    </div>
-    <div style="margin:10px 0; font-family:monospace; font-size:12px" id="secret-key">XXXX-XXXX-XXXX-XXXX</div>
-    <div class="modal-actions">
-      <button class="btn btn-primary btn-sm" onclick="copySecretKey()">📋 Copier la clé</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeQRModal()">Fermer</button>
-    </div>
-  </div>
-</div>
+function getCsrfToken() {
+  var name = 'csrftoken=';
+  var cookies = document.cookie.split(';');
+  for (var i = 0; i < cookies.length; i++) {
+    var c = cookies[i].trim();
+    if (c.indexOf(name) === 0) return c.substring(name.length);
+  }
+  return '';
+}
 
-<style>
-.tab-btn {
-  padding: 8px 20px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text2);
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-}
-.tab-btn.active {
-  background: var(--blue);
-  color: white;
-}
-.tab-btn:hover:not(.active) {
-  background: var(--bg4);
-  color: var(--text);
-}
-.form-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text2);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  display: block;
-}
-.profile-avatar {
-  transition: transform 0.2s;
-}
-.profile-avatar:hover {
-  transform: scale(1.05);
-}
-</style>
-
-{% endblock %}
-
-{% block extra_js %}
-let settingsChanged = false;
-
-function switchSettingsTab(tab) {
-  document.querySelectorAll('.settings-tab').forEach(t => t.style.display = 'none');
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.getElementById(`${tab}-tab`).style.display = 'block';
-  event.target.classList.add('active');
+function showToast(message, type) {
+  var existing = document.getElementById('settings-toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.id = 'settings-toast';
+  toast.style.cssText = 'position:fixed; top:20px; right:20px; padding:14px 20px; border-radius:10px; font-weight:600; z-index:9999; box-shadow:0 4px 14px rgba(0,0,0,0.3); animation:slideIn 0.3s ease;';
+  if (type === 'success') toast.style.background = '#2dba6f';
+  else if (type === 'error') toast.style.background = '#f85149';
+  else toast.style.background = '#1f6feb';
+  toast.style.color = 'white';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.remove(); }, 3000);
 }
 
 function saveAllSettings(btn) {
-  const originalText = btn.innerHTML;
-  btn.innerHTML = '⏳ Enregistrement...';
-  btn.disabled = true;
-  
-  const settings = {
-    two_factor: {
-      global: document.getElementById('s-2fa-global')?.checked || false,
-      zones: {
-        direction: document.getElementById('t-direction')?.checked || false,
-        serveur: document.getElementById('t-serveur')?.checked || false,
-        archives: document.getElementById('t-archives')?.checked || false,
-        lab: document.getElementById('t-lab')?.checked || false,
-        reunion: document.getElementById('t-reunion')?.checked || false,
-        entree: document.getElementById('t-entree')?.checked || false
-      }
-    },
-    system: {
-      qr_dynamic: document.getElementById('s-qr-dyn')?.checked || false,
-      qr_single_use: document.getElementById('s-qr-single')?.checked || false,
-      alert_3_fails: document.getElementById('s-alert3')?.checked || false,
-      block_5_fails: document.getElementById('s-block5')?.checked || false,
-      keep_history: document.getElementById('s-keep')?.checked || false,
-      auto_refresh: document.getElementById('s-refresh')?.checked || false
-    },
-    notifications: {
-      email_resa: document.getElementById('n-email-resa')?.checked || false,
-      reminder: document.getElementById('n-reminder')?.checked || false,
-      unauth_access: document.getElementById('n-unauth')?.checked || false,
-      weekly_report: document.getElementById('n-weekly')?.checked || false,
-      maintenance: document.getElementById('n-maintenance')?.checked || false,
-      sms_critical: document.getElementById('n-sms')?.checked || false
-    },
-    backup: {
-      auto_backup: document.getElementById('backup-auto')?.checked || false,
-      log_retention: document.getElementById('log-retention')?.value || 365,
-      ftp_export: document.getElementById('backup-ftp')?.checked || false
-    },
-    api: {
-      external_api: document.getElementById('api-external')?.checked || false,
-      ldap_auth: document.getElementById('ldap-auth')?.checked || false,
-      webhook: document.getElementById('webhook-alerts')?.checked || false
-    }
-  };
-  
-  setTimeout(() => {
-    localStorage.setItem('sigr_settings', JSON.stringify(settings));
-    btn.innerHTML = '✅ Enregistré !';
-    btn.style.background = 'var(--green)';
-    showToast('Paramètres enregistrés avec succès', 'success');
-    setTimeout(() => {
-      btn.innerHTML = originalText;
-      btn.style.background = '';
-      btn.disabled = false;
-    }, 1500);
-  }, 800);
+  var data = {};
+  var inputs = document.querySelectorAll('.settings-tab input[id], .settings-tab select[id], .settings-tab textarea[id]');
+  for (var i = 0; i < inputs.length; i++) {
+    var el = inputs[i];
+    if (el.type === 'checkbox') data[el.id] = el.checked;
+    else data[el.id] = el.value;
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Enregistrement...'; }
+  fetch("{% url 'api_parametres_save' %}", {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+    body: JSON.stringify(data)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    showToast(res.status === 'success' ? '✅ ' + res.message : '❌ ' + res.message, res.status);
+  })
+  .catch(function(err) { showToast('❌ Erreur réseau', 'error'); })
+  .finally(function() { if (btn) { btn.disabled = false; btn.innerHTML = '💾 Enregistrer les modifications'; } });
 }
 
 function resetToDefaults() {
-  if (confirm('⚠️ Rétablir tous les paramètres par défaut ?\n\nCette action ne peut pas être annulée.')) {
-    const toggles = document.querySelectorAll('.tswitch input');
-    toggles.forEach(toggle => {
-      const defaultState = !toggle.id.includes('s-block5') && !toggle.id.includes('n-weekly') && 
-                           !toggle.id.includes('backup-ftp') && !toggle.id.includes('api-external') &&
-                           !toggle.id.includes('ldap-auth') && !toggle.id.includes('webhook-alerts');
-      toggle.checked = defaultState;
-    });
-    document.getElementById('log-retention').value = 365;
-    showToast('Paramètres réinitialisés', 'info');
+  if (!confirm('Rétablir TOUTES les valeurs par défaut ?')) return;
+  fetch("{% url 'api_parametres_reset' %}", {
+    method: 'POST', headers: { 'X-CSRFToken': getCsrfToken() }
+  }).then(function(r) { return r.json(); }).then(function(res) {
+    if (res.status === 'success') { showToast('✅ Valeurs par défaut rétablies', 'success'); setTimeout(function() { location.reload(); }, 1200); }
+    else showToast('❌ ' + res.message, 'error');
+  }).catch(function() { showToast('❌ Erreur', 'error'); });
+}
+
+function saveAdminProfile() {
+  var profileData = {
+    email: document.getElementById('profile_email').value,
+    first_name: document.getElementById('profile_firstname').value,
+    last_name: document.getElementById('profile_lastname').value,
+    phone: document.getElementById('profile_phone').value,
+    role: document.getElementById('profile_role').value,
+    current_password: document.getElementById('current_password').value,
+    new_password: document.getElementById('new_password').value,
+    confirm_password: document.getElementById('confirm_password').value
+  };
+  var allData = {};
+  var inputs = document.querySelectorAll('.settings-tab input[id], .settings-tab select[id]');
+  for (var i = 0; i < inputs.length; i++) {
+    var el = inputs[i];
+    if (el.type === 'checkbox') allData[el.id] = el.checked;
+    else allData[el.id] = el.value;
   }
+  allData.profile_update = profileData;
+  fetch("{% url 'api_parametres_save' %}", {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+    body: JSON.stringify(allData)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.status === 'success') { showToast('✅ Profil mis à jour', 'success'); setTimeout(function() { location.reload(); }, 1500); }
+    else showToast('❌ ' + res.message, 'error');
+  })
+  .catch(function(err) { showToast('❌ Erreur', 'error'); });
 }
 
-function exportSettings() {
-  const settings = localStorage.getItem('sigr_settings');
-  const blob = new Blob([settings || '{}'], {type: "application/json"});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `sigr_settings_${new Date().toISOString().slice(0,10)}.json`;
-  link.click();
-  showToast('Configuration exportée', 'success');
+function manualBackup() {
+  var progressBar = document.getElementById('backup-progress');
+  showToast('💾 Sauvegarde démarrée...', 'info');
+  progressBar.style.width = '0%';
+  var pct = 0;
+  var interval = setInterval(function() {
+    pct += 15;
+    if (pct >= 100) {
+      clearInterval(interval);
+      progressBar.style.width = '100%';
+      showToast('✅ Sauvegarde terminée', 'success');
+      setTimeout(function() { progressBar.style.width = '0%'; }, 2000);
+    } else { progressBar.style.width = pct + '%'; }
+  }, 200);
 }
 
-function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `alert-box ${type === 'success' ? 'info' : 'danger'}`;
-  toast.style.cssText = 'position:fixed; bottom:20px; right:20px; z-index:1000; max-width:300px; animation:slideIn 0.3s ease';
-  toast.innerHTML = `<div class="alert-ico">${type === 'success' ? '✅' : '⚠️'}</div><div><div class="alert-text">${message}</div></div>`;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
-
-function copyApiKey() {
-  const apiKey = document.getElementById('api-key');
-  apiKey.select();
-  document.execCommand('copy');
-  showToast('Clé API copiée', 'success');
-}
-
-function regenerateApiKey() {
-  if (confirm('Regénérer la clé API ?')) {
-    const newKey = 'sk_live_ge_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    document.getElementById('api-key').value = newKey;
-    showToast('Nouvelle clé API générée', 'success');
-  }
-}
-
-function clearCache() { showToast('Cache vidé', 'success'); }
-function rebuildIndexes() { showToast('Index reconstruits', 'success'); }
-function exportSystemLogs() { showToast('Logs exportés', 'success'); }
-function checkSystemHealth() { showToast('Diagnostic: Système OK', 'success'); }
-function refreshSystemInfo() { showToast('Infos mises à jour', 'success'); }
-function manualBackup() { 
-  showToast('Sauvegarde en cours...', 'info');
-  setTimeout(() => showToast('Sauvegarde terminée', 'success'), 2000);
-}
-function restoreBackup() { showToast('Fonctionnalité à venir', 'info'); }
-function testNotification() { showToast('Email de test envoyé', 'success'); }
-function viewApiLogs() { showToast('API Logs: 234 appels aujourd\'hui', 'info'); }
-
-function loadSavedSettings() {
-  const saved = localStorage.getItem('sigr_settings');
-  if (saved) {
-    try {
-      const settings = JSON.parse(saved);
-      if (settings.two_factor?.zones) {
-        Object.entries(settings.two_factor.zones).forEach(([key, val]) => {
-          const el = document.getElementById(`t-${key}`);
-          if (el) el.checked = val;
-        });
-      }
-      if (settings.system) {
-        Object.entries(settings.system).forEach(([key, val]) => {
-          const el = document.getElementById(`s-${key}`);
-          if (el) el.checked = val;
-        });
-      }
-    } catch(e) {}
-  }
-}
-
-document.getElementById('log-retention-slider')?.addEventListener('input', function() {
-  document.getElementById('log-retention').value = this.value;
-});
-document.getElementById('log-retention')?.addEventListener('input', function() {
-  document.getElementById('log-retention-slider').value = this.value;
-});
-
-document.getElementById('ip-whitelist')?.addEventListener('change', function() {
-  document.getElementById('ip-list').style.display = this.checked ? 'block' : 'none';
-});
-
-document.getElementById('admin-2fa')?.addEventListener('change', function() {
-  const setupDiv = document.getElementById('2fa-setup');
-  if (this.checked) {
-    setupDiv.style.display = 'block';
-    const secret = Array(4).fill().map(() => Math.random().toString(36).substring(2, 6).toUpperCase()).join('-');
-    document.getElementById('2fa-secret').textContent = secret;
-  } else {
-    setupDiv.style.display = 'none';
-  }
-});
-
-document.getElementById('adminProfileForm')?.addEventListener('submit', function(e) {
-  e.preventDefault();
-  const newPwd = document.getElementById('new_password')?.value;
-  const confirmPwd = document.getElementById('confirm_password')?.value;
-  if (newPwd && newPwd !== confirmPwd) {
-    showToast('Les mots de passe ne correspondent pas', 'error');
-    return;
-  }
-  showToast('Profil mis à jour avec succès', 'success');
-  setTimeout(() => location.reload(), 1500);
-});
-
-document.getElementById('new_password')?.addEventListener('input', function() {
-  const pwd = this.value;
-  const strengthDiv = document.getElementById('password-strength');
-  if (!pwd) { strengthDiv.innerHTML = ''; return; }
-  let strength = 0;
-  if (pwd.length >= 8) strength++;
-  if (pwd.match(/[a-z]/)) strength++;
-  if (pwd.match(/[A-Z]/)) strength++;
-  if (pwd.match(/[0-9]/)) strength++;
-  if (pwd.match(/[^a-zA-Z0-9]/)) strength++;
-  const colors = ['var(--red)', 'var(--red)', 'var(--amber)', 'var(--green)', 'var(--green)'];
-  const texts = ['Très faible', 'Faible', 'Moyen', 'Fort', 'Très fort'];
-  strengthDiv.innerHTML = `<div style="display:flex; align-items:center; gap:8px">
-    <div style="flex:1; background:var(--bg4); height:4px; border-radius:2px">
-      <div style="width: ${strength * 20}%; height:100%; background:${colors[strength-1]}; border-radius:2px"></div>
-    </div>
-    <span style="color:${colors[strength-1]}">${texts[strength-1]}</span>
-  </div>`;
-});
-
-document.getElementById('confirm_password')?.addEventListener('input', function() {
-  const pwd = document.getElementById('new_password').value;
-  const matchDiv = document.getElementById('password-match');
-  matchDiv.innerHTML = pwd === this.value ? '<span style="color:var(--green)">✅ Correspondent</span>' : '<span style="color:var(--red)">❌ Ne correspondent pas</span>';
-});
-
-function show2FAQR() {
-  const secret = document.getElementById('2fa-secret').textContent;
-  const canvas = document.getElementById('qrcode-canvas');
-  if (canvas) {
-    canvas.width = 200; canvas.height = 200;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 200, 200);
-    ctx.fillStyle = 'black'; ctx.font = '12px monospace';
-    ctx.fillText('QR Code', 70, 100);
-    ctx.fillText(secret.replace(/-/g, ''), 40, 130);
-  }
-  document.getElementById('qrcodeModal').style.display = 'flex';
-}
-
-function copySecretKey() {
-  navigator.clipboard.writeText(document.getElementById('2fa-secret').textContent);
-  showToast('Clé copiée', 'success');
-}
-function closeQRModal() { document.getElementById('qrcodeModal').style.display = 'none'; }
-function resetAdminForm() { if(confirm('Annuler les modifications ?')) location.reload(); }
+function copyApiKey() { var input = document.getElementById('api_key'); input.select(); document.execCommand('copy'); showToast('✅ Clé API copiée', 'success'); }
+function regenerateApiKey() { document.getElementById('api_key').value = 'sk_live_' + Math.random().toString(36).substring(2, 15); showToast('Nouvelle clé générée', 'success'); }
+function testNotification() { showToast('📧 Test envoyé', 'success'); }
+function resetAdminForm() { showToast('Formulaire réinitialisé', 'info'); }
 function changeAvatar() { showToast('Fonctionnalité à venir', 'info'); }
-function factoryReset() {
-  if(confirm('⚠️ RÉINITIALISATION USINE ⚠️\n\nCette action est irréversible. Confirmez ?')) {
-    localStorage.clear();
-    showToast('Réinitialisation effectuée', 'error');
-    setTimeout(() => location.reload(), 2000);
-  }
-}
+function viewApiLogs() { showToast('Fonctionnalité à venir', 'info'); }
+function restoreBackup() { showToast('Fonctionnalité à venir', 'info'); }
+function refreshSystemInfo() { showToast('✅ Système OK', 'success'); }
+function clearCache() { showToast('Cache vidé', 'success'); }
+function rebuildIndexes() { showToast('Reconstruction démarrée', 'info'); }
+function exportSystemLogs() { showToast('Export en cours', 'info'); }
+function checkSystemHealth() { showToast('✅ Système sain', 'success'); }
+function exportSettings() { var data = {}; var inputs = document.querySelectorAll('.settings-tab input[id]'); for (var i=0;i<inputs.length;i++) { data[inputs[i].id] = inputs[i].type==='checkbox' ? inputs[i].checked : inputs[i].value; } var blob = new Blob([JSON.stringify(data,null,2)]); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sigr-ca-config.json'; a.click(); showToast('⬇️ Exporté','success'); }
 
-window.onload = function() {
-  loadSavedSettings();
-  document.getElementById('ip-whitelist')?.dispatchEvent(new Event('change'));
-};
+document.addEventListener('DOMContentLoaded', function() {
+  switchSettingsTab('security');
+  var ipw = document.getElementById('ip_whitelist');
+  if (ipw) { ipw.addEventListener('change', function() { document.getElementById('ip-list').style.display = this.checked ? 'block' : 'none'; }); if (ipw.checked) document.getElementById('ip-list').style.display = 'block'; }
+  var slider = document.getElementById('log_retention_slider');
+  var input = document.getElementById('log_retention');
+  if (slider && input) { slider.addEventListener('input', function() { input.value = this.value; }); input.addEventListener('change', function() { slider.value = this.value; }); }
+  var newPwd = document.getElementById('new_password');
+  var confirmPwd = document.getElementById('confirm_password');
+  if (newPwd) { newPwd.addEventListener('input', function() { var s=document.getElementById('password-strength'); if(newPwd.value.length<8)s.innerHTML='⚠️ Faible'; else s.innerHTML='✅ Fort'; }); if(confirmPwd) confirmPwd.addEventListener('input', function() { var m=document.getElementById('password-match'); if(newPwd.value===confirmPwd.value)m.innerHTML='✅ Correspondent'; else m.innerHTML='❌ Ne correspondent pas'; }); }
+});
 </script>
 {% endblock %}

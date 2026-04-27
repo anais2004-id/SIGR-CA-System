@@ -848,5 +848,19 @@ function empCheckDispo() {
       btn.disabled = false;
     });
 }
+document.addEventListener('DOMContentLoaded', function() {
+  var params = new URLSearchParams(window.location.search);
+  var rid = params.get('resource_id');
+  if (rid) {
+    if (typeof openResaModal === 'function') openResaModal();
+    setTimeout(function() {
+      var sel = document.getElementById('selResource');
+      if (sel) {
+        sel.value = rid;
+        if (typeof onEmpResourceChange === 'function') onEmpResourceChange();
+      }
+    }, 300);
+  }
+});
 </script>
 {% endblock %}

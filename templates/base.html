@@ -313,7 +313,7 @@
     }
     .kpi:hover { transform:translateY(-2px); box-shadow:var(--shadow); }
     .kpi::after { 
-      content:';
+      content:'';
       position:absolute; 
       top:0; 
       left:0; 
@@ -661,6 +661,7 @@
     <a href="{% url 'dashboard' %}" class="nav-item {% block nav_dashboard %}{% endblock %}">
       <span class="nav-ico">⊞</span><span>Tableau de bord</span>
     </a>
+   
     <a href="{% url 'employe_list' %}" class="nav-item {% block nav_employes %}{% endblock %}">
       <span class="nav-ico">👥</span><span>Employés</span>
     </a>
@@ -827,9 +828,9 @@ function toggleTheme() {
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
 }
 
-function closeModal() { 
+function closeModal() {
   var modal = document.getElementById("modal-overlay");
-  if (modal) modal.style.display = "none"; 
+  if (modal) modal.style.display = "none";
 }
 
 // Charger le thème sauvegardé
@@ -842,21 +843,6 @@ document.addEventListener('DOMContentLoaded', function() {
     var themeLabel = document.getElementById("theme-lbl");
     if (themeIcon) themeIcon.textContent = '🌙';
     if (themeLabel) themeLabel.textContent = 'Mode sombre';
-  }
-});
-
-function closeModal() { 
-  document.getElementById("modal-overlay").style.display = "none"; 
-}
-
-// Charger le thème sauvegardé
-document.addEventListener('DOMContentLoaded', function() {
-  const savedTheme = localStorage.getItem('theme');
-  if (savedTheme === 'light') {
-    isDark = false;
-    document.body.classList.add('light');
-    document.getElementById("theme-ico").textContent = "🌙";
-    document.getElementById("theme-lbl").textContent = "Mode sombre";
   }
 });
 

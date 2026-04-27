@@ -214,6 +214,40 @@
 .btn-sm { padding: 4px 10px; font-size: 11px; }
 .btn-info { background: var(--blue3); color: var(--blue2); border: 1px solid rgba(31,111,235,0.3); }
 .btn-info:hover { background: rgba(31,111,235,0.2); }
+.status-tab {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-tab:hover {
+  background: var(--bg4);
+  color: var(--text);
+}
+.status-tab.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+.count-badge {
+  background: rgba(255,255,255,0.2);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.status-tab:not(.active) .count-badge {
+  background: var(--bg4);
+  color: var(--text2);
+}
 </style>
 
 <!-- KPIs -->
@@ -253,6 +287,22 @@
       <span class="card-title">Liste des réservations</span>
       <input type="text" id="searchInput" class="search-inp" style="width:200px; margin-left:auto" placeholder="🔍 Rechercher..." oninput="filterTable()">
     </div>
+
+    <!-- Filtres de statut -->
+    <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap; background:var(--bg3);">
+      <button class="status-tab active" data-statut="all" onclick="filterByStatut('all', this)">
+        📋 Toutes <span class="count-badge">{{ total|default:0 }}</span>
+      </button>
+      <button class="status-tab" data-statut="confirmee" onclick="filterByStatut('confirmee', this)">
+        ✅ Confirmées <span class="count-badge">{{ confirmees|default:0 }}</span>
+      </button>
+      <button class="status-tab" data-statut="en_attente" onclick="filterByStatut('en_attente', this)">
+        ⏳ En attente <span class="count-badge">{{ en_attente|default:0 }}</span>
+      </button>
+      <button class="status-tab" data-statut="annulee" onclick="filterByStatut('annulee', this)">
+        ❌ Annulées <span class="count-badge">{{ annulees|default:0 }}</span>
+      </button>
+    </div>
     <div style="overflow-x:auto">
       <table class="tbl">
         <thead>
@@ -262,7 +312,7 @@
         </thead>
         <tbody id="tableBody">
           {% for r in reservations %}
-          <tr data-id="{{ r.id }}" data-titre="{{ r.titre|lower|escape }}" data-salle="{{ r.bureau_nom|lower|escape }}">
+<tr data-id="{{ r.id }}" data-titre="{{ r.titre|lower|escape }}" data-salle="{{ r.bureau_nom|lower|escape }}" data-statut="{{ r.statut|default:'inconnu' }}">
             <td><strong>{{ r.titre|default:"Sans titre" }}</strong>{% if r.description %}<div style="font-size:10px;color:var(--text3)">{{ r.description|truncatechars:40 }}</div>{% endif %}</div>
             <td><span class="badge b-blue">{{ r.bureau_nom }}</span></div>
             <td>{{ r.employe_nom }}<div style="font-size:10px;color:var(--text3)">Badge: {{ r.employe_badge|default:"—" }}</div></div>
@@ -749,6 +799,32 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+function filterByStatut(statut, btn) {
+  // Mettre à jour les boutons actifs
+  document.querySelectorAll('.status-tab').forEach(function(b) {
+    b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  // Filtrer les lignes du tableau
+  var rows = document.querySelectorAll('#tableBody tr');
+  var visibleCount = 0;
+  rows.forEach(function(row) {
+    var rowStatut = row.getAttribute('data-statut');
+    if (statut === 'all' || rowStatut === statut) {
+      row.style.display = '';
+      visibleCount++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+  // Basculer en vue liste si pas déjà
+  var tableView = document.getElementById('tableView');
+  var calendarView = document.getElementById('calendarView');
+  if (statut !== 'all' && tableView.style.display === 'none') {
+    tableView.style.display = 'block';
+    calendarView.style.display = 'none';
+  }
+}
 </script>
 
 {% endblock %}

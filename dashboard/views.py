@@ -948,48 +948,146 @@ def api_disponibilite_bureau(request, bureau_id):
 
 
 # ====================== DASHBOARD ADMIN ======================
+# dashboard/views.py - Version corrigée de dashboard()
+from datetime import datetime, timedelta
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from bson import ObjectId
+import os
 
 @login_required
 def dashboard(request):
     if not request.user.is_staff and not request.user.is_superuser:
         return redirect('employe_espace')
-    
+
+    # Statistiques de base
     total_employes = db.employees.count_documents({})
     total_bureaux = db.bureaux.count_documents({})
+
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
     acces_aujourdhui = db.acces_logs.count_documents({'timestamp': {'$gte': today_start}})
-    acces_refuses = db.acces_logs.count_documents({'timestamp': {'$gte': today_start}, 'resultat': 'REFUSE'})
+    acces_refuses = db.acces_logs.count_documents({
+        'timestamp': {'$gte': today_start}, 
+        'resultat': 'REFUSE'
+    })
     acces_autorises_today = acces_aujourdhui - acces_refuses
+
+    # Alertes
     alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'}) if 'alertes' in db.list_collection_names() else 0
-    
-    derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(8))
+
+    # Derniers logs (10 derniers)
+    derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(10))
     for log in derniers_logs:
-        bureau = db.bureaux.find_one({'_id': log.get('bureau_id')})
-        log['bureau_nom'] = bureau['nom'] if bureau else 'Inconnu'
-        emp = db.employees.find_one({'_id': log.get('utilisateur_id')})
-        log['nom_utilisateur'] = f"{emp.get('nom','')} {emp.get('prenom','')}" if emp else 'Inconnu'
-    
+        # === Employé (champ "employe_id") ===
+        emp_id = log.get('employe_id') or log.get('utilisateur_id')
+        if emp_id:
+            try:
+                eid = ObjectId(emp_id) if isinstance(emp_id, str) else emp_id
+                employe = db.employees.find_one({'_id': eid})
+                if employe:
+                    nom_complet = f"{employe.get('prenom','')} {employe.get('nom','')}".strip()
+                    log['nom_utilisateur'] = nom_complet or employe.get('email') or 'Utilisateur inconnu'
+                else:
+                    log['nom_utilisateur'] = 'Utilisateur inconnu'
+            except Exception:
+                log['nom_utilisateur'] = 'Utilisateur inconnu'
+        else:
+            log['nom_utilisateur'] = log.get('fait_par', 'Système')
+
+        # === Bureau (peut ne pas exister) ===
+        bureau_id = log.get('bureau_id')
+        if bureau_id:
+            try:
+                bid = ObjectId(bureau_id) if isinstance(bureau_id, str) else bureau_id
+                bureau = db.bureaux.find_one({'_id': bid})
+                log['bureau_nom'] = bureau.get('nom', 'Salle inconnue') if bureau else 'Salle inconnue'
+            except Exception:
+                log['bureau_nom'] = 'Salle inconnue'
+        else:
+            # Pas de bureau = action admin (badge_affecte, etc.)
+            action = log.get('action', '')
+            log['bureau_nom'] = action.replace('_', ' ').capitalize() if action else 'Action système'
+
+        # === Type d'accès (champ "badge_type") ===
+        log['type_acces'] = log.get('badge_type') or log.get('type_acces') or 'SYSTEM'
+
+        # === Résultat : si absent, déduit de l'action ===
+        if 'resultat' not in log:
+            action = log.get('action', '').lower()
+            if 'refus' in action or 'denied' in action or 'echec' in action:
+                log['resultat'] = 'REFUSE'
+            else:
+                log['resultat'] = 'AUTORISE'
+
+        # === Heure formatée ===
+        if 'timestamp' in log and isinstance(log['timestamp'], datetime):
+            log['heure_formatee'] = log['timestamp'].strftime('%H:%M:%S')
+        else:
+            log['heure_formatee'] = '--:--:--'
+    # Stats 7 jours
     seven_days_ago = datetime.now() - timedelta(days=7)
-    stats_7jours = list(db.acces_logs.aggregate([
+    pipeline = [
         {'$match': {'timestamp': {'$gte': seven_days_ago}}},
-        {'$group': {'_id': {'$dateToString': {'format': '%Y-%m-%d', 'date': '$timestamp'}},
-                    'total': {'$sum': 1},
-                    'autorises': {'$sum': {'$cond': [{'$eq': ['$resultat', 'AUTORISE']}, 1, 0]}}}},
+        {'$group': {
+            '_id': {'$dateToString': {'format': '%Y-%m-%d', 'date': '$timestamp'}},
+            'total': {'$sum': 1},
+            'autorises': {'$sum': {'$cond': [{'$eq': ['$resultat', 'AUTORISE']}, 1, 0]}}
+        }},
         {'$sort': {'_id': 1}}
-    ]))
-    
-    return render(request, 'dashboard/dashboard.html', {
+    ]
+    stats_7jours = list(db.acces_logs.aggregate(pipeline))
+
+    # Calcul pourcentages + nom du jour
+    max_total = max((s.get('total', 0) for s in stats_7jours), default=1)
+    jours_fr = {'Monday':'Lun','Tuesday':'Mar','Wednesday':'Mer','Thursday':'Jeu','Friday':'Ven','Saturday':'Sam','Sunday':'Dim'}
+
+    for s in stats_7jours:
+        s['refuses'] = s['total'] - s['autorises']
+        s['pct_total'] = int((s['total'] / max_total) * 100) if max_total else 0
+        s['pct_autor'] = int((s['autorises'] / max_total) * 100) if max_total else 0
+        
+        try:
+            date_obj = datetime.strptime(s['_id'], '%Y-%m-%d')
+            s['jour_court'] = jours_fr.get(date_obj.strftime('%A'), date_obj.strftime('%a')[:3])
+        except:
+            s['jour_court'] = s['_id'][5:10]
+
+    # IA Models status
+    try:
+        from dashboard.ai_engine import MODELS_DIR
+    except:
+        MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
+        os.makedirs(MODELS_DIR, exist_ok=True)
+
+    models_status = {
+        'occupation': os.path.exists(os.path.join(MODELS_DIR, 'occupation_model.pkl')),
+        'recommender': os.path.exists(os.path.join(MODELS_DIR, 'reco_model.pkl')),
+        'anomaly': os.path.exists(os.path.join(MODELS_DIR, 'anomaly_model.pkl')),
+    }
+
+    bureaux_ia = list(db.bureaux.find({}, {'nom': 1}))
+    for b in bureaux_ia:
+        b['id'] = str(b['_id'])
+
+    context = {
         'total_employes': total_employes,
         'total_bureaux': total_bureaux,
         'acces_aujourdhui': acces_aujourdhui,
         'acces_refuses': acces_refuses,
+        'acces_autorises_today': acces_autorises_today,
         'alertes': alertes,
         'derniers_logs': derniers_logs,
         'stats_7jours': stats_7jours,
-        'acces_autorises_today': acces_autorises_today,
-    })
+        'models_status': models_status,
+        'bureaux_ia': bureaux_ia,
+        'total_resa_ia': db.reservations.count_documents({}),
+        'total_emp_ia': total_employes,
+    }
 
-
+    return render(request, 'dashboard/dashboard.html', context)
+    
+   
 # ====================== GESTION DES EMPLOYÉS ======================
 
 # ====================== GESTION DES EMPLOYÉS ======================
@@ -2565,47 +2663,252 @@ def api_stats_trend_cache(request):
     return JsonResponse(data)
 
 
-# ====================== PARAMÈTRES ======================
+## ====================== PARAMETRES VIEWS ======================
+# dashboard/views_parametres.py
+# Coller ce code dans votre fichier dashboard/views.py
 
+import json
+import os
+from datetime import datetime
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.models import User
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+
+
+# ─── Helper : connexion MongoDB (adapter selon votre projet) ───────────────────
+# Si vous avez déjà un objet `db` global, supprimez ce bloc et gardez le vôtre
+try:
+    from dashboard.db_connection import db          # votre helper existant
+except ImportError:
+    from pymongo import MongoClient
+    _client = MongoClient(os.environ.get('MONGO_URI', 'mongodb://localhost:27017/'))
+    db = _client[os.environ.get('MONGO_DB', 'sigr_ca')]
+
+
+# ─── Clé MongoDB pour stocker la config ───────────────────────────────────────
+CONFIG_COLLECTION = 'config_systeme'
+CONFIG_DOC_ID     = 'global'
+
+DEFAULTS = {
+    # Sécurité
+    's_2fa_global'    : False,
+    't_direction'     : True,
+    't_serveur'       : True,
+    't_archives'      : True,
+    't_lab'           : True,
+    't_reunion'       : False,
+    't_entree'        : False,
+    'session_timeout' : '30',
+    'max_failures'    : '5',
+    'ip_whitelist'    : False,
+    'ip_whitelist_list': '',
+    # Système
+    's_qr_dyn'        : True,
+    's_qr_single'     : True,
+    's_alert3'        : True,
+    's_block5'        : True,
+    's_keep'          : True,
+    's_refresh'       : True,
+    'dark_default'    : True,
+    'ui_animations'   : True,
+    'default_language': 'fr',
+    # Notifications
+    'n_email_resa'    : True,
+    'n_reminder'      : True,
+    'n_weekly'        : False,
+    'n_unauth'        : True,
+    'n_maintenance'   : True,
+    'n_sms'           : False,
+    'notification_email': '',
+    # Sauvegarde
+    'backup_auto'     : True,
+    'backup_ftp'      : False,
+    'log_retention'   : '365',
+    # API
+    'api_external'    : False,
+    'ldap_auth'       : False,
+    'webhook_alerts'  : False,
+    'api_key'         : 'sk_live_ge_8x7k9m2n4p6q8r',
+    'webhook_url'     : '',
+    # Backup info
+    'last_backup_date': 'Aucune',
+}
+
+
+def _load_config():
+    """Charge la configuration depuis MongoDB, fusionne avec les defaults."""
+    doc = db[CONFIG_COLLECTION].find_one({'_id': CONFIG_DOC_ID}) or {}
+    config = dict(DEFAULTS)
+    config.update({k: v for k, v in doc.items() if k != '_id'})
+    return config
+
+
+def _save_config(data: dict):
+    """Sauvegarde la configuration dans MongoDB."""
+    db[CONFIG_COLLECTION].update_one(
+        {'_id': CONFIG_DOC_ID},
+        {'$set': data},
+        upsert=True
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VUE PRINCIPALE : GET /parametres/
+# ─────────────────────────────────────────────────────────────────────────────
 @login_required
 def parametres(request):
+    """Affiche la page de paramètres."""
     if not request.user.is_staff and not request.user.is_superuser:
-        return redirect('dashboard')
-    config = db.system_config.find_one({'type': 'global'}) or {}
-    admin_profile = db.admin_profiles.find_one({'user_id': request.user.id}) or {}
-    return render(request, 'dashboard/parametres.html', {
-        'config': config,
+        return redirect('employe_espace')
+
+    config = _load_config()
+
+    # Profil admin étendu (optionnel — stocké dans une collection séparée)
+    admin_profile_doc = db['admin_profiles'].find_one({'user_id': str(request.user.id)}) or {}
+    admin_profile = {
+        'phone': admin_profile_doc.get('phone', ''),
+        'role' : admin_profile_doc.get('role', 'Administrateur Système'),
+        'two_factor_enabled': admin_profile_doc.get('two_factor_enabled', False),
+    }
+
+    context = {
+        'config'       : config,
+        'user'         : request.user,
         'admin_profile': admin_profile,
-        'user': request.user,
+    }
+    return render(request, 'dashboard/parametres.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API : POST /api/parametres/save/
+# ─────────────────────────────────────────────────────────────────────────────
+@login_required
+@require_POST
+def api_parametres_save(request):
+    """
+    Reçoit un JSON avec tous les paramètres + éventuellement profile_update.
+    Sauvegarde la config dans MongoDB.
+    Si profile_update est présent, met à jour le profil admin.
+    """
+    if not request.user.is_staff and not request.user.is_superuser:
+        return JsonResponse({'status': 'error', 'message': 'Accès refusé'}, status=403)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({'status': 'error', 'message': f'JSON invalide : {e}'}, status=400)
+
+    errors = []
+
+    # ── 1. Mise à jour du profil admin ────────────────────────────────────────
+    profile_data = body.pop('profile_update', None)
+    if profile_data:
+        user: User = request.user
+
+        # Email
+        new_email = (profile_data.get('email') or '').strip()
+        if new_email and new_email != user.email:
+            if User.objects.filter(email=new_email).exclude(pk=user.pk).exists():
+                errors.append('Cet email est déjà utilisé.')
+            else:
+                user.email = new_email
+
+        # Prénom / Nom
+        user.first_name = (profile_data.get('first_name') or '').strip()
+        user.last_name  = (profile_data.get('last_name')  or '').strip()
+
+        # Mot de passe
+        current_pwd = profile_data.get('current_password', '')
+        new_pwd     = profile_data.get('new_password', '')
+        confirm_pwd = profile_data.get('confirm_password', '')
+
+        if new_pwd:
+            if not user.check_password(current_pwd):
+                errors.append('Mot de passe actuel incorrect.')
+            elif new_pwd != confirm_pwd:
+                errors.append('Les mots de passe ne correspondent pas.')
+            elif len(new_pwd) < 8:
+                errors.append('Le mot de passe doit contenir au moins 8 caractères.')
+            else:
+                user.set_password(new_pwd)
+                update_session_auth_hash(request, user)   # garde la session active
+
+        if not errors:
+            user.save()
+
+        # Profil étendu (phone, role, 2FA)
+        db['admin_profiles'].update_one(
+            {'user_id': str(user.id)},
+            {'$set': {
+                'phone'              : (profile_data.get('phone') or '').strip(),
+                'role'               : (profile_data.get('role')  or 'Administrateur Système').strip(),
+                'two_factor_enabled' : bool(body.get('admin_2fa', False)),
+                'updated_at'         : datetime.now(),
+            }},
+            upsert=True
+        )
+
+    if errors:
+        return JsonResponse({'status': 'error', 'message': ' | '.join(errors)})
+
+    # ── 2. Sauvegarde configuration système ───────────────────────────────────
+    # Filtrer uniquement les clés connues pour éviter les injections
+    allowed_keys = set(DEFAULTS.keys()) | {'admin_2fa'}
+    clean_data = {k: v for k, v in body.items() if k in allowed_keys}
+    clean_data['updated_at'] = datetime.now()
+    clean_data['updated_by'] = request.user.username
+
+    _save_config(clean_data)
+
+    return JsonResponse({
+        'status' : 'success',
+        'message': 'Configuration sauvegardée avec succès',
     })
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# API : POST /api/parametres/reset/  (optionnel)
+# ─────────────────────────────────────────────────────────────────────────────
 @login_required
-def api_parametres_save(request):
+@require_POST
+def api_parametres_reset(request):
+    """Remet la configuration aux valeurs par défaut."""
+    if not request.user.is_superuser:
+        return JsonResponse({'status': 'error', 'message': 'Réservé au superadmin'}, status=403)
+
+    _save_config(dict(DEFAULTS))
+    return JsonResponse({'status': 'success', 'message': 'Configuration réinitialisée'})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API : GET /api/parametres/sysinfo/  (optionnel)
+# ─────────────────────────────────────────────────────────────────────────────
+@login_required
+def api_system_info(request):
+    """Retourne des infos système dynamiques (version, DB, etc.)."""
     if not request.user.is_staff:
-        return JsonResponse({'status': 'error', 'message': 'Accès non autorisé'}, status=403)
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Méthode non autorisée'}, status=405)
+        return JsonResponse({'status': 'error'}, status=403)
+
     try:
-        data = json.loads(request.body)
-        db.system_config.update_one(
-            {'type': 'global'},
-            {'$set': {**data, 'updated_at': datetime.now(), 'updated_by': request.user.username}},
-            upsert=True
-        )
-        db.system_logs.insert_one({
-            'user_id': request.user.id,
-            'username': request.user.username,
-            'action': 'SETTINGS_UPDATE',
-            'details': list(data.keys()),
-            'timestamp': datetime.now(),
-            'ip': request.META.get('REMOTE_ADDR')
-        })
-        return JsonResponse({'status': 'success', 'message': 'Paramètres sauvegardés avec succès'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        db.command('ping')
+        db_status = 'Connecté'
+    except Exception:
+        db_status = 'Erreur'
 
+    import django
+    import sys
 
+    return JsonResponse({
+        'status'    : 'success',
+        'django'    : django.get_version(),
+        'python'    : sys.version.split()[0],
+        'db_status' : db_status,
+        'timestamp' : datetime.now().isoformat(),
+    })
 # ====================== API OCCUPATION ======================
 
 @login_required
@@ -8757,3 +9060,85 @@ def api_suggestions_creneaux(request):
     suggestions.sort(key=lambda s: s['debut'])
 
     return JsonResponse({'suggestions': suggestions})
+
+    # ============================================================
+# IA — APIs ML réelles
+# ============================================================
+from dashboard.ai_engine import (
+    OccupationPredictor, PersonalRecommender, AnomalyDetector, train_all_models
+)
+
+
+@login_required
+def api_predict_occupation(request, resource_id):
+    """Heatmap 7j × 12h des taux d'occupation prédits."""
+    predictor = OccupationPredictor()
+    heatmap = predictor.predict_week(resource_id)
+    if heatmap is None:
+        return JsonResponse({
+            'error': 'Modèle non entraîné. Lance: python manage.py train_ai',
+            'heatmap': []
+        })
+    return JsonResponse({'heatmap': heatmap})
+
+
+@login_required
+def api_recommandations(request):
+    """Top 3 ressources recommandées pour l'utilisateur connecté."""
+    employe = db.employees.find_one({'django_user_id': request.user.id})
+    if not employe:
+        return JsonResponse({'recommendations': []})
+
+    recommender = PersonalRecommender()
+    recos = recommender.recommend(str(employe['_id']), top_n=3)
+
+    # Enrichir avec les noms
+    enriched = []
+    for r in recos:
+        try:
+            res_oid = ObjectId(r['resource_id'])
+        except Exception:
+            continue
+        bureau   = db.bureaux.find_one({'_id': res_oid})
+        materiel = db.materiels.find_one({'_id': res_oid}) if not bureau else None
+        if bureau:
+            enriched.append({**r, 'nom': bureau['nom'], 'icon': '🚪', 'type': 'salle'})
+        elif materiel:
+            enriched.append({**r, 'nom': materiel['nom'], 'icon': '📦', 'type': 'materiel'})
+
+    return JsonResponse({'recommendations': enriched})
+
+
+@login_required
+def api_anomalies(request):
+    """Liste des réservations anormales (admin uniquement)."""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Accès refusé'}, status=403)
+
+    detector = AnomalyDetector()
+    anomalies = detector.detect_recent(days=14)
+
+    # Nettoyer pour JSON
+    clean = []
+    for a in anomalies:
+        clean.append({
+            'reservation_id':  a['reservation_id'],
+            'employe_id':      a['employe_id'],
+            'duree_min':       int(a['duree_min']),
+            'nb_participants': int(a['nb_participants']),
+            'heure':           int(a['heure']),
+            'date_debut':      a['date_debut'].isoformat() if hasattr(a['date_debut'], 'isoformat') else str(a['date_debut']),
+            'score':           round(float(a['anomaly_score']), 3),
+        })
+    return JsonResponse({'anomalies': clean})
+
+
+@login_required
+def api_train_models(request):
+    """Déclenche le réentraînement (admin uniquement)."""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Accès refusé'}, status=403)
+
+    results = train_all_models()
+    return JsonResponse({'success': True, 'results': results})
+
