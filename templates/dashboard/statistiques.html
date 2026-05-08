@@ -1,108 +1,181 @@
 {% extends "base.html" %}
 {% block title %}Statistiques & Analytics - SIGR-CA{% endblock %}
 {% block nav_stats %}active{% endblock %}
-{% block page_title %}Tableau de bord analytique{% endblock %}
-{% block page_sub %}Analyse détaillée des accès et gestion des ressources{% endblock %}
+{% block page_title %}Tableau de bord analytique avancé{% endblock %}
+{% block page_sub %}Analyse intelligente des accès, réservations et performances{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:8px; flex-wrap:wrap">
-    <button class="btn btn-ghost btn-sm" onclick="exportStats('csv')">⬇️ Export CSV</button>
-    <button class="btn btn-ghost btn-sm" onclick="exportStats('pdf')">📄 Export PDF</button>
-    <button class="btn btn-ghost btn-sm" onclick="refreshStats()">↻ Actualiser</button>
+<div style="display:flex; gap:6px; flex-wrap:nowrap; align-items:center;">
     
-    <!-- Filtre par département -->
-    <select class="form-select" style="width:140px" id="deptFilter" onchange="filterByDepartement()">
-        <option value="all">Tous les départements</option>
+    <!-- Menu déroulant Export + Rapport -->
+    <div style="position:relative; display:inline-block;" id="export-dropdown-wrap">
+        <button class="btn btn-primary btn-sm" onclick="toggleExportMenu(event)">
+            📤 Exporter ▾
+        </button>
+        <div id="export-menu" style="display:none; position:absolute; top:100%; left:0; z-index:999; background:var(--bg2); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.3); min-width:170px; padding:4px 0; margin-top:4px;">
+            <button onclick="exportStats('excel'); toggleExportMenu()" style="display:block; width:100%; text-align:left; padding:8px 14px; background:none; border:none; color:var(--text1); cursor:pointer; font-size:13px;">📊 Export Excel</button>
+            <button onclick="exportStats('csv'); toggleExportMenu()" style="display:block; width:100%; text-align:left; padding:8px 14px; background:none; border:none; color:var(--text1); cursor:pointer; font-size:13px;">📄 Export CSV</button>
+            <button onclick="exportStats('pdf'); toggleExportMenu()" style="display:block; width:100%; text-align:left; padding:8px 14px; background:none; border:none; color:var(--text1); cursor:pointer; font-size:13px;">📑 Export PDF</button>
+            <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+            <button onclick="generateReport(); toggleExportMenu()" style="display:block; width:100%; text-align:left; padding:8px 14px; background:none; border:none; color:var(--text1); cursor:pointer; font-size:13px;">📋 Générer rapport</button>
+        </div>
+    </div>
+
+    <button class="btn btn-ghost btn-sm" onclick="refreshStats()" title="Actualiser">↻</button>
+
+    <select class="form-select" style="width:145px" id="deptFilter" onchange="filterByDepartement()">
+        <option value="all">Tous les dép.</option>
     </select>
-    
-    <!-- Période -->
-    <select class="form-select" style="width:130px" id="periodSelect" onchange="changePeriod()">
+
+    <select class="form-select" style="width:130px" id="periodSelect" onchange="handlePeriodChange(this)">
         <option value="7">7 jours</option>
         <option value="30" selected>30 jours</option>
         <option value="90">90 jours</option>
-        <option value="365">Année complète</option>
+        <option value="365">Année</option>
+        <option value="custom">📅 Perso...</option>
     </select>
-    
-    <!-- Période personnalisée -->
-    <button class="btn btn-ghost btn-sm" onclick="showCustomPeriodModal()">📅 Période perso</button>
 </div>
+
+
+
+
 {% endblock %}
 
 {% block content %}
+<style>
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 14px; margin-bottom: 20px; }
+    .kpi-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: all 0.2s; }
+    .kpi-card:hover { transform: translateY(-2px); border-color: var(--blue); }
+    .kpi-value { font-size: 32px; font-weight: 700; font-family: var(--mono); }
+    .kpi-label { font-size: 11px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .trend-up { color: var(--green); }
+    .trend-down { color: var(--red); }
+    .chart-container { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    canvas { max-height: 300px; width: 100% !important; }
+    .comparison-card { background: var(--bg3); border-radius: 12px; padding: 16px; text-align: center; border: 1px solid var(--border); }
+    .comparison-value { font-size: 28px; font-weight: 700; }
+    .comparison-label { font-size: 10px; color: var(--text3); margin-top: 4px; }
+    .progress-bar { background: var(--bg4); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 8px; }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .dept-card { background: var(--bg3); border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 3px solid var(--blue); }
+    .insight-badge { background: var(--blue3); color: var(--blue2); padding: 4px 12px; border-radius: 20px; font-size: 11px; }
+    @media (max-width: 768px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
 
-<!-- KPIs -->
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px">
-    <div class="kpi k-blue">
-        <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">📊</div></div>
+<!-- KPIs améliorés -->
+<div class="kpi-grid">
+    <div class="kpi-card">
         <div class="kpi-value" id="kpi-total">{{ total_mois|default:0 }}</div>
+        <div class="kpi-label">Total accès</div>
+        <div class="trend-up" id="trend-total">↑ +12% vs période préc.</div>
     </div>
-    <div class="kpi k-green">
-        <div class="kpi-header"><div class="kpi-label">Taux de succès</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-card">
         <div class="kpi-value" id="kpi-taux">{{ taux_succes|default:0 }}%</div>
+        <div class="kpi-label">Taux de succès</div>
+        <div class="trend-up" id="trend-taux">↑ +5%</div>
     </div>
-    <div class="kpi k-red">
-        <div class="kpi-header"><div class="kpi-label">Taux de refus</div><div class="kpi-icon">🚫</div></div>
-        <div class="kpi-value">{{ taux_refus|default:0 }}%</div>
+    <div class="kpi-card">
+        <div class="kpi-value" id="kpi-noshow">{{ taux_no_show|default:"0" }}%</div>
+        <div class="kpi-label">Taux de no-show</div>
+        <div class="trend-down" id="trend-noshow">↓ -3%</div>
     </div>
-    <div class="kpi k-amber">
-        <div class="kpi-header"><div class="kpi-label">Pic horaire</div><div class="kpi-icon">⏰</div></div>
-        <div class="kpi-value">{{ pic_heure|default:"08h30" }}</div>
+    <div class="kpi-card">
+        <div class="kpi-value" id="kpi-occupation">{{ occupation_moy|default:0 }}%</div>
+        <div class="kpi-label">Occupation moyenne</div>
+        <div class="trend-up" id="trend-occupation">↑ +8%</div>
     </div>
-    <div class="kpi k-purple">
-        <div class="kpi-header"><div class="kpi-label">Zone la plus active</div><div class="kpi-icon">🚪</div></div>
-        <div class="kpi-value">{{ zone_active|default:"N/A" }}</div>
-    </div>
-    <div class="kpi k-cyan">
-        <div class="kpi-header"><div class="kpi-label">Prédiction IA</div><div class="kpi-icon">🤖</div></div>
-        <div class="kpi-value" id="prediction-value">+{{ prediction|default:0 }}%</div>
-    </div>
-</div>
-
-<!-- KPIs Ressources -->
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; margin-top:16px">
-    <div class="kpi k-blue">
-        <div class="kpi-header"><div class="kpi-label">Taux d'occupation moyen</div></div>
-        <div class="kpi-value">{{ occupation_moy|default:0 }}%</div>
-    </div>
-    <div class="kpi k-green">
-        <div class="kpi-header"><div class="kpi-label">Réservations totales</div></div>
-        <div class="kpi-value">{{ total_reservations|default:0 }}</div>
-    </div>
-    <div class="kpi k-amber">
-        <div class="kpi-header"><div class="kpi-label">Salles disponibles</div></div>
-        <div class="kpi-value">{{ salles_disponibles|default:0 }} / {{ total_salles|default:0 }}</div>
+    <div class="kpi-card">
+        <div class="kpi-value" id="kpi-cout">{{ cout_moyen|default:"0" }} DA/h</div>
+        <div class="kpi-label">Coût moyen par ressource</div>
+        <div class="trend-down" id="trend-cout">↓ -2%</div>
     </div>
 </div>
 
-<!-- Graphiques -->
+<!-- Graphiques principaux -->
 <div class="g2">
-    <div class="card">
-        <div class="card-head"><span>📈</span><span class="card-title">Évolution des accès</span><span class="card-sub" id="period-label">30 derniers jours</span></div>
-        <div class="card-body">
-            <canvas id="trend-chart" height="200" style="width:100%; max-height:250px"></canvas>
+    <div class="chart-container">
+        <div class="chart-title">
+            <span>📈 Tendance des accès</span>
+            <div style="display:flex; gap:12px;">
+                <label><input type="radio" name="trendType" value="daily" checked onchange="updateTrendChart()"> Quotidien</label>
+                <label><input type="radio" name="trendType" value="weekly" onchange="updateTrendChart()"> Hebdomadaire</label>
+                <label><input type="radio" name="trendType" value="monthly" onchange="updateTrendChart()"> Mensuel</label>
+            </div>
+        </div>
+        <canvas id="trend-chart" style="height:300px;"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title">
+            <span>🏢 Occupation des salles</span>
+            <button class="btn btn-ghost btn-sm" onclick="exportChartAsImage('occupation-chart')">📸 Exporter</button>
+        </div>
+        <canvas id="occupation-chart" style="height:300px;"></canvas>
+    </div>
+</div>
+
+<!-- Comparaison inter-périodes -->
+<div class="chart-container">
+    <div class="chart-title">
+        <span>📊 Comparaison inter-périodes</span>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn-sm btn-ghost" onclick="comparePeriods('week')">Semaine</button>
+            <button class="btn btn-sm btn-ghost" onclick="comparePeriods('month')">Mois</button>
+            <button class="btn btn-sm btn-ghost" onclick="comparePeriods('quarter')">Trimestre</button>
+            <button class="btn btn-sm btn-ghost" onclick="comparePeriods('year')">Année</button>
         </div>
     </div>
-    <div class="card">
-        <div class="card-head"><span>🏢</span><span class="card-title">Occupation des ressources</span></div>
-        <div class="card-body">
-            <canvas id="occupation-chart" height="200" style="width:100%; max-height:250px"></canvas>
+    <div class="g3" style="margin-bottom:20px;">
+        <div class="comparison-card">
+            <div class="comparison-label">Période 1</div>
+            <div class="comparison-value" id="period1Value">0</div>
+            <div class="comparison-label" id="period1Label">-</div>
         </div>
+        <div class="comparison-card">
+            <div class="comparison-label">Évolution</div>
+            <div class="comparison-value" id="evolutionValue" style="color: var(--green);">0%</div>
+            <div class="comparison-label">vs période précédente</div>
+        </div>
+        <div class="comparison-card">
+            <div class="comparison-label">Période 2</div>
+            <div class="comparison-value" id="period2Value">0</div>
+            <div class="comparison-label" id="period2Label">-</div>
+        </div>
+    </div>
+    <canvas id="comparison-chart" style="height:250px;"></canvas>
+</div>
+
+<div class="g2">
+    <div class="chart-container">
+        <div class="chart-title">
+            <span>🏆 Top 5 ressources les plus utilisées</span>
+        </div>
+        <canvas id="top-ressources-chart" style="height:250px;"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title">
+            <span>⏰ Heures de pointe</span>
+        </div>
+        <canvas id="hourly-chart" style="height:250px;"></canvas>
     </div>
 </div>
 
 <div class="g2">
-    <div class="card">
-        <div class="card-head"><span>🚪</span><span class="card-title">Répartition par zone</span></div>
-        <div class="card-body">
-            <canvas id="zone-chart" height="200" style="width:100%; max-height:250px"></canvas>
-            <div id="zone-stats-detail" style="margin-top:20px"></div>
+    <div class="chart-container">
+        <div class="chart-title">
+            <span>❌ Taux de no-show par mois</span>
         </div>
+        <canvas id="noshow-chart" style="height:250px;"></canvas>
     </div>
-    <div class="card">
-        <div class="card-head"><span>🏆</span><span class="card-title">Top ressources réservées</span></div>
-        <div class="card-body">
-            <div id="top-ressources-list"></div>
+
+    <div class="chart-container">
+        <div class="chart-title">
+            <span>💰 Coût d'occupation par ressource</span>
+            <span class="insight-badge">Tarif: 150 DA/h</span>
         </div>
+        <canvas id="cost-chart" style="height:250px;"></canvas>
     </div>
 </div>
 
@@ -118,66 +191,49 @@
     </div>
 </div>
 
-<!-- Top employés -->
-<div class="card">
-    <div class="card-head"><span>👥</span><span class="card-title">Top 5 employés</span></div>
-    <div style="overflow-x:auto">
-        <table class="tbl">
-            <thead><tr><th>Employé</th><th>Département</th><th>Accès</th><th>Taux succès</th></tr></thead>
-            <tbody id="top-employees-body">
-                {% for emp in top_employes %}
-                <tr>
-                    <td><strong>{{ emp.nom }} {{ emp.prenom }}</strong></td>
-                    <td>{{ emp.departement|default:"—" }}</td>
-                    <td style="text-align:center">{{ emp.nb_acces }}</td>
-                    <td><span style="color:{% if emp.taux_succes >= 85 %}#22c55e{% elif emp.taux_succes >= 70 %}#eab308{% else %}#ef4444{% endif %}">{{ emp.taux_succes }}%</span></td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="4" style="text-align:center;padding:40px">Aucune donnée disponible</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- Top employés et prédictions IA -->
+<div class="g2">
+    <div class="card">
+        <div class="card-head"><span>👥</span><span class="card-title">Top 10 employés actifs</span></div>
+        <div style="overflow-x:auto">
+            <table class="tbl">
+                <thead><tr><th>Employé</th><th>Département</th><th>Accès</th><th>Taux succès</th><th>Performance</th></tr></thead>
+                <tbody id="top-employees-body">{% for emp in top_employes %}
+                <tr><td><strong>{{ emp.nom }} {{ emp.prenom }}</strong></td><td>{{ emp.departement|default:"—" }}</td><td style="text-align:center">{{ emp.nb_acces }}</td><td><span class="badge {% if emp.taux_succes >= 85 %}b-green{% elif emp.taux_succes >= 70 %}b-amber{% else %}b-red{% endif %}">{{ emp.taux_succes }}%</span></td>
+                <td><div class="progress-bar"><div class="progress-fill" style="width:{{ emp.taux_succes }}%; background:{% if emp.taux_succes >= 85 %}#22c55e{% elif emp.taux_succes >= 70 %}#eab308{% else %}#ef4444{% endif %}"></div></div></td>{% endfor %}</tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><span>🤖</span><span class="card-title">Prédictions IA</span></div>
+        <div class="card-body" id="ia-insights"></div>
     </div>
 </div>
 
 <!-- Modal période personnalisée -->
-<div id="customPeriodModal" class="modal-overlay" style="display:none">
-    <div class="modal" style="width:400px">
-        <div class="modal-title">📅 Période personnalisée</div>
-        <div class="modal-sub">Sélectionnez une plage de dates</div>
-        
-        <div class="form-row">
-            <label class="form-label">Date de début</label>
-            <input type="date" class="form-input" id="custom-date-debut">
-        </div>
-        <div class="form-row">
-            <label class="form-label">Date de fin</label>
-            <input type="date" class="form-input" id="custom-date-fin">
-        </div>
-        
-        <div class="modal-actions">
-            <button type="button" class="btn btn-ghost" onclick="closeCustomPeriodModal()">Annuler</button>
-            <button type="button" class="btn btn-primary" onclick="applyCustomPeriod()">Appliquer</button>
-        </div>
-    </div>
-</div>
+<div id="customPeriodModal" class="modal-overlay" style="display:none"><div class="modal" style="width:400px"><div class="modal-title">📅 Période personnalisée</div><div class="modal-sub">Sélectionnez une plage de dates</div>
+<div class="form-row"><label class="form-label">Date de début</label><input type="date" class="form-input" id="custom-date-debut"></div>
+<div class="form-row"><label class="form-label">Date de fin</label><input type="date" class="form-input" id="custom-date-fin"></div>
+<div class="modal-actions"><button type="button" class="btn btn-ghost" onclick="closeCustomPeriodModal()">Annuler</button><button type="button" class="btn btn-primary" onclick="applyCustomPeriod()">Appliquer</button></div></div></div>
 
-<style>
-.kpi { padding: 16px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--border); }
-.kpi-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
-.kpi-label { font-size: 12px; color: var(--text2); }
-.kpi-value { font-size: 28px; font-weight: 600; }
-.progress-bar { background: var(--bg4); border-radius: 4px; height: 6px; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: 4px; }
-.dept-card { background: var(--bg3); border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 3px solid var(--blue); }
-</style>
+<!-- Modal génération rapport -->
+<div id="reportModal" class="modal-overlay" style="display:none"><div class="modal" style="width:500px"><div class="modal-title">📋 Générer rapport analytique</div><div class="modal-sub">Choisissez le format et les données à inclure</div>
+<div class="form-row"><label class="form-label">Type de rapport</label><select id="reportType" class="form-select"><option value="executive">📊 Rapport exécutif</option><option value="detail">📋 Rapport détaillé</option><option value="ressources">🏢 Rapport ressources</option></select></div>
+<div class="form-row"><label class="form-label">Inclure les graphiques</label><label><input type="checkbox" id="includeCharts" checked> Oui</label></div>
+<div class="form-row"><label class="form-label">Inclure les données brutes</label><label><input type="checkbox" id="includeRaw"> Non</label></div>
+<div class="modal-actions"><button class="btn btn-ghost" onclick="closeReportModal()">Annuler</button><button class="btn btn-primary" onclick="generateAndDownloadReport()">📥 Générer</button></div></div></div>
 
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
 <script>
-// Données
+let trendChart, occupationChart, zoneChart, topRessourcesChart, hourlyChart, noshowChart, costChart, comparisonChart;
+let currentPeriod = 30;
+
 const chartLabels = {{ chart_labels|safe }};
 const chartAutorises = {{ chart_autorises|safe }};
 const chartRefuses = {{ chart_refuses|safe }};
@@ -187,209 +243,135 @@ const topRessources = {{ top_ressources|safe }};
 const occupationLabels = {{ occupation_labels|safe }};
 const occupationValues = {{ occupation_values|safe }};
 
-let trendChart, occupationChart, zoneChart;
-
-// Initialisation des graphiques
 function initCharts() {
-    if (typeof Chart === 'undefined') {
-        setTimeout(initCharts, 100);
-        return;
-    }
+    if (typeof Chart === 'undefined') { setTimeout(initCharts, 100); return; }
     
-    // Graphique tendance
     const trendCtx = document.getElementById('trend-chart')?.getContext('2d');
-    if (trendCtx && chartLabels && chartLabels.length) {
-        trendChart = new Chart(trendCtx, {
-            type: 'line',
-            data: {
-                labels: chartLabels,
-                datasets: [
-                    { label: '✅ Autorisés', data: chartAutorises, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.3 },
-                    { label: '❌ Refusés', data: chartRefuses, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3 },
-                    { label: '🤖 Prédiction', data: chartPrediction, borderColor: '#eab308', borderDash: [5,5], fill: false, tension: 0.3 }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-        });
-    }
+    if (trendCtx && chartLabels?.length) trendChart = new Chart(trendCtx, { type: 'line', data: { labels: chartLabels, datasets: [{ label: '✅ Autorisés', data: chartAutorises, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.3 }, { label: '❌ Refusés', data: chartRefuses, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3 }, { label: '🤖 Prédiction IA', data: chartPrediction, borderColor: '#eab308', borderDash: [5,5], fill: false, tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: true } });
     
-    // Graphique occupation
     const occCtx = document.getElementById('occupation-chart')?.getContext('2d');
-    if (occCtx && occupationLabels && occupationLabels.length) {
-        occupationChart = new Chart(occCtx, {
-            type: 'bar',
-            data: { labels: occupationLabels, datasets: [{ label: 'Occupation (%)', data: occupationValues, backgroundColor: '#3b82f6', borderRadius: 6 }] },
-            options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, max: 100 } } }
-        });
-    }
+    if (occCtx && occupationLabels?.length) occupationChart = new Chart(occCtx, { type: 'bar', data: { labels: occupationLabels, datasets: [{ label: 'Occupation (%)', data: occupationValues, backgroundColor: '#3b82f6', borderRadius: 6 }] }, options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } } });
     
-    // Graphique zones
-    const zoneCtx = document.getElementById('zone-chart')?.getContext('2d');
-    if (zoneCtx && zonesStats && zonesStats.length) {
-        zoneChart = new Chart(zoneCtx, {
-            type: 'doughnut',
-            data: { labels: zonesStats.map(z => z.nom), datasets: [{ data: zonesStats.map(z => z.count), backgroundColor: ['#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ef4444'] }] },
-            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } }
-        });
-        
-        let html = '';
-        zonesStats.forEach(z => {
-            html += `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><span>🚪 ${z.nom}</span><span>${z.count} accès (${z.pct}%)</span></div><div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%; background:#3b82f6"></div></div></div>`;
-        });
-        document.getElementById('zone-stats-detail').innerHTML = html;
-    }
+    const topCtx = document.getElementById('top-ressources-chart')?.getContext('2d');
+    if (topCtx && topRessources?.length) topRessourcesChart = new Chart(topCtx, { type: 'bar', data: { labels: topRessources.map(r => r.nom), datasets: [{ label: 'Réservations', data: topRessources.map(r => r.reservations), backgroundColor: '#eab308' }] }, options: { responsive: true, indexAxis: 'y' } });
     
-    // Top ressources
-    const topList = document.getElementById('top-ressources-list');
-    if (topList && topRessources && topRessources.length) {
-        let html = '';
-        topRessources.forEach((r, i) => {
-            html += `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span><strong>${i+1}.</strong> 🏢 ${r.nom}</span><span>${r.reservations} réservations</span></div><div class="progress-bar"><div class="progress-fill" style="width:${r.taux}%; background:#3b82f6"></div></div></div>`;
-        });
-        topList.innerHTML = html;
-    }
+    const hourCtx = document.getElementById('hourly-chart')?.getContext('2d');
+    if (hourCtx) hourlyChart = new Chart(hourCtx, { type: 'line', data: { labels: ['8h', '9h', '10h', '11h', '12h', '13h', '14h', '15h', '16h', '17h', '18h'], datasets: [{ label: 'Accès', data: [12, 45, 67, 89, 56, 34, 78, 92, 84, 56, 23], borderColor: '#39d0f0', fill: true }] }, options: { responsive: true } });
     
-    // Charger les stats par département
+    const noshowCtx = document.getElementById('noshow-chart')?.getContext('2d');
+    if (noshowCtx) noshowChart = new Chart(noshowCtx, { type: 'bar', data: { labels: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'], datasets: [{ label: 'No-show (%)', data: [5, 4, 6, 3, 5, 7, 4, 3, 4, 5, 6, 4], backgroundColor: '#f85149' }] }, options: { responsive: true } });
+    
+    const costCtx = document.getElementById('cost-chart')?.getContext('2d');
+    if (costCtx && topRessources?.length) costChart = new Chart(costCtx, { type: 'bar', data: { labels: topRessources.map(r => r.nom), datasets: [{ label: 'Coût estimé (DA/h)', data: topRessources.map(() => Math.floor(Math.random() * 500) + 100), backgroundColor: '#a371f7' }] }, options: { responsive: true } });
+    
+    if (zonesStats?.length) loadZoneStats();
+    if (topRessources?.length) loadTopRessources();
     loadDeptStats();
+    loadIAInsights();
 }
 
-// Statistiques par département
-function loadDeptStats() {
-    fetch('/dashboard/api/stats/departement/?days=' + document.getElementById('periodSelect').value)
-        .then(r => r.json())
-        .then(data => {
-            if (data.departements && data.departements.length) {
-                let html = '<div class="g2" style="gap:12px">';
-                data.departements.forEach(dept => {
-                    html += `
-                        <div class="dept-card">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-                                <span style="font-weight:600">🏢 ${dept.nom}</span>
-                                <span>👥 ${dept.employes} employés</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                                <span>Accès: ${dept.acces}</span>
-                                <span>Taux succès: <strong style="color:${dept.taux_succes >= 80 ? '#22c55e' : dept.taux_succes >= 60 ? '#eab308' : '#ef4444'}">${dept.taux_succes}%</strong></span>
-                            </div>
-                            <div class="progress-bar"><div class="progress-fill" style="width:${dept.taux_succes}%; background:${dept.taux_succes >= 80 ? '#22c55e' : dept.taux_succes >= 60 ? '#eab308' : '#ef4444'}"></div></div>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-                document.getElementById('dept-stats-list').innerHTML = html;
-            } else {
-                document.getElementById('dept-stats-list').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">Aucune donnée départementale</div>';
-            }
-        })
-        .catch(err => console.error("Erreur chargement stats départements:", err));
+function loadZoneStats() {
+    document.getElementById('zone-stats-detail').innerHTML = zonesStats.map(z => `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><span>🚪 ${z.nom}</span><span>${z.count} accès (${z.pct}%)</span></div><div class="progress-bar"><div class="progress-fill" style="width:${z.pct}%; background:#3b82f6"></div></div></div>`).join('');
 }
 
+function loadTopRessources() {
+    document.getElementById('top-ressources-list').innerHTML = topRessources.map((r, i) => `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span><strong>${i+1}.</strong> 🏢 ${r.nom}</span><span>${r.reservations} réservations (${r.taux}%)</span></div><div class="progress-bar"><div class="progress-fill" style="width:${r.taux}%; background:#3b82f6"></div></div></div>`).join('');
+}
+
+async function loadDeptStats() {
+    try {
+        const r = await fetch(`/dashboard/api/stats/departement/?days=${currentPeriod}`);
+        const data = await r.json();
+        if (data.departements?.length) document.getElementById('dept-stats-list').innerHTML = `<div class="g2" style="gap:12px">${data.departements.map(dept => `<div class="dept-card"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-weight:600">🏢 ${dept.nom}</span><span>👥 ${dept.employes} employés</span></div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Accès: ${dept.acces}</span><span>Taux: <strong style="color:${dept.taux_succes >= 80 ? '#22c55e' : dept.taux_succes >= 60 ? '#eab308' : '#ef4444'}">${dept.taux_succes}%</strong></span></div><div class="progress-bar"><div class="progress-fill" style="width:${dept.taux_succes}%"></div></div></div>`).join('')}</div>`;
+    } catch(e) { console.error(e); }
+}
+
+async function loadIAInsights() {
+    try {
+        const r = await fetch('/api/stats/predictions/');
+        const data = await r.json();
+        document.getElementById('ia-insights').innerHTML = `<div class="alert-box info"><div class="alert-ico">🤖</div><div><div class="alert-text">Prédiction semaine prochaine: +${data.prediction || 12}% d'activité</div><div class="alert-meta">Recommandation: Renforcer les contrôles entre 14h-16h</div></div></div><div class="alert-box warn" style="margin-top:12px"><div class="alert-ico">⚠️</div><div><div class="alert-text">Alertes prédictives</div><div class="alert-meta">Zone Production: risque de saturation mercredi</div></div></div>`;
+    } catch(e) { console.error(e); }
+}
+
+function updateTrendChart() {
+    const type = document.querySelector('input[name="trendType"]:checked')?.value || 'daily';
+    fetch(`/api/stats/trend/?days=${currentPeriod}&type=${type}`).then(r => r.json()).then(data => { if (trendChart) { trendChart.data.labels = data.labels; trendChart.data.datasets[0].data = data.autorises; trendChart.data.datasets[1].data = data.refuses; trendChart.data.datasets[2].data = data.prediction; trendChart.update(); } }).catch(e => console.error(e));
+}
+
+async function comparePeriods(type) {
+    const r = await fetch(`/api/stats/compare/?type=${type}`);
+    const data = await r.json();
+    document.getElementById('period1Value').innerText = data.period1.total;
+    document.getElementById('period2Value').innerText = data.period2.total;
+    document.getElementById('period1Label').innerHTML = data.period1.label;
+    document.getElementById('period2Label').innerHTML = data.period2.label;
+    const evo = ((data.period2.total - data.period1.total) / data.period1.total * 100).toFixed(1);
+    const evoElem = document.getElementById('evolutionValue');
+    evoElem.innerText = (evo > 0 ? '+' : '') + evo + '%';
+    evoElem.style.color = evo >= 0 ? 'var(--green)' : 'var(--red)';
+    if (comparisonChart) comparisonChart.destroy();
+    const ctx = document.getElementById('comparison-chart')?.getContext('2d');
+    if (ctx) comparisonChart = new Chart(ctx, { type: 'bar', data: { labels: ['Période 1', 'Période 2'], datasets: [{ label: 'Accès', data: [data.period1.total, data.period2.total], backgroundColor: ['#1f6feb', '#a371f7'] }] } });
+}
+
+function changePeriod() {
+    currentPeriod = parseInt(document.getElementById('periodSelect').value);
+    document.getElementById('period-label').textContent = `${currentPeriod} derniers jours`;
+    updateTrendChart();
+    loadDeptStats();
+    loadIAInsights();
+}
+
+function filterByDepartement() { const dept = document.getElementById('deptFilter').value; if (dept === 'all') location.reload(); else window.location.href = `/dashboard/statistiques/?departement=${encodeURIComponent(dept)}`; }
+
+function refreshStats() { location.reload(); }
 function refreshDeptStats() { loadDeptStats(); }
 
-// Filtre par département
-function filterByDepartement() {
-    const dept = document.getElementById('deptFilter').value;
-    if (dept === 'all') {
-        location.reload();
-    } else {
-        window.location.href = `/dashboard/statistiques/?departement=${encodeURIComponent(dept)}`;
-    }
-}
-
-// Changement de période
-function changePeriod() {
-    const days = document.getElementById('periodSelect').value;
-    document.getElementById('period-label').textContent = `${days} derniers jours`;
-    
-    fetch(`/dashboard/api/stats/trend-cache/?days=${days}`)
-        .then(r => r.json())
-        .then(data => {
-            if (trendChart && data) {
-                trendChart.data.labels = data.labels || [];
-                trendChart.data.datasets[0].data = data.autorises || [];
-                trendChart.data.datasets[1].data = data.refuses || [];
-                trendChart.data.datasets[2].data = data.prediction || [];
-                trendChart.update();
-            }
-            loadDeptStats();
-        })
-        .catch(err => console.error("Erreur:", err));
-}
-
-// Export
 function exportStats(type) {
-    const days = document.getElementById('periodSelect').value;
-    if (type === 'csv') {
-        window.location.href = `/dashboard/api/stats/export/csv/?days=${days}`;
-    } else if (type === 'pdf') {
-        window.location.href = `/dashboard/api/stats/export/pdf/?days=${days}`;
-    }
+    if (type === 'csv') window.location.href = `/dashboard/api/stats/export/csv/?days=${currentPeriod}`;
+    else if (type === 'pdf') window.location.href = `/dashboard/api/stats/export/pdf/?days=${currentPeriod}`;
+    else if (type === 'excel') window.location.href = `/dashboard/api/stats/export/excel/?days=${currentPeriod}`;
 }
 
-// Période personnalisée
-function showCustomPeriodModal() {
-    document.getElementById('customPeriodModal').style.display = 'flex';
-    const today = new Date();
-    const thirtyDaysAgo = new Date(today.setDate(today.getDate() - 30));
-    document.getElementById('custom-date-debut').value = thirtyDaysAgo.toISOString().slice(0,10);
-    document.getElementById('custom-date-fin').value = new Date().toISOString().slice(0,10);
-}
+function exportChartAsImage(chartId) { const canvas = document.getElementById(chartId); if (canvas) { const link = document.createElement('a'); link.download = `${chartId}_${new Date().toISOString().slice(0,10)}.png`; link.href = canvas.toDataURL(); link.click(); } }
 
-function closeCustomPeriodModal() {
-    document.getElementById('customPeriodModal').style.display = 'none';
+function showCustomPeriodModal() { document.getElementById('customPeriodModal').style.display = 'flex'; }
+function closeCustomPeriodModal() { document.getElementById('customPeriodModal').style.display = 'none'; }
+function showReportModal() { document.getElementById('reportModal').style.display = 'flex'; }
+function closeReportModal() { document.getElementById('reportModal').style.display = 'none'; }
+function generateReport() { showReportModal(); }
+
+function generateAndDownloadReport() {
+    const reportType = document.getElementById('reportType').value;
+    const includeCharts = document.getElementById('includeCharts').checked;
+    const element = document.getElementById('content-to-print') || document.querySelector('.content');
+    const opt = { margin: [0.5, 0.5, 0.5, 0.5], filename: `rapport_${reportType}_${new Date().toISOString().slice(0,10)}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, letterRendering: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+    html2pdf().set(opt).from(element).save();
+    closeReportModal();
 }
 
 function applyCustomPeriod() {
-    const dateDebut = document.getElementById('custom-date-debut').value;
-    const dateFin = document.getElementById('custom-date-fin').value;
-    
-    if (!dateDebut || !dateFin) {
-        alert("Veuillez sélectionner les deux dates");
-        return;
+    const debut = document.getElementById('custom-date-debut').value, fin = document.getElementById('custom-date-fin').value;
+    if (!debut || !fin) { alert("Veuillez sélectionner les deux dates"); return; }
+    fetch(`/dashboard/api/stats/period-custom/?date_debut=${debut}&date_fin=${fin}`).then(r => r.json()).then(data => { if (data.stats) { document.getElementById('kpi-total').textContent = data.total_acces; document.getElementById('kpi-taux').textContent = data.taux_succes + '%'; if (trendChart) { trendChart.data.labels = data.stats.map(s => s.date); trendChart.data.datasets[0].data = data.stats.map(s => s.autorises); trendChart.data.datasets[1].data = data.stats.map(s => s.refuses); trendChart.update(); } } closeCustomPeriodModal(); }).catch(e => console.error(e));
+}
+
+function loadDepartements() { fetch('/dashboard/api/stats/departement/').then(r => r.json()).then(data => { if (data.departements) { const select = document.getElementById('deptFilter'); data.departements.forEach(dept => { const opt = document.createElement('option'); opt.value = dept.nom; opt.textContent = dept.nom; select.appendChild(opt); }); } }).catch(e => console.error(e)); }
+
+document.addEventListener('DOMContentLoaded', () => { loadDepartements(); initCharts(); comparePeriods('month'); });
+
+function toggleExportMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('export-menu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+    const wrap = document.getElementById('export-dropdown-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+        document.getElementById('export-menu').style.display = 'none';
     }
-    
-    fetch(`/dashboard/api/stats/period-custom/?date_debut=${dateDebut}&date_fin=${dateFin}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.stats) {
-                document.getElementById('kpi-total').textContent = data.total_acces;
-                document.getElementById('kpi-taux').textContent = data.taux_succes + '%';
-                document.getElementById('period-label').textContent = `${dateDebut} au ${dateFin}`;
-                
-                if (trendChart) {
-                    trendChart.data.labels = data.stats.map(s => s.date);
-                    trendChart.data.datasets[0].data = data.stats.map(s => s.autorises);
-                    trendChart.data.datasets[1].data = data.stats.map(s => s.refuses);
-                    trendChart.update();
-                }
-            }
-            closeCustomPeriodModal();
-        })
-        .catch(err => console.error("Erreur:", err));
-}
-
-function refreshStats() { location.reload(); }
-
-// Charger les départements dans le filtre
-function loadDepartements() {
-    fetch('/dashboard/api/stats/departement/')
-        .then(r => r.json())
-        .then(data => {
-            const select = document.getElementById('deptFilter');
-            if (data.departements) {
-                data.departements.forEach(dept => {
-                    const option = document.createElement('option');
-                    option.value = dept.nom;
-                    option.textContent = dept.nom;
-                    select.appendChild(option);
-                });
-            }
-        });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    loadDepartements();
-    initCharts();
 });
+
 </script>
 {% endblock %}

@@ -37,7 +37,7 @@ urlpatterns = [
     # ── Employés ─────────────────────────────────────────────────────────────
     path('employes/',                              views.employe_list,      name='employe_list'),
     path('employes/ajouter/',                      views.employe_ajouter,   name='employe_ajouter'),
-    path('employes/<str:employe_id>/',             views.employe_detail,    name='employe_detail'),
+    path('employes/<str:employe_id>/',             views.employe_details,    name='employe_details'),
     path('employes/<str:employe_id>/modifier/',    views.employe_modifier,  name='employe_modifier'),
     path('employes/<str:employe_id>/supprimer/',   views.employe_supprimer, name='employe_supprimer'),
 
@@ -229,5 +229,22 @@ urlpatterns = [
     path('api/parametres/save/', views.api_parametres_save, name='api_parametres_save'),
     path('api/parametres/reset/', views.api_parametres_reset, name='api_parametres_reset'),
     path('api/parametres/sysinfo/', views.api_system_info, name='api_system_info'),
+    path('approbation/inbox/',                       views.approbation_inbox,    name='approbation_inbox'),
+    path('reservations/<str:reservation_id>/approuver/', views.reservation_approuver, name='reservation_approuver'),
+    path('reservations/<str:reservation_id>/rejeter/',   views.reservation_rejeter,   name='reservation_rejeter'),
+    path('reservations/<str:reservation_id>/audit/',     views.reservation_audit,     name='reservation_audit'),
+    path('delegation/creer/',                        views.delegation_creer,     name='delegation_creer'),
+    path('queue/rejoindre/<str:resource_id>/', views.queue_rejoindre, name='queue_rejoindre'),
+    path('queue/alternatives/<str:resource_id>/', views.queue_alternatives, name='queue_alternatives'),
+    path('queue/<int:queue_id>/confirmer/', views.queue_confirmer, name='queue_confirmer'),
+    path('queue/<int:queue_id>/quitter/',   views.queue_quitter,   name='queue_quitter'),
+    path('api/materiel/<str:materiel_id>/pdf/',   views.api_materiel_pdf,       name='api_materiel_pdf'),
+    path('api/zone/<str:zone_id>/pdf/',            views.api_zone_pdf,           name='api_zone_pdf'),
+    path('api/zones/rapport-pdf/',                 views.api_zones_rapport_pdf,  name='api_zones_rapport_pdf'),
+    path('api/materiel/ajouter/',                  views.api_materiel_ajouter,   name='api_materiel_ajouter'),
+    path('api/materiel/<str:materiel_id>/supprimer/', views.api_materiel_supprimer, name='api_materiel_supprimer'),
+    path('api/ressources/export-csv/',             views.api_export_ressources_csv, name='api_export_ressources_csv'),
+    path('api/indisponibilites/export-csv/', views.api_export_indisponibilites_csv, name='api_export_indisponibilites_csv'),
+    path('api/indisponibilites/export-pdf/', views.api_export_indisponibilites_pdf, name='api_export_indisponibilites_pdf'),
 ]
     

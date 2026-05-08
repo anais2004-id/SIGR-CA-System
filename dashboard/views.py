@@ -34,6 +34,24 @@ from .models import ChatbotConversation, ChatbotMessage
 from dashboard.models import Notification
 from django.contrib.auth import get_user_model
 from datetime import datetime
+import io
+import os
+import urllib.request
+
+from bson import ObjectId
+from datetime import datetime
+from django.conf import settings
+from django.http import HttpResponse
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle,
+    Paragraph, Spacer, HRFlowable,
+    Image as RLImage, PageBreak,
+)
+
 
 db = settings.MONGO_DB
 User = get_user_model()
@@ -501,6 +519,7 @@ def employe_mes_reservations(request):
 
             result = db.reservations.insert_one(reservation_data)
             reservation_id = str(result.inserted_id)
+            
 
             # --- Notification employé ---
             db.notifications.insert_one({
@@ -729,41 +748,6 @@ def employe_annuler_reservation(request, reservation_id):
     
     return redirect('employe_mes_reservations')
 
-@login_required
-def employe_annuler_reservation(request, reservation_id):
-    if request.user.is_staff:
-        return redirect('dashboard')
-    
-    employe = db.employees.find_one({'django_user_id': request.user.id})
-    if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
-    
-    if not employe:
-        return redirect('login')
-    
-    if request.method == 'POST':
-        try:
-            resa = db.reservations.find_one({
-                '_id': ObjectId(reservation_id),
-                'employe_id': str(employe['_id'])
-            })
-            
-            if resa:
-                db.reservations.update_one(
-                    {'_id': ObjectId(reservation_id)},
-                    {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now(), 'cancelled_by': request.user.username}}
-                )
-                messages.success(request, "Réservation annulée avec succès.")
-                from dashboard.views import notify_admins_reservation_cancelled
-                notify_admins_reservation_cancelled(employe, resa)
-            else:
-                messages.error(request, "Réservation introuvable ou non autorisée.")
-            
-        except Exception as e:
-            messages.error(request, f"Erreur: {str(e)}")
-        
-    
-    return redirect('employe_mes_reservations')
 
 
 @login_required
@@ -1243,51 +1227,67 @@ def employe_list(request):
 # ─────────────────────────────────────────────
 #  DÉTAIL D'UN EMPLOYÉ
 # ─────────────────────────────────────────────
+# dashboard/views.py
+
+from pymongo import MongoClient
+from bson import ObjectId
+from datetime import datetime
+
+mongo_client = MongoClient('localhost', 27017)
+mongo_db = mongo_client['general_emballage']
+
 @login_required
-def employe_detail(request, employe_id):
-    try:
-        employe = db.employees.find_one({'_id': ObjectId(employe_id)})
-        if not employe:
-            return redirect('employe_list')
-        employe['id'] = str(employe['_id'])
-
-        # Normalisation statut
-        if employe.get('statut') not in ('actif', 'inactif'):
-            employe['statut'] = 'actif'
-
-        acces = list(db.acces_logs.find(
-            {'utilisateur_id': ObjectId(employe_id)}).sort('timestamp', -1))
-        total_acces = len(acces)
-        acces_autorises = sum(1 for a in acces if a.get('resultat') == 'AUTORISE')
-        acces_refuses = total_acces - acces_autorises
-        dernier_acces = acces[0] if acces else None
-
-        count_bureaux = Counter(a.get('bureau_id') for a in acces if a.get('bureau_id'))
-        bureaux_frequentes = []
-        for bid, count in count_bureaux.most_common(6):
-            b = db.bureaux.find_one({'_id': bid})
-            if b:
-                pct = round(count / total_acces * 100) if total_acces else 0
-                bureaux_frequentes.append({
-                    'nom': b.get('nom', 'Inconnu'),
-                    'count': count, 'pct': pct
-                })
-
-        return render(request, 'dashboard/employe_details.html', {
-            'employe': employe,
-            'total_acces': total_acces,
-            'acces_autorises': acces_autorises,
-            'acces_refuses': acces_refuses,
-            'dernier_acces': dernier_acces,
-            'bureaux_frequentes': bureaux_frequentes,
-            'acces': acces[:60],
-            'taux_succes': round(
-                (acces_autorises / total_acces * 100) if total_acces else 0, 1),
-        })
-    except Exception:
-        return redirect('employe_list')
-
-
+def employe_details(request, employe_id):
+    """Fiche détaillée d'un employé"""
+    
+    # Récupérer l'employé depuis MongoDB
+    employe = mongo_db.employees.find_one({'_id': ObjectId(employe_id)})
+    
+    if not employe:
+        return render(request, '404.html', {'message': 'Employé non trouvé'})
+    
+    # IMPORTANT: Créer un champ 'id' pour le template (Django n'accepte pas '_id')
+    employe['id'] = str(employe['_id'])
+    
+    # Récupérer les accès
+    acces_list = list(mongo_db.acces_logs.find({
+        'employe_id': str(employe['_id'])
+    }).sort('timestamp', -1))
+    
+    # Ajouter les noms des bureaux
+    for acces in acces_list:
+        if acces.get('bureau_id'):
+            bureau = mongo_db.bureaux.find_one({'_id': ObjectId(acces['bureau_id'])})
+            acces['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+    
+    # Récupérer les réservations
+    reservations_list = list(mongo_db.reservations.find({
+        'employe_id': str(employe['_id'])
+    }).sort('date_debut', -1))
+    
+    for resa in reservations_list:
+        if resa.get('bureau_id'):
+            bureau = mongo_db.bureaux.find_one({'_id': ObjectId(resa['bureau_id'])})
+            resa['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+    
+    # Statistiques
+    total_acces = len(acces_list)
+    acces_autorises = len([a for a in acces_list if a.get('resultat') in ['AUTORISE', 'AUTORISED']])
+    acces_refuses = total_acces - acces_autorises
+    taux_succes = round((acces_autorises / total_acces * 100), 1) if total_acces > 0 else 0
+    
+    context = {
+        'employe': employe,
+        'acces_list': acces_list,
+        'reservations_list': reservations_list,
+        'total_acces': total_acces,
+        'acces_autorises': acces_autorises,
+        'acces_refuses': acces_refuses,
+        'taux_succes': taux_succes,
+        'dernier_acces': acces_list[0] if acces_list else None,
+    }
+    
+    return render(request, 'dashboard/employe_details.html', context)
 # ─────────────────────────────────────────────
 #  AJOUTER UN EMPLOYÉ  (avec photo)
 # ─────────────────────────────────────────────
@@ -1679,7 +1679,6 @@ def live(request):
 
 # ====================== GESTION DES RESSOURCES (ZONES & MATÉRIEL) ======================
 
-
 @login_required
 def ressources(request):
     """Gestion des ressources - Zones et matériel"""
@@ -1699,13 +1698,12 @@ def ressources(request):
         b['occupation'] = min(recent, b['capacite_max'])
         b['taux_occupation'] = round((b['occupation'] / b['capacite_max'] * 100), 1) if b['capacite_max'] > 0 else 0
 
-    total_bureaux    = len(bureaux)
-    zones_actives    = sum(1 for b in bureaux if b.get('statut', 'actif') == 'actif')
-    capacite_totale  = sum(b.get('capacite_max', 0) for b in bureaux)
-    total_occ        = sum(min(b.get('occupation', 0), b.get('capacite_max', 10)) for b in bureaux)
-    total_cap        = sum(b.get('capacite_max', 10) for b in bureaux)
-    occupation_moy   = round((total_occ / total_cap * 100), 1) if total_cap > 0 else 0
-    niveaux_securite = len(set(b.get('niveau_securite', 'standard') for b in bureaux))
+    total_bureaux   = len(bureaux)
+    zones_actives   = sum(1 for b in bureaux if b.get('statut', 'actif') == 'actif')
+    capacite_totale = sum(b.get('capacite_max', 0) for b in bureaux)
+    total_occ       = sum(min(b.get('occupation', 0), b.get('capacite_max', 10)) for b in bureaux)
+    total_cap       = sum(b.get('capacite_max', 10) for b in bureaux)
+    occupation_moy  = round((total_occ / total_cap * 100), 1) if total_cap > 0 else 0
 
     # ── Matériel ─────────────────────────────────────────────────────────────
     if 'materiels' not in db.list_collection_names():
@@ -1715,56 +1713,58 @@ def ressources(request):
     for m in materiels:
         m['id'] = str(m['_id'])
 
-    total_materiel      = len(materiels)
-    materiel_disponible = sum(1 for m in materiels if m.get('statut') == 'disponible')
-    materiel_maintenance= sum(1 for m in materiels if m.get('statut') in ['maintenance', 'hors_service'])
+    total_materiel       = len(materiels)
+    materiel_disponible  = sum(1 for m in materiels if m.get('statut') == 'disponible')
+    materiel_maintenance = sum(1 for m in materiels if m.get('statut') in ['maintenance', 'hors_service'])
 
-    # Statistiques par catégorie
-    categories_stats = {}
-    for m in materiels:
-        cat = m.get('categorie', 'autre')
-        if cat not in categories_stats:
-            categories_stats[cat] = {'total': 0, 'disponible': 0}
-        categories_stats[cat]['total'] += 1
-        if m.get('statut') == 'disponible':
-            categories_stats[cat]['disponible'] += 1
-
-    # JSON pour le JS côté client
     materiels_json = json.dumps([{
-        'id':            str(m['_id']),
-        'nom':           m.get('nom', ''),
-        'categorie':     m.get('categorie', ''),
-        'numero_serie':  m.get('numero_serie', ''),
-        'num_inventaire':m.get('num_inventaire', ''),
-        'statut':        m.get('statut', 'disponible'),
-        'zone':          m.get('zone', ''),
-        'description':   m.get('description', ''),
-        'photo':         m.get('photo', ''),
-        'marque':        m.get('marque', ''),
-        'modele':        m.get('modele', ''),
-        'date_achat':    m.get('date_achat', ''),
-        'valeur':        m.get('valeur', ''),
+        'id':           str(m['_id']),
+        'nom':          m.get('nom', ''),
+        'categorie':    m.get('categorie', ''),
+        'fournisseur':  m.get('fournisseur', ''),
+        'annee_inv':    m.get('annee_inv', ''),
+        'seq_inv':      m.get('seq_inv', ''),
+        'numero_serie': m.get('numero_serie', ''),
+        'num_inventaire': m.get('num_inventaire', ''),
+        'statut':       m.get('statut', 'disponible'),
+        'zone':         m.get('zone', ''),
+        'description':  m.get('description', ''),
+        'photo':        m.get('photo', ''),
+        'marque':       m.get('marque', ''),
+        'modele':       m.get('modele', ''),
+        'date_achat':   m.get('date_achat', ''),
+        'valeur':       m.get('valeur', ''),
+        'processeur':   m.get('processeur', ''),
+        'ram':          m.get('ram', ''),
+        'stockage':     m.get('stockage', ''),
+        'os':           m.get('os', ''),
+        'ecran':        m.get('ecran', ''),
     } for m in materiels], default=str)
 
     return render(request, 'dashboard/ressources.html', {
-        'bureaux':            bureaux,
-        'total_bureaux':      total_bureaux,
-        'zones_actives':      zones_actives,
-        'capacite_totale':    capacite_totale,
-        'occupation_moy':     occupation_moy,
-        'niveaux_securite':   niveaux_securite,
-        'materiels':          materiels,
-        'total_materiel':     total_materiel,
-        'materiel_disponible':materiel_disponible,
+        'bureaux':             bureaux,
+        'total_bureaux':       total_bureaux,
+        'zones_actives':       zones_actives,
+        'capacite_totale':     capacite_totale,
+        'occupation_moy':      occupation_moy,
+        'materiels':           materiels,
+        'total_materiel':      total_materiel,
+        'materiel_disponible': materiel_disponible,
         'materiel_maintenance':materiel_maintenance,
-        'categories_stats':   categories_stats,
-        'materiels_json':     materiels_json,
+        'materiels_json':      materiels_json,
     })
 
 
-def _generer_num_inventaire(categorie):
-    """Génère un numéro d'inventaire unique : CAT-YYYY-NNNNN"""
+# ─── Génération du numéro d'inventaire ────────────────────────────────────────
+
+def _generer_num_inventaire(categorie, fournisseur='', annee_inv=None, seq_inv=None):
+    """
+    Génère un numéro d'inventaire :
+      [FOURNISSEUR-]CAT-AAAA-NNNNN
+    Exemple : DELL-INF-2026-00001
+    """
     from datetime import datetime
+
     prefixes = {
         'informatique': 'INF',
         'mobilier':     'MOB',
@@ -1776,54 +1776,54 @@ def _generer_num_inventaire(categorie):
         'autre':        'MAT',
     }
     prefix = prefixes.get(categorie, 'MAT')
-    annee  = datetime.now().year
+    annee  = int(annee_inv) if annee_inv else datetime.now().year
 
-    # Trouver le dernier numéro pour ce préfixe/année
-    pattern = f"{prefix}-{annee}-"
-    dernier = db.materiels.find_one(
-        {'num_inventaire': {'$regex': f'^{pattern}'}},
-        sort=[('num_inventaire', -1)]
-    )
-    if dernier and dernier.get('num_inventaire'):
-        try:
-            seq = int(dernier['num_inventaire'].split('-')[-1]) + 1
-        except Exception:
-            seq = 1
+    # Numéro séquentiel : fourni par l'utilisateur ou auto-incrémenté
+    if seq_inv:
+        seq = int(seq_inv)
     else:
-        seq = 1
+        # Chercher le dernier numéro pour ce préfixe + année
+        fournisseur_clean = (fournisseur or '').strip().upper().replace(' ', '-')[:10]
+        pattern_parts = [fournisseur_clean, prefix, str(annee)] if fournisseur_clean else [prefix, str(annee)]
+        pattern = '-'.join(pattern_parts) + '-'
+        dernier = db.materiels.find_one(
+            {'num_inventaire': {'$regex': f'^{pattern}'}},
+            sort=[('num_inventaire', -1)]
+        )
+        if dernier and dernier.get('num_inventaire'):
+            try:
+                seq = int(dernier['num_inventaire'].split('-')[-1]) + 1
+            except Exception:
+                seq = 1
+        else:
+            seq = 1
 
+    fournisseur_clean = (fournisseur or '').strip().upper().replace(' ', '-')[:10]
+    if fournisseur_clean:
+        return f"{fournisseur_clean}-{prefix}-{annee}-{seq:05d}"
     return f"{prefix}-{annee}-{seq:05d}"
 
 
+# ─── CRUD Zones ───────────────────────────────────────────────────────────────
+
 @login_required
 def bureau_ajouter(request):
-    """Ajouter/modifier un bureau/zone"""
     from bson import ObjectId
     from datetime import datetime
 
     if request.method == 'POST':
         try:
-            bureau_id  = request.POST.get('bureau_id')
-            etage_id   = request.POST.get('etage_id')
-            etage_obj_id = ObjectId(etage_id) if etage_id and len(etage_id) == 24 else None
-            etage_nom  = None
-            if etage_obj_id:
-                etage = db.etages.find_one({'_id': etage_obj_id})
-                etage_nom = etage.get('nom') if etage else None
-
+            bureau_id = request.POST.get('bureau_id')
             data = {
-                'nom':              request.POST.get('nom'),
-                'code_bureau':      request.POST.get('code_bureau', ''),
-                'etage':            int(request.POST.get('etage', 0)),
-                'etage_id':         etage_obj_id,
-                'etage_nom':        etage_nom,
-                'capacite_max':     int(request.POST.get('capacite_max', 10)),
-                'niveau_securite':  request.POST.get('niveau_securite', 'standard'),
-                'description':      request.POST.get('description', ''),
-                'statut':           request.POST.get('statut', 'actif'),
-                'updated_at':       datetime.now(),
+                'nom':             request.POST.get('nom'),
+                'code_bureau':     request.POST.get('code_bureau', ''),
+                'etage':           int(request.POST.get('etage', 0)),
+                'capacite_max':    int(request.POST.get('capacite_max', 10)),
+                'niveau_securite': request.POST.get('niveau_securite', 'standard'),
+                'description':     request.POST.get('description', ''),
+                'statut':          request.POST.get('statut', 'actif'),
+                'updated_at':      datetime.now(),
             }
-
             if bureau_id:
                 db.bureaux.update_one({'_id': ObjectId(bureau_id)}, {'$set': data})
                 messages.success(request, f"Zone '{data['nom']}' modifiée avec succès !")
@@ -1839,7 +1839,6 @@ def bureau_ajouter(request):
 
 @login_required
 def bureau_supprimer(request, bureau_id):
-    """Supprimer un bureau/zone"""
     from bson import ObjectId
 
     if request.method == 'POST':
@@ -1854,9 +1853,595 @@ def bureau_supprimer(request, bureau_id):
     return redirect('ressources')
 
 
+# ─── API CRUD Matériel ─────────────────────────────────────────────────────────
+
+@login_required
+def api_materiel_list(request):
+    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+    result = [{
+        'id':             str(m['_id']),
+        'nom':            m.get('nom', ''),
+        'categorie':      m.get('categorie', ''),
+        'num_inventaire': m.get('num_inventaire', ''),
+        'fournisseur':    m.get('fournisseur', ''),
+        'numero_serie':   m.get('numero_serie', ''),
+        'statut':         m.get('statut', 'disponible'),
+        'zone':           m.get('zone', ''),
+        'marque':         m.get('marque', ''),
+        'modele':         m.get('modele', ''),
+    } for m in materiels]
+    return JsonResponse({'materiels': result})
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_materiel_ajouter(request):
+    from bson import ObjectId
+    from datetime import datetime
+
+    try:
+        data        = json.loads(request.body)
+        materiel_id = data.get('id', '').strip()
+        categorie   = data.get('categorie', 'autre')
+        fournisseur = data.get('fournisseur', '').strip().upper()
+        annee_inv   = data.get('annee_inv', '')
+        seq_inv     = data.get('seq_inv', '')
+
+        if 'materiels' not in db.list_collection_names():
+            db.create_collection('materiels')
+
+        is_edit = materiel_id and len(materiel_id) == 24
+        if is_edit:
+            existing       = db.materiels.find_one({'_id': ObjectId(materiel_id)})
+            num_inventaire = existing.get('num_inventaire', '') if existing else ''
+        else:
+            num_inventaire = _generer_num_inventaire(categorie, fournisseur, annee_inv, seq_inv)
+
+        materiel_data = {
+            'nom':          data.get('nom', '').strip(),
+            'categorie':    categorie,
+            'fournisseur':  fournisseur,
+            'annee_inv':    annee_inv,
+            'seq_inv':      seq_inv,
+            'numero_serie': data.get('numero_serie', '').strip(),
+            'statut':       data.get('statut', 'disponible'),
+            'zone':         data.get('zone', ''),
+            'description':  data.get('description', '').strip(),
+            'photo':        data.get('photo', '').strip(),
+            'marque':       data.get('marque', '').strip(),
+            'modele':       data.get('modele', '').strip(),
+            'date_achat':   data.get('date_achat', '').strip(),
+            'valeur':       data.get('valeur', '').strip(),
+            # Spécifications techniques machine
+            'processeur':   data.get('processeur', '').strip(),
+            'ram':          data.get('ram', '').strip(),
+            'stockage':     data.get('stockage', '').strip(),
+            'os':           data.get('os', '').strip(),
+            'ecran':        data.get('ecran', '').strip(),
+            'num_inventaire': num_inventaire,
+            'updated_at':   datetime.now(),
+        }
+
+        if not materiel_data['nom']:
+            return JsonResponse({'status': 'error', 'message': 'Le nom est obligatoire'}, status=400)
+
+        if is_edit:
+            db.materiels.update_one({'_id': ObjectId(materiel_id)}, {'$set': materiel_data})
+            return JsonResponse({'status': 'success', 'message': 'Matériel modifié', 'id': materiel_id, 'num_inventaire': num_inventaire})
+        else:
+            materiel_data['created_at'] = datetime.now()
+            materiel_data['created_by'] = request.user.username
+            result = db.materiels.insert_one(materiel_data)
+            return JsonResponse({'status': 'success', 'message': f'Matériel ajouté', 'id': str(result.inserted_id), 'num_inventaire': num_inventaire})
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@login_required
+def api_materiel_supprimer(request, materiel_id):
+    from bson import ObjectId
+
+    if request.method not in ('DELETE', 'POST'):
+        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
+    try:
+        result = db.materiels.delete_one({'_id': ObjectId(materiel_id)})
+        if result.deleted_count > 0:
+            return JsonResponse({'status': 'success', 'message': 'Matériel supprimé'})
+        return JsonResponse({'status': 'error', 'message': 'Matériel non trouvé'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+# ─── RAPPORT PDF — Un seul matériel ───────────────────────────────────────────
+
+
+# ─── FICHE D'INVENTAIRE — 1 seul matériel ────────────────────────────────────
+
+def api_materiel_pdf(request, materiel_id):
+    """Génère la fiche d'inventaire PDF complète pour un matériel."""
+    from django.contrib.auth.decorators import login_required
+
+    try:
+        m = db.materiels.find_one({'_id': ObjectId(materiel_id)})
+        if not m:
+            return HttpResponse('Matériel non trouvé', status=404)
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            leftMargin=2 * cm, rightMargin=2 * cm,
+            topMargin=2 * cm, bottomMargin=2 * cm,
+        )
+        styles   = getSampleStyleSheet()
+        elements = []
+
+        # Styles
+        section_style = ParagraphStyle(
+            'Section', parent=styles['Heading2'],
+            fontSize=11, spaceBefore=14, spaceAfter=6,
+            textColor=colors.HexColor('#7b3fe4'),
+        )
+        label_style = ParagraphStyle('Label', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
+        value_style = ParagraphStyle('Value', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
+        small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=9)
+
+        def info_row(label, value):
+            if not value:
+                return None
+            return [Paragraph(label, label_style), Paragraph(str(value), value_style)]
+
+        # ── En-tête avec logo ──
+        _build_header(
+            elements,
+            "FICHE D'INVENTAIRE",
+            "Système Intégré de Gestion des Ressources — SIGR-CA",
+            styles,
+        )
+
+        # ── Numéro d'inventaire (bandeau violet) ──
+        inv = m.get('num_inventaire', 'N/A')
+        inv_style = ParagraphStyle('Inv', fontName='Courier-Bold', fontSize=14,
+                                   textColor=colors.HexColor('#7b3fe4'))
+        inv_table = Table(
+            [[Paragraph('N° INVENTAIRE', label_style), Paragraph(inv, inv_style)]],
+            colWidths=[4 * cm, 13 * cm],
+        )
+        inv_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3e8ff')),
+            ('BOX',        (0, 0), (-1, -1), 1, colors.HexColor('#7b3fe4')),
+            ('PADDING',    (0, 0), (-1, -1), 10),
+            ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(inv_table)
+        elements.append(Spacer(1, 0.5 * cm))
+
+        # ── Photo de la ressource (si disponible) + infos générales côte à côte ──
+        photo_img = _photo_img_from_resource(m.get('photo', ''))
+
+        gen_rows = [r for r in [
+            info_row('Nom',            m.get('nom', '')),
+            info_row('Catégorie',      m.get('categorie', '').title()),
+            info_row('Fournisseur',    m.get('fournisseur', '')),
+            info_row('Marque',         m.get('marque', '')),
+            info_row('Modèle',         m.get('modele', '')),
+            info_row('N° de série',    m.get('numero_serie', '')),
+            info_row("Date d'achat",   m.get('date_achat', '')),
+            info_row('Valeur (DA)',     f"{m.get('valeur', '')} DA" if m.get('valeur') else ''),
+            info_row('Statut',         m.get('statut', '').replace('_', ' ').title()),
+            info_row('Zone assignée',  m.get('zone', '')),
+        ] if r]
+
+        elements.append(Paragraph('Informations générales', section_style))
+
+        if gen_rows:
+            t_gen = Table(gen_rows, colWidths=[4 * cm, 13 * cm])
+            t_gen.setStyle(TableStyle([
+                ('GRID',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
+                ('BACKGROUND',     (0, 0), (0, -1),  colors.HexColor('#f8f8f8')),
+                ('PADDING',        (0, 0), (-1, -1), 7),
+                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+            ]))
+
+            if photo_img:
+                # Logo + tableau côte à côte
+                side_table = Table(
+                    [[t_gen, photo_img]],
+                    colWidths=[12 * cm, 5.5 * cm],
+                )
+                side_table.setStyle(TableStyle([
+                    ('VALIGN',  (0, 0), (-1, -1), 'TOP'),
+                    ('PADDING', (0, 0), (-1, -1), 0),
+                    ('LEFTPADDING', (1, 0), (1, 0), 10),
+                ]))
+                elements.append(side_table)
+            else:
+                elements.append(t_gen)
+
+        # ── Spécifications techniques ──
+        tech_rows = [r for r in [
+            info_row('Processeur (CPU)',         m.get('processeur', '')),
+            info_row('Mémoire RAM',              m.get('ram', '')),
+            info_row('Stockage',                 m.get('stockage', '')),
+            info_row("Système d'exploitation",   m.get('os', '')),
+            info_row('Écran',                    m.get('ecran', '')),
+        ] if r]
+        if tech_rows:
+            elements.append(Paragraph('Spécifications techniques', section_style))
+            t_tech = Table(tech_rows, colWidths=[4 * cm, 13 * cm])
+            t_tech.setStyle(TableStyle([
+                ('GRID',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
+                ('BACKGROUND',     (0, 0), (0, -1),  colors.HexColor('#f0f6ff')),
+                ('PADDING',        (0, 0), (-1, -1), 7),
+                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f7f9ff')]),
+            ]))
+            elements.append(t_tech)
+
+        # ── Description ──
+        if m.get('description'):
+            elements.append(Paragraph('Description / Remarques', section_style))
+            elements.append(Paragraph(m['description'], small_style))
+
+        # ── Zone QR-like : encadré signature ──
+        elements.append(Spacer(1, 0.8 * cm))
+        sig_data = [
+            [Paragraph('Vérifié par', label_style),   Paragraph('', value_style),
+             Paragraph('Date vérification', label_style), Paragraph('', value_style)],
+            [Paragraph('Signature', label_style),      Paragraph('', value_style),
+             Paragraph('Visa responsable', label_style), Paragraph('', value_style)],
+        ]
+        sig_table = Table(sig_data, colWidths=[3.5 * cm, 5.5 * cm, 3.5 * cm, 5 * cm])
+        sig_table.setStyle(TableStyle([
+            ('BOX',     (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+            ('GRID',    (0, 0), (-1, -1), 0.3, colors.HexColor('#e0e0e0')),
+            ('PADDING', (0, 0), (-1, -1), 10),
+            ('MINROWHEIGHTS', (0, 0), (-1, -1), 1.2 * cm),
+        ]))
+        elements.append(sig_table)
+
+        # ── Pied de page ──
+        elements.append(Spacer(1, 0.6 * cm))
+        elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
+        elements.append(Spacer(1, 0.2 * cm))
+        elements.append(Paragraph(
+            f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — SIGR-CA  |  "
+            f"N° inventaire : {inv}",
+            ParagraphStyle('Footer', fontSize=8, textColor=colors.grey),
+        ))
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        nom_fichier = (m.get('nom', 'materiel') + '_' + inv).replace(' ', '_')
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="fiche_{nom_fichier}.pdf"'
+        return response
+
+    except Exception as e:
+        return HttpResponse(f'Erreur : {str(e)}', status=500)
+
+
+# ─── RAPPORT PDF — Zone + tout son matériel ────────────────────────────────────
+
+def api_zone_pdf(request, zone_id):
+    """Rapport PDF d'une zone avec tout son matériel — logo en haut."""
+    try:
+        bureau = db.bureaux.find_one({'_id': ObjectId(zone_id)})
+        if not bureau:
+            return HttpResponse('Zone non trouvée', status=404)
+
+        zone_nom  = bureau.get('nom', 'Zone')
+        materiels = (
+            list(db.materiels.find({'zone': zone_nom}))
+            if 'materiels' in db.list_collection_names() else []
+        )
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=landscape(A4),
+            leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+            topMargin=2 * cm, bottomMargin=2 * cm,
+        )
+        styles   = getSampleStyleSheet()
+        elements = []
+
+        section_style = ParagraphStyle(
+            'Section', parent=styles['Heading2'],
+            fontSize=13, spaceBefore=14, spaceAfter=6,
+            textColor=colors.HexColor('#1f6feb'),
+        )
+        label_style = ParagraphStyle('Label', fontSize=9, textColor=colors.grey)
+        value_style = ParagraphStyle('Value', fontSize=10, fontName='Helvetica-Bold')
+        small = ParagraphStyle('Small', fontSize=8)
+
+        # ── En-tête avec logo ──
+        _build_header(
+            elements,
+            f'RAPPORT DE ZONE : {zone_nom.upper()}',
+            'Système Intégré de Gestion des Ressources — SIGR-CA',
+            styles,
+        )
+
+        # ── Fiche zone ──
+        elements.append(Paragraph('Informations de la zone', section_style))
+        zone_info = [
+            ['Code',          bureau.get('code_bureau', '—')],
+            ['Étage',         str(bureau.get('etage', 'RDC'))],
+            ['Capacité max',  f"{bureau.get('capacite_max', 0)} personnes"],
+            ['Niveau sécu.',  bureau.get('niveau_securite', 'standard').title()],
+            ['Statut',        bureau.get('statut', 'actif').title()],
+            ['Description',   bureau.get('description', '—')],
+        ]
+        t_zone = Table(
+            [[Paragraph(r[0], label_style), Paragraph(str(r[1]), value_style)]
+             for r in zone_info],
+            colWidths=[4 * cm, 23 * cm],
+        )
+        t_zone.setStyle(TableStyle([
+            ('GRID',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
+            ('BACKGROUND',     (0, 0), (0, -1),  colors.HexColor('#f0f6ff')),
+            ('PADDING',        (0, 0), (-1, -1), 7),
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+        ]))
+        elements.append(t_zone)
+        elements.append(Spacer(1, 0.6 * cm))
+
+        # ── Tableau matériel ──
+        elements.append(Paragraph(
+            f"Matériel inventorié ({len(materiels)} article(s))", section_style,
+        ))
+
+        if materiels:
+            headers = [
+                'N° Inventaire', 'Nom', 'Catégorie', 'Fournisseur', 'Marque / Modèle',
+                'N° Série', 'Spécifications', 'Statut', 'Date achat', 'Valeur (DA)',
+            ]
+            hdr_style = ParagraphStyle('Hdr', fontSize=8, fontName='Helvetica-Bold',
+                                       textColor=colors.white)
+            rows = [[Paragraph(h, hdr_style) for h in headers]]
+            statut_map = {
+                'disponible': '✓ Disponible', 'utilise': '→ Utilisé',
+                'maintenance': '⚠ Maintenance', 'hors_service': '✗ H.S.',
+            }
+            for mat in materiels:
+                specs_parts = []
+                if mat.get('processeur'): specs_parts.append(f"CPU: {mat['processeur']}")
+                if mat.get('ram'):        specs_parts.append(f"RAM: {mat['ram']}")
+                if mat.get('stockage'):   specs_parts.append(f"HDD: {mat['stockage']}")
+                specs = '\n'.join(specs_parts) or '—'
+                inv_style_small = ParagraphStyle('Inv', fontName='Courier', fontSize=8,
+                                                 textColor=colors.HexColor('#7b3fe4'))
+                rows.append([
+                    Paragraph(mat.get('num_inventaire', '—'), inv_style_small),
+                    Paragraph(mat.get('nom', '—'), small),
+                    Paragraph(mat.get('categorie', '—').title(), small),
+                    Paragraph(mat.get('fournisseur', '—'), small),
+                    Paragraph(f"{mat.get('marque', '')} {mat.get('modele', '')}".strip() or '—', small),
+                    Paragraph(mat.get('numero_serie', '—'),
+                              ParagraphStyle('Sn', fontName='Courier', fontSize=8)),
+                    Paragraph(specs, small),
+                    Paragraph(statut_map.get(mat.get('statut', ''), mat.get('statut', '')), small),
+                    Paragraph(mat.get('date_achat', '—'), small),
+                    Paragraph(mat.get('valeur', '—'), small),
+                ])
+            col_widths = [3.5*cm, 3.5*cm, 2.2*cm, 2.5*cm, 3*cm, 2.8*cm, 4*cm, 2.2*cm, 2*cm, 2.3*cm]
+            t_mat = Table(rows, colWidths=col_widths, repeatRows=1)
+            t_mat.setStyle(TableStyle([
+                ('BACKGROUND',    (0, 0), (-1, 0),  colors.HexColor('#1f6feb')),
+                ('TEXTCOLOR',     (0, 0), (-1, 0),  colors.white),
+                ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#d0d0d0')),
+                ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#f7f9ff')]),
+                ('PADDING',       (0, 0), (-1, -1), 5),
+                ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(t_mat)
+        else:
+            elements.append(Paragraph('Aucun matériel assigné à cette zone.', styles['Normal']))
+
+        # Pied de page
+        elements.append(Spacer(1, 0.8 * cm))
+        elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
+        elements.append(Spacer(1, 0.2 * cm))
+        elements.append(Paragraph(
+            f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — SIGR-CA",
+            ParagraphStyle('Footer', fontSize=8, textColor=colors.grey),
+        ))
+
+        doc.build(elements)
+        buffer.seek(0)
+        nom_fichier = f"rapport_zone_{zone_nom.replace(' ', '_')}"
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{nom_fichier}.pdf"'
+        return response
+
+    except Exception as e:
+        return HttpResponse(f'Erreur : {str(e)}', status=500)
+
+
+# ─── RAPPORT PDF — Toutes les zones ───────────────────────────────────────────
+def api_zones_rapport_pdf(request):
+    """Rapport PDF global toutes zones — avec logo SIGR-CA."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+    )
+    styles   = getSampleStyleSheet()
+    elements = []
+
+    zone_title = ParagraphStyle(
+        'ZTitle', parent=styles['Heading2'],
+        fontSize=14, textColor=colors.HexColor('#1f6feb'),
+        spaceBefore=16, spaceAfter=6,
+    )
+    small = ParagraphStyle('Small', fontSize=8)
+
+    try:
+        bureaux       = list(db.bureaux.find())
+        materiels_all = (
+            list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+        )
+
+        # ── Page de garde avec logo ──
+        _build_header(
+            elements,
+            'RAPPORT GLOBAL DES RESSOURCES',
+            f"Système Intégré de Gestion des Ressources — SIGR-CA  |  "
+            f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}",
+            styles,
+        )
+
+        total_mat = len(materiels_all)
+        dispo     = sum(1 for m in materiels_all if m.get('statut') == 'disponible')
+        maint     = sum(1 for m in materiels_all if m.get('statut') in ['maintenance', 'hors_service'])
+        lbl_s = ParagraphStyle('Lbl', fontSize=9, textColor=colors.grey)
+        val_s = ParagraphStyle('Val', fontSize=13, fontName='Helvetica-Bold',
+                               textColor=colors.HexColor('#1f6feb'))
+        resume_rows = [
+            [Paragraph('Zones totales',        lbl_s), Paragraph(str(len(bureaux)), val_s)],
+            [Paragraph('Matériel total',        lbl_s), Paragraph(str(total_mat), val_s)],
+            [Paragraph('Disponible',            lbl_s), Paragraph(str(dispo), val_s)],
+            [Paragraph('En maintenance / H.S.', lbl_s), Paragraph(str(maint), val_s)],
+        ]
+        t_resume = Table(resume_rows, colWidths=[6 * cm, 21 * cm])
+        t_resume.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0f6ff')),
+            ('BOX',        (0, 0), (-1, -1), 1,   colors.HexColor('#1f6feb')),
+            ('GRID',       (0, 0), (-1, -1), 0.3, colors.HexColor('#cce0ff')),
+            ('PADDING',    (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(t_resume)
+
+        # ── Une section par zone ──
+        for bureau in bureaux:
+            zone_nom  = bureau.get('nom', 'Zone')
+            mats_zone = [m for m in materiels_all if m.get('zone') == zone_nom]
+
+            elements.append(Spacer(1, 0.8 * cm))
+            elements.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#cce0ff')))
+            elements.append(Paragraph(
+                f"🚪  {zone_nom}  —  {len(mats_zone)} article(s)", zone_title,
+            ))
+            infos = (
+                f"Code : {bureau.get('code_bureau', '—')}   |   "
+                f"Étage : {bureau.get('etage', 'RDC')}   |   "
+                f"Capacité : {bureau.get('capacite_max', 0)} pers   |   "
+                f"Sécurité : {bureau.get('niveau_securite', 'standard').title()}   |   "
+                f"Statut : {bureau.get('statut', 'actif').title()}"
+            )
+            elements.append(Paragraph(
+                infos,
+                ParagraphStyle('ZInfo', fontSize=9, textColor=colors.grey, spaceAfter=8),
+            ))
+
+            if mats_zone:
+                hdr_style = ParagraphStyle('H', fontSize=8, fontName='Helvetica-Bold',
+                                           textColor=colors.white)
+                headers = [
+                    'N° Inventaire', 'Nom', 'Catégorie', 'Fournisseur', 'Marque/Modèle',
+                    'N° Série', 'Spécifications', 'Statut', 'Date achat', 'Valeur (DA)',
+                ]
+                rows = [[Paragraph(h, hdr_style) for h in headers]]
+                statut_map = {
+                    'disponible': '✓ Dispo', 'utilise': '→ Utilisé',
+                    'maintenance': '⚠ Maint.', 'hors_service': '✗ H.S.',
+                }
+                for mat in mats_zone:
+                    specs_parts = []
+                    if mat.get('processeur'): specs_parts.append(f"CPU:{mat['processeur']}")
+                    if mat.get('ram'):        specs_parts.append(f"RAM:{mat['ram']}")
+                    if mat.get('stockage'):   specs_parts.append(f"HDD:{mat['stockage']}")
+                    specs = ' / '.join(specs_parts) or '—'
+                    inv_sty = ParagraphStyle('Inv', fontName='Courier', fontSize=8,
+                                             textColor=colors.HexColor('#7b3fe4'))
+                    sn_sty  = ParagraphStyle('Sn', fontName='Courier', fontSize=8)
+                    rows.append([
+                        Paragraph(mat.get('num_inventaire', '—'), inv_sty),
+                        Paragraph(mat.get('nom', '—'), small),
+                        Paragraph(mat.get('categorie', '—').title(), small),
+                        Paragraph(mat.get('fournisseur', '—'), small),
+                        Paragraph(f"{mat.get('marque', '')} {mat.get('modele', '')}".strip() or '—', small),
+                        Paragraph(mat.get('numero_serie', '—'), sn_sty),
+                        Paragraph(specs, small),
+                        Paragraph(statut_map.get(mat.get('statut', ''), mat.get('statut', '')), small),
+                        Paragraph(mat.get('date_achat', '—'), small),
+                        Paragraph(mat.get('valeur', '—'), small),
+                    ])
+                col_widths = [3.5*cm, 3.5*cm, 2.2*cm, 2.5*cm, 3*cm, 2.8*cm, 4*cm, 2*cm, 2*cm, 2.5*cm]
+                t = Table(rows, colWidths=col_widths, repeatRows=1)
+                t.setStyle(TableStyle([
+                    ('BACKGROUND',    (0, 0), (-1, 0),  colors.HexColor('#1f6feb')),
+                    ('TEXTCOLOR',     (0, 0), (-1, 0),  colors.white),
+                    ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#d0d0d0')),
+                    ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#f7f9ff')]),
+                    ('PADDING',       (0, 0), (-1, -1), 5),
+                    ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+                ]))
+                elements.append(t)
+            else:
+                elements.append(Paragraph(
+                    'Aucun matériel assigné à cette zone.',
+                    ParagraphStyle('NoMat', fontSize=9, textColor=colors.grey),
+                ))
+
+        elements.append(Spacer(1, 0.8 * cm))
+        elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
+        elements.append(Paragraph(
+            f"Rapport généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — SIGR-CA",
+            ParagraphStyle('Footer', fontSize=8, textColor=colors.grey),
+        ))
+
+        doc.build(elements)
+        buffer.seek(0)
+        filename = f"rapport_ressources_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
+    except Exception as e:
+        return HttpResponse(f'Erreur : {str(e)}', status=500)
+
+
+# ─── Export CSV ───────────────────────────────────────────────────────────────
+
+@login_required
+def api_export_ressources_csv(request):
+    import csv
+    from django.http import HttpResponse
+    from datetime import datetime
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="ressources_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    response.write('\ufeff')
+
+    writer = csv.writer(response, delimiter=';')
+    writer.writerow(['Type','Nom','N° Inventaire','Fournisseur','Code/Série',
+                     'Catégorie','Marque','Modèle','Processeur','RAM','Stockage','OS',
+                     'Capacité','Étage','Niveau sécurité','Statut','Zone','Date achat','Valeur DA'])
+
+    for b in db.bureaux.find():
+        writer.writerow(['Zone', b.get('nom',''), '', '', b.get('code_bureau',''),
+                         '','','','','','','',
+                         b.get('capacite_max',0), b.get('etage',0),
+                         b.get('niveau_securite','standard'), b.get('statut','actif'), '', '', ''])
+
+    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
+    for m in materiels:
+        writer.writerow(['Matériel', m.get('nom',''), m.get('num_inventaire',''),
+                         m.get('fournisseur',''), m.get('numero_serie',''),
+                         m.get('categorie',''), m.get('marque',''), m.get('modele',''),
+                         m.get('processeur',''), m.get('ram',''), m.get('stockage',''), m.get('os',''),
+                         '', '', '', m.get('statut',''), m.get('zone',''),
+                         m.get('date_achat',''), m.get('valeur','')])
+
+    return response
+
+
+# ─── API bureau stats ─────────────────────────────────────────────────────────
+
 @login_required
 def api_bureau_stats(request, bureau_id):
-    """API statistiques d'un bureau"""
     from bson import ObjectId
     from datetime import datetime, timedelta
 
@@ -1867,9 +2452,8 @@ def api_bureau_stats(request, bureau_id):
 
         dates, acces_par_jour = [], []
         for i in range(6, -1, -1):
-            day_start = (datetime.now() - timedelta(days=i)).replace(
-                hour=0, minute=0, second=0, microsecond=0)
-            day_end = day_start + timedelta(days=1)
+            day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end   = day_start + timedelta(days=1)
             count = db.acces_logs.count_documents({
                 'bureau_id': ObjectId(bureau_id),
                 'timestamp': {'$gte': day_start, '$lt': day_end}
@@ -1878,197 +2462,14 @@ def api_bureau_stats(request, bureau_id):
             acces_par_jour.append(count)
 
         return JsonResponse({
-            'dates': dates,
-            'acces_par_jour': acces_par_jour,
-            'nom': bureau.get('nom'),
-            'capacite': bureau.get('capacite_max', 0),
+            'dates':         dates,
+            'acces_par_jour':acces_par_jour,
+            'nom':           bureau.get('nom'),
+            'capacite':      bureau.get('capacite_max', 0),
         })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-
-@login_required
-def api_materiel_list(request):
-    """API liste du matériel"""
-    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
-    result = []
-    for m in materiels:
-        m['id'] = str(m['_id'])
-        result.append({
-            'id':             str(m['_id']),
-            'nom':            m.get('nom', ''),
-            'categorie':      m.get('categorie', ''),
-            'num_inventaire': m.get('num_inventaire', ''),
-            'numero_serie':   m.get('numero_serie', ''),
-            'statut':         m.get('statut', 'disponible'),
-            'zone':           m.get('zone', ''),
-            'marque':         m.get('marque', ''),
-            'modele':         m.get('modele', ''),
-            'description':    m.get('description', ''),
-        })
-    return JsonResponse({'materiels': result})
-
-
-@login_required
-@require_http_methods(["POST"])
-def api_materiel_ajouter(request):
-    """API ajouter/modifier du matériel avec génération automatique du numéro d'inventaire"""
-    from bson import ObjectId
-    from datetime import datetime
-
-    try:
-        data        = json.loads(request.body)
-        materiel_id = data.get('id', '').strip()
-        categorie   = data.get('categorie', 'autre')
-
-        if 'materiels' not in db.list_collection_names():
-            db.create_collection('materiels')
-
-        # Modification d'un matériel existant
-        is_edit = materiel_id and not materiel_id.startswith('mat_') and len(materiel_id) == 24
-        if is_edit:
-            existing = db.materiels.find_one({'_id': ObjectId(materiel_id)})
-            # Conserver le numéro d'inventaire existant
-            num_inventaire = existing.get('num_inventaire', '') if existing else ''
-        else:
-            num_inventaire = ''
-
-        materiel_data = {
-            'nom':            data.get('nom', '').strip(),
-            'categorie':      categorie,
-            'numero_serie':   data.get('numero_serie', '').strip(),
-            'statut':         data.get('statut', 'disponible'),
-            'zone':           data.get('zone', ''),
-            'description':    data.get('description', '').strip(),
-            'photo':          data.get('photo', '').strip(),
-            'marque':         data.get('marque', '').strip(),
-            'modele':         data.get('modele', '').strip(),
-            'date_achat':     data.get('date_achat', '').strip(),
-            'valeur':         data.get('valeur', '').strip(),
-            'updated_at':     datetime.now(),
-        }
-
-        if not materiel_data['nom']:
-            return JsonResponse({'status': 'error', 'message': 'Le nom est obligatoire'}, status=400)
-
-        if is_edit:
-            materiel_data['num_inventaire'] = num_inventaire
-            db.materiels.update_one(
-                {'_id': ObjectId(materiel_id)},
-                {'$set': materiel_data}
-            )
-            return JsonResponse({
-                'status': 'success',
-                'message': 'Matériel modifié',
-                'id': materiel_id,
-                'num_inventaire': num_inventaire,
-            })
-        else:
-            # Nouveau matériel → générer un numéro d'inventaire unique
-            num_inventaire = _generer_num_inventaire(categorie)
-            materiel_data['num_inventaire'] = num_inventaire
-            materiel_data['created_at']     = datetime.now()
-            materiel_data['created_by']     = request.user.username
-            result = db.materiels.insert_one(materiel_data)
-            return JsonResponse({
-                'status': 'success',
-                'message': f'Matériel ajouté — N° inventaire : {num_inventaire}',
-                'id': str(result.inserted_id),
-                'num_inventaire': num_inventaire,
-            })
-
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-
-@login_required
-def api_materiel_supprimer(request, materiel_id):
-    """API supprimer du matériel"""
-    from bson import ObjectId
-
-    if request.method not in ('DELETE', 'POST'):
-        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
-
-    try:
-        result = db.materiels.delete_one({'_id': ObjectId(materiel_id)})
-        if result.deleted_count > 0:
-            return JsonResponse({'status': 'success', 'message': 'Matériel supprimé'})
-        return JsonResponse({'status': 'error', 'message': 'Matériel non trouvé'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-
-@login_required
-def api_export_ressources_csv(request):
-    """Export CSV des ressources"""
-    import csv
-    from django.http import HttpResponse
-    from datetime import datetime
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = (
-        f'attachment; filename="ressources_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
-    )
-    response.write('\ufeff')  # BOM UTF-8 pour Excel
-
-    writer = csv.writer(response, delimiter=';')
-    writer.writerow([
-        'Type', 'Nom', 'N° Inventaire', 'Code/Série',
-        'Catégorie', 'Marque', 'Modèle',
-        'Capacité', 'Étage', 'Niveau sécurité',
-        'Statut', 'Zone', 'Date achat', 'Valeur',
-    ])
-
-    # Zones
-    bureaux = list(db.bureaux.find())
-    for b in bureaux:
-        writer.writerow([
-            'Zone', b.get('nom', ''), '', b.get('code_bureau', ''),
-            '', '', '',
-            b.get('capacite_max', 0), b.get('etage', 0),
-            b.get('niveau_securite', 'standard'),
-            b.get('statut', 'actif'), '', '', '',
-        ])
-
-    # Matériel
-    materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
-    for m in materiels:
-        writer.writerow([
-            'Matériel', m.get('nom', ''),
-            m.get('num_inventaire', ''), m.get('numero_serie', ''),
-            m.get('categorie', ''), m.get('marque', ''), m.get('modele', ''),
-            '', '', '',
-            m.get('statut', ''), m.get('zone', ''),
-            m.get('date_achat', ''), m.get('valeur', ''),
-        ])
-
-    return response
-
-
-@login_required
-def api_occupation(request):
-    """API occupation des zones en temps réel"""
-    from datetime import datetime, timedelta
-
-    one_hour_ago = datetime.now() - timedelta(hours=1)
-    bureaux = list(db.bureaux.find())
-    result  = []
-    for b in bureaux:
-        recent   = db.acces_logs.count_documents({
-            'bureau_id': b['_id'],
-            'timestamp': {'$gte': one_hour_ago}
-        })
-        capacite = b.get('capacite_max', 10)
-        occupation = min(recent, capacite)
-        taux       = round((occupation / capacite * 100), 1) if capacite > 0 else 0
-        result.append({
-            'id':        str(b['_id']),
-            'nom':       b.get('nom', 'Inconnu'),
-            'occupation': occupation,
-            'capacite':  capacite,
-            'taux':      taux,
-        })
-    return JsonResponse({'bureaux': result})
 
 
 # ====================== CALENDRIER ET RÈGLES ======================
@@ -2681,12 +3082,7 @@ from django.http import JsonResponse
 
 # ─── Helper : connexion MongoDB (adapter selon votre projet) ───────────────────
 # Si vous avez déjà un objet `db` global, supprimez ce bloc et gardez le vôtre
-try:
-    from dashboard.db_connection import db          # votre helper existant
-except ImportError:
-    from pymongo import MongoClient
-    _client = MongoClient(os.environ.get('MONGO_URI', 'mongodb://localhost:27017/'))
-    db = _client[os.environ.get('MONGO_DB', 'sigr_ca')]
+
 
 
 # ─── Clé MongoDB pour stocker la config ───────────────────────────────────────
@@ -3420,31 +3816,33 @@ def reservation_list(request):
     })
 @login_required
 def reservation_ajouter(request):
-    """Ajouter une nouvelle réservation (ressources et matériel)"""
+    """Ajouter une nouvelle réservation (ressources et matériel) avec workflow d'approbation et file d'attente"""
     from bson import ObjectId
     from datetime import datetime
-    
+    from dashboard.approval_service import ApprovalService
+    from dashboard.queue_service import QueueService
+
     # Récupérer les bureaux/zones
     bureaux = list(db.bureaux.find())
     for b in bureaux:
         b['id'] = str(b['_id'])
         b['type'] = 'salle'
         b['type_icon'] = '🚪'
-    
+
     # Récupérer le matériel
     materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
     for m in materiels:
         m['id'] = str(m['_id'])
         m['type'] = 'materiel'
         m['type_icon'] = get_materiel_icon(m.get('categorie', 'autre'))
-        m['capacite_max'] = 1  # Le matériel n'a pas de capacité
+        m['capacite_max'] = 1
         m['nom_affichage'] = f"{m['nom']} ({m.get('categorie', 'Matériel')})"
-    
+
     # Récupérer les employés
     employes = list(db.employees.find({'statut': 'actif'}))
     for e in employes:
         e['id'] = str(e['_id'])
-    
+
     if request.method == 'POST':
         try:
             date_debut = datetime.strptime(request.POST.get('date_debut'), '%Y-%m-%dT%H:%M')
@@ -3452,19 +3850,18 @@ def reservation_ajouter(request):
             resource_id = request.POST.get('resource_id')
             resource_type = request.POST.get('resource_type', 'salle')
             employe_id_str = request.POST.get('employe_id')
-            
+            # Nouveau: option "rejoindre la file d'attente" si conflit
+            join_queue = request.POST.get('join_queue') == '1'
+            flexible_minutes = int(request.POST.get('flexible_minutes', 120))
+
             if date_fin <= date_debut:
                 messages.error(request, "La date de fin doit être après la date de début.")
                 return render(request, 'dashboard/reservation_form.html', {
-                    'bureaux': bureaux,
-                    'materiels': materiels,
-                    'employes': employes,
-                    'ressources': bureaux + materiels,
-                    'reservation': request.POST,
-                    'is_edit': False
+                    'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
+                    'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False
                 })
-            
-            # Vérifier les conflits selon le type de ressource
+
+            # ── Vérifier les conflits ─────────────────────────────────────────
             conflit = False
             if resource_type == 'salle':
                 conflit = db.reservations.find_one({
@@ -3480,16 +3877,48 @@ def reservation_ajouter(request):
                     'date_debut': {'$lt': date_fin},
                     'date_fin': {'$gt': date_debut},
                 })
-            
+
             if conflit:
+                # ── NOUVEAU: file d'attente + alternatives ──────────────────
+                if join_queue:
+                    try:
+                        QueueService.ajouter(
+                            user=request.user,
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            date_debut=date_debut,
+                            date_fin=date_fin,
+                            flexible_minutes=flexible_minutes,
+                            employe_id=employe_id_str,
+                            titre=request.POST.get('titre', '').strip(),
+                        )
+                        messages.success(request,
+                            "Vous avez rejoint la file d'attente. Vous serez notifié dès qu'un créneau se libère.")
+                        return redirect('reservation_list')
+                    except Exception as e:
+                        messages.error(request, f"Erreur file d'attente: {str(e)}")
+
+                # Proposer des alternatives
+                alternatives = []
+                try:
+                    alternatives = QueueService.proposer_alternatives(
+                        resource_type=resource_type,
+                        resource_id=resource_id,
+                        date_debut=date_debut,
+                        date_fin=date_fin,
+                        flexible_minutes=flexible_minutes,
+                    )
+                except Exception:
+                    pass
+
                 messages.error(request, "Cette ressource est déjà réservée sur ce créneau.")
                 return render(request, 'dashboard/reservation_form.html', {
-                    'bureaux': bureaux,
-                    'materiels': materiels,
-                    'employes': employes,
-                    'ressources': bureaux + materiels,
-                    'reservation': request.POST,
-                    'is_edit': False
+                    'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
+                    'ressources': bureaux + materiels, 'reservation': request.POST,
+                    'is_edit': False,
+                    'conflict': True,
+                    'alternatives': alternatives,
+                    'can_join_queue': True,
                 })
 
             # ── Vérifier les indisponibilités planifiées (maintenance) ────────
@@ -3512,54 +3941,75 @@ def reservation_ajouter(request):
                     })
             except Exception:
                 pass
-            # ── Fin vérification indisponibilités ─────────────────────────────
 
-            # Préparer les données de la réservation
+            # ── Préparer les données de la réservation ────────────────────────
             reservation_data = {
                 'titre': request.POST.get('titre', '').strip(),
                 'description': request.POST.get('description', '').strip(),
                 'resource_type': resource_type,
                 'nb_participants': int(request.POST.get('nb_participants', 1)),
-                'statut': 'confirmee',  # Changé: confirmation directe (admin peut modifier après)
+                # NOUVEAU: statut initial = en_attente, le workflow décidera
+                'statut': 'en_attente',
                 'created_at': datetime.now(),
                 'created_by': request.user.username,
                 'date_debut': date_debut,
                 'date_fin': date_fin,
             }
-            
-            # Ajouter les champs spécifiques selon le type
+
             if resource_type == 'salle':
                 reservation_data['bureau_id'] = ObjectId(resource_id)
-                # Récupérer le nom de la salle
                 bureau = db.bureaux.find_one({'_id': ObjectId(resource_id)})
                 reservation_data['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
                 reservation_data['employe_id'] = ObjectId(employe_id_str)
             else:
                 reservation_data['materiel_id'] = resource_id
-                # Récupérer le nom du matériel
                 materiel = db.materiels.find_one({'_id': ObjectId(resource_id)})
                 reservation_data['materiel_nom'] = materiel['nom'] if materiel else 'Matériel inconnu'
                 reservation_data['employe_id'] = ObjectId(employe_id_str)
-            
-            # Récupérer le nom de l'employé
+
             employe = db.employees.find_one({'_id': ObjectId(employe_id_str)})
             if employe:
                 reservation_data['employe_nom'] = f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip()
-            
+
             # Insérer la réservation
-            db.reservations.insert_one(reservation_data)
-            
-            # Notifications
+            result = db.reservations.insert_one(reservation_data)
+            reservation_id = str(result.inserted_id)
+
+            # ── NOUVEAU: créer le workflow d'approbation ─────────────────────
+            auto_approved = False
+            try:
+                auto_approved = ApprovalService.creer_workflow(
+                    reservation_id=reservation_id,
+                    reservation_data=reservation_data,
+                    user=request.user,
+                )
+            except Exception as e:
+                # En cas d'erreur du workflow, on garde en_attente
+                print(f"[WARN] approval workflow: {e}")
+
+            # Si auto-approuvé, basculer en confirmee
+            if auto_approved:
+                db.reservations.update_one(
+                    {'_id': result.inserted_id},
+                    {'$set': {'statut': 'confirmee', 'auto_approved': True, 'approved_at': datetime.now()}}
+                )
+                reservation_data['statut'] = 'confirmee'
+
+            # Notifications (existantes)
             from dashboard.views import send_reservation_notification, notify_admins_new_reservation
             send_reservation_notification(employe_id_str, reservation_data, 'created')
             notify_admins_new_reservation(employe, reservation_data)
-            
-            messages.success(request, "Réservation créée avec succès!")
+
+            if auto_approved:
+                messages.success(request, "Réservation créée et approuvée automatiquement ✅")
+            else:
+                messages.success(request,
+                    "Réservation créée. Elle est en attente d'approbation par le responsable de zone.")
             return redirect('reservation_list')
-            
+
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
-    
+
     return render(request, 'dashboard/reservation_form.html', {
         'bureaux': bureaux,
         'materiels': materiels,
@@ -3568,7 +4018,6 @@ def reservation_ajouter(request):
         'reservation': {},
         'is_edit': False
     })
-
 
 def get_materiel_icon(categorie):
     """Retourne l'icône correspondant à la catégorie du matériel"""
@@ -3629,12 +4078,48 @@ def reservation_modifier(request, reservation_id):
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('reservation_list')
 
-
 @login_required
 def reservation_annuler(request, reservation_id):
+    """Annuler une réservation et notifier la file d'attente"""
+    from bson import ObjectId
+    from datetime import datetime
+    from dashboard.queue_service import QueueService
+
     if request.method == 'POST':
-        db.reservations.update_one({'_id': ObjectId(reservation_id)},
-                                   {'$set': {'statut': 'annulee', 'cancelled_at': datetime.now()}})
+        # Récupérer la réservation AVANT annulation (pour connaître la ressource libérée)
+        reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
+
+        # Annuler
+        db.reservations.update_one(
+            {'_id': ObjectId(reservation_id)},
+            {'$set': {
+                'statut': 'annulee',
+                'cancelled_at': datetime.now(),
+                'cancelled_by': request.user.username,
+            }}
+        )
+
+        # ── NOUVEAU: notifier la file d'attente ──────────────────────────────
+        if reservation:
+            try:
+                resource_type = reservation.get('resource_type', 'salle')
+                if resource_type == 'salle':
+                    resource_id = str(reservation.get('bureau_id'))
+                else:
+                    resource_id = str(reservation.get('materiel_id'))
+
+                notified = QueueService.notifier_prochain(
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    date_debut=reservation.get('date_debut'),
+                    date_fin=reservation.get('date_fin'),
+                )
+                if notified:
+                    messages.info(request,
+                        f"{notified} personne(s) en file d'attente ont été notifiées.")
+            except Exception as e:
+                print(f"[WARN] queue notify: {e}")
+
         messages.success(request, "Réservation annulée.")
     return redirect('reservation_list')
 
@@ -7972,6 +8457,227 @@ def generate_recurring_indisponibilities(parent_indispo, parent_id):
     if occurrences:
         db.indisponibilites.insert_many(occurrences)
 
+# ====================== EXPORT CSV — INDISPONIBILITÉS ======================
+
+@login_required
+def api_export_indisponibilites_csv(request):
+    import csv
+    from datetime import datetime
+    from django.http import HttpResponse
+
+    if not request.user.is_staff:
+        return HttpResponse("Non autorisé", status=403)
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = (
+        f'attachment; filename="indisponibilites_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
+    response.write('\ufeff')  # BOM UTF-8 pour Excel
+
+    writer = csv.writer(response, delimiter=';')
+    writer.writerow([
+        'Titre', 'Type', 'Statut', 'Ressource',
+        'Date début', 'Date fin', 'Durée (h)',
+        'Récurrence', 'Description', 'Créé par', 'Créé le',
+    ])
+
+    now = datetime.now()
+    type_labels = {
+        'maintenance': 'Maintenance',
+        'reservation_bloquee': 'Réservation bloquée',
+        'fermeture': 'Fermeture',
+    }
+
+    for i in db.indisponibilites.find().sort('date_debut', -1):
+        date_debut = i.get('date_debut')
+        date_fin   = i.get('date_fin')
+
+        if date_debut and date_fin:
+            if date_debut <= now <= date_fin:   statut = 'En cours'
+            elif date_debut > now:              statut = 'À venir'
+            else:                               statut = 'Passée'
+            duree = round((date_fin - date_debut).total_seconds() / 3600, 1)
+        else:
+            statut = '—'
+            duree  = ''
+
+        ressource_nom = '—'
+        if i.get('ressource_type') == 'salle':
+            s = db.bureaux.find_one({'_id': i.get('ressource_id')})
+            ressource_nom = s['nom'] if s else 'Inconnue'
+        elif i.get('ressource_type') == 'materiel':
+            m = db.materiels.find_one({'_id': i.get('ressource_id')}) if 'materiels' in db.list_collection_names() else None
+            ressource_nom = m['nom'] if m else 'Inconnu'
+
+        writer.writerow([
+            i.get('titre', ''),
+            type_labels.get(i.get('type_indispo', ''), i.get('type_indispo', '')),
+            statut,
+            ressource_nom,
+            date_debut.strftime('%d/%m/%Y %H:%M') if date_debut else '—',
+            date_fin.strftime('%d/%m/%Y %H:%M')   if date_fin   else '—',
+            duree,
+            i.get('recurrence') or 'Aucune',
+            i.get('description', ''),
+            i.get('created_by', '—'),
+            i['created_at'].strftime('%d/%m/%Y %H:%M') if i.get('created_at') else '—',
+        ])
+
+    return response
+
+
+# ====================== EXPORT PDF — INDISPONIBILITÉS ======================
+
+@login_required
+def api_export_indisponibilites_pdf(request):
+    import io
+    from datetime import datetime
+    from django.http import HttpResponse
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle,
+        Paragraph, Spacer, HRFlowable,
+    )
+
+    if not request.user.is_staff:
+        return HttpResponse("Non autorisé", status=403)
+
+    now    = datetime.now()
+    buffer = io.BytesIO()
+    doc    = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        leftMargin=1.5*cm, rightMargin=1.5*cm,
+        topMargin=2*cm,    bottomMargin=2*cm,
+    )
+    styles   = getSampleStyleSheet()
+    elements = []
+
+    title_s = ParagraphStyle('T', parent=styles['Heading1'],
+                             fontSize=18, textColor=colors.HexColor('#1f6feb'), spaceAfter=4)
+    sub_s   = ParagraphStyle('S', parent=styles['Normal'],
+                             fontSize=10, textColor=colors.grey, spaceAfter=10)
+    section_s = ParagraphStyle('Sec', parent=styles['Heading2'],
+                               fontSize=13, spaceBefore=14, spaceAfter=6,
+                               textColor=colors.HexColor('#1f6feb'))
+    small   = ParagraphStyle('Sm', fontSize=8)
+    footer_s= ParagraphStyle('F',  fontSize=8, textColor=colors.grey)
+
+    # En-tête
+    elements.append(Paragraph("RAPPORT DES INDISPONIBILITÉS PLANIFIÉES", title_s))
+    elements.append(Paragraph("Système Intégré de Gestion des Ressources — SIGR-CA", sub_s))
+    elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1f6feb')))
+    elements.append(Spacer(1, 0.4*cm))
+
+    # Résumé KPIs
+    en_cours = db.indisponibilites.count_documents({'date_debut': {'$lte': now}, 'date_fin': {'$gte': now}})
+    a_venir  = db.indisponibilites.count_documents({'date_debut': {'$gt': now}})
+    passees  = db.indisponibilites.count_documents({'date_fin':   {'$lt': now}})
+    total    = db.indisponibilites.count_documents({})
+
+    def kpi_cell(label, value, color):
+        return [
+            Paragraph(label, ParagraphStyle('kl', fontSize=9, textColor=colors.grey, alignment=1)),
+            Paragraph(str(value), ParagraphStyle('kv', fontSize=22, fontName='Helvetica-Bold',
+                                                 textColor=colors.HexColor(color), alignment=1)),
+        ]
+
+    kpi_data = [
+        [Paragraph('En cours', ParagraphStyle('kl', fontSize=9, textColor=colors.grey, alignment=1)),
+         Paragraph('À venir',  ParagraphStyle('kl', fontSize=9, textColor=colors.grey, alignment=1)),
+         Paragraph('Passées',  ParagraphStyle('kl', fontSize=9, textColor=colors.grey, alignment=1)),
+         Paragraph('Total',    ParagraphStyle('kl', fontSize=9, textColor=colors.grey, alignment=1))],
+        [Paragraph(str(en_cours), ParagraphStyle('kv', fontSize=22, fontName='Helvetica-Bold', textColor=colors.HexColor('#f85149'), alignment=1)),
+         Paragraph(str(a_venir),  ParagraphStyle('kv', fontSize=22, fontName='Helvetica-Bold', textColor=colors.HexColor('#f59e0b'), alignment=1)),
+         Paragraph(str(passees),  ParagraphStyle('kv', fontSize=22, fontName='Helvetica-Bold', textColor=colors.grey, alignment=1)),
+         Paragraph(str(total),    ParagraphStyle('kv', fontSize=22, fontName='Helvetica-Bold', textColor=colors.HexColor('#1f6feb'), alignment=1))],
+    ]
+    t_kpi = Table(kpi_data, colWidths=[6.5*cm]*4)
+    t_kpi.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f0f6ff')),
+        ('BOX',        (0,0), (-1,-1), 1,   colors.HexColor('#1f6feb')),
+        ('GRID',       (0,0), (-1,-1), 0.3, colors.HexColor('#cce0ff')),
+        ('ALIGN',      (0,0), (-1,-1), 'CENTER'),
+        ('PADDING',    (0,0), (-1,-1), 10),
+    ]))
+    elements.append(t_kpi)
+    elements.append(Spacer(1, 0.6*cm))
+
+    # Tableau détail
+    elements.append(Paragraph("Détail de toutes les indisponibilités", section_s))
+
+    indispos = list(db.indisponibilites.find().sort('date_debut', -1))
+    type_labels = {'maintenance': 'Maintenance', 'reservation_bloquee': 'Réservation bloquée', 'fermeture': 'Fermeture'}
+
+    if not indispos:
+        elements.append(Paragraph("Aucune indisponibilité enregistrée.", styles['Normal']))
+    else:
+        hdr = [Paragraph(h, ParagraphStyle('H', fontSize=8, fontName='Helvetica-Bold', textColor=colors.white))
+               for h in ["Titre", "Type", "Ressource", "Date début", "Date fin", "Durée (h)", "Statut", "Créé par"]]
+        rows = [hdr]
+
+        for i in indispos:
+            date_debut = i.get('date_debut')
+            date_fin   = i.get('date_fin')
+            if date_debut and date_fin:
+                if date_debut <= now <= date_fin:   statut_str = 'En cours';  s_color = colors.HexColor('#f85149')
+                elif date_debut > now:              statut_str = 'À venir';   s_color = colors.HexColor('#f59e0b')
+                else:                               statut_str = 'Passée';    s_color = colors.grey
+                duree = round((date_fin - date_debut).total_seconds() / 3600, 1)
+            else:
+                statut_str = '—'; s_color = colors.grey; duree = '—'
+
+            ressource_nom = '—'
+            if i.get('ressource_type') == 'salle':
+                s = db.bureaux.find_one({'_id': i.get('ressource_id')})
+                ressource_nom = s['nom'] if s else 'Inconnue'
+            elif i.get('ressource_type') == 'materiel':
+                m = db.materiels.find_one({'_id': i.get('ressource_id')}) if 'materiels' in db.list_collection_names() else None
+                ressource_nom = m['nom'] if m else 'Inconnu'
+
+            t_color = {'maintenance': colors.HexColor('#f59e0b'),
+                       'reservation_bloquee': colors.HexColor('#f85149'),
+                       'fermeture': colors.HexColor('#1f6feb')}.get(i.get('type_indispo',''), colors.grey)
+
+            rows.append([
+                Paragraph(i.get('titre','—'),     ParagraphStyle('tb', fontSize=8, fontName='Helvetica-Bold')),
+                Paragraph(type_labels.get(i.get('type_indispo',''), ''), ParagraphStyle('ty', fontSize=8, textColor=t_color)),
+                Paragraph(ressource_nom,           small),
+                Paragraph(date_debut.strftime('%d/%m/%Y\n%H:%M') if date_debut else '—', ParagraphStyle('dt', fontName='Courier', fontSize=8)),
+                Paragraph(date_fin.strftime('%d/%m/%Y\n%H:%M')   if date_fin   else '—', ParagraphStyle('dt', fontName='Courier', fontSize=8)),
+                Paragraph(str(duree),              ParagraphStyle('du', fontSize=8, textColor=colors.HexColor('#1f6feb'))),
+                Paragraph(statut_str,              ParagraphStyle('st', fontSize=8, textColor=s_color, fontName='Helvetica-Bold')),
+                Paragraph(i.get('created_by','—'), small),
+            ])
+
+        t = Table(rows, colWidths=[5.5*cm, 3.2*cm, 3.5*cm, 2.8*cm, 2.8*cm, 1.8*cm, 2.2*cm, 4.2*cm], repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,0),  colors.HexColor('#1f6feb')),
+            ('TEXTCOLOR',     (0,0), (-1,0),  colors.white),
+            ('GRID',          (0,0), (-1,-1), 0.4, colors.HexColor('#d0d0d0')),
+            ('ROWBACKGROUNDS',(0,1), (-1,-1), [colors.white, colors.HexColor('#f7f9ff')]),
+            ('PADDING',       (0,0), (-1,-1), 6),
+            ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+        ]))
+        elements.append(t)
+
+    # Pied de page
+    elements.append(Spacer(1, 0.6*cm))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+    elements.append(Spacer(1, 0.2*cm))
+    elements.append(Paragraph(
+        f"Rapport généré le {now.strftime('%d/%m/%Y à %H:%M')} "
+        f"par {request.user.get_full_name() or request.user.username} — SIGR-CA",
+        footer_s
+    ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="indisponibilites_{now.strftime("%Y%m%d_%H%M")}.pdf"'
+    return response
 
 
 def get_ressource_name(ressource_id, ressource_type):
@@ -9141,4 +9847,269 @@ def api_train_models(request):
 
     results = train_all_models()
     return JsonResponse({'success': True, 'results': results})
+    from .approval_service import ApprovalService
+from .models import ApprovalRequest, ApprovalAuditLog, ApprovalDelegation
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    return xff.split(',')[0].strip() if xff else request.META.get('REMOTE_ADDR')
+
+# Liste des demandes à traiter par le manager connecté
+def approbation_inbox(request):
+    user_id = str(request.user.id)
+    demandes = ApprovalRequest.objects.filter(
+        approbateur_id=user_id, statut='en_attente'
+    ).order_by('-created_at')
+    return render(request, 'dashboard/approbation_inbox.html',
+                  {'demandes': demandes})
+
+def reservation_approuver(request, reservation_id):
+    if request.method != 'POST':
+        return redirect('reservation_detail', reservation_id=reservation_id)
+    ar = ApprovalRequest.objects.filter(
+        reservation_id=reservation_id, statut='en_attente'
+    ).order_by('niveau').first()
+    if not ar:
+        messages.error(request, "Aucune demande en attente.")
+        return redirect('reservation_detail', reservation_id=reservation_id)
+    res = ApprovalService.approuver(ar.id, request.user,
+            commentaire=request.POST.get('commentaire',''),
+            ip=_client_ip(request))
+    messages.success(request, "Approbation enregistrée.")
+    return redirect('reservation_detail', reservation_id=reservation_id)
+
+def reservation_rejeter(request, reservation_id):
+    if request.method != 'POST':
+        return redirect('reservation_detail', reservation_id=reservation_id)
+    ar = ApprovalRequest.objects.filter(
+        reservation_id=reservation_id, statut='en_attente'
+    ).order_by('niveau').first()
+    if ar:
+        ApprovalService.rejeter(ar.id, request.user,
+            commentaire=request.POST.get('commentaire',''),
+            ip=_client_ip(request))
+    messages.success(request, "Réservation rejetée.")
+    return redirect('reservation_detail', reservation_id=reservation_id)
+
+def delegation_creer(request):
+    if request.method == 'POST':
+        ApprovalDelegation.objects.create(
+            delegant_id=str(request.user.id),
+            delegant_nom=request.user.get_full_name() or request.user.username,
+            delegataire_id=request.POST['delegataire_id'],
+            delegataire_nom=request.POST['delegataire_nom'],
+            delegataire_email=request.POST['delegataire_email'],
+            motif=request.POST.get('motif',''),
+            date_debut=request.POST['date_debut'],
+            date_fin=request.POST['date_fin'],
+        )
+        messages.success(request, "Délégation créée.")
+        return redirect('delegation_creer')
+    return render(request, 'dashboard/delegation.html')
+
+def reservation_audit(request, reservation_id):
+    logs = ApprovalAuditLog.objects.filter(reservation_id=reservation_id)
+    return render(request, 'dashboard/reservation_audit.html',
+                  {'logs': logs, 'reservation_id': reservation_id})
+from .queue_service import QueueService
+from .models import WaitingQueue
+
+def queue_rejoindre(request, resource_id):
+    """L'utilisateur rejoint la file après détection conflit."""
+    if request.method != 'POST':
+        return redirect('reservation_ajouter')
+
+    from datetime import datetime
+    d1 = datetime.fromisoformat(request.POST['date_debut'])
+    d2 = datetime.fromisoformat(request.POST['date_fin'])
+
+    wq = QueueService.ajouter(
+        resource_id=resource_id,
+        resource_nom=request.POST.get('resource_nom',''),
+        user=request.user,
+        date_debut=d1, date_fin=d2,
+        titre=request.POST.get('titre',''),
+        nb_participants=int(request.POST.get('nb_participants', 1)),
+        flexible_minutes=int(request.POST.get('flexible_minutes', 30)),
+    )
+    messages.success(request,
+        f"Ajouté à la file d'attente, position {wq.position}.")
+    return redirect('employe_mes_reservations')
+
+def queue_alternatives(request, resource_id):
+    """API JSON : créneaux alternatifs."""
+    from datetime import datetime
+    d1 = datetime.fromisoformat(request.GET['date_debut'])
+    d2 = datetime.fromisoformat(request.GET['date_fin'])
+    propositions = QueueService.proposer_alternatives(resource_id, d1, d2)
+    return JsonResponse({'propositions': [
+        {'date_debut': p['date_debut'].isoformat(),
+         'date_fin':   p['date_fin'].isoformat(),
+         'decalage_min': p['decalage_min']} for p in propositions]})
+
+def queue_confirmer(request, queue_id):
+    """L'utilisateur transforme sa place en file en réservation."""
+    wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
+    if wq.statut != 'notifie':
+        messages.error(request, "Notification expirée.")
+        return redirect('employe_mes_reservations')
+
+    # Créer la réservation (Mongo)
+    from config.mongo import db
+    reservation_data = {
+        'titre': wq.titre or f"Réservation {wq.resource_nom}",
+        'resource_id': wq.resource_id,
+        'employe_id': wq.user_id,
+        'employe_nom': wq.user_nom,
+        'date_debut': wq.date_debut_souhaitee,
+        'date_fin':   wq.date_fin_souhaitee,
+        'nb_participants': wq.nb_participants,
+        'statut': 'en_attente',
+        'created_at': timezone.now(),
+        'created_by': wq.user_id,
+    }
+    result = db.reservations.insert_one(reservation_data)
+
+    wq.statut = 'converti'
+    wq.save()
+
+    # Lancer le workflow d'approbation
+    from .approval_service import ApprovalService
+    ApprovalService.creer_workflow(str(result.inserted_id),
+                                   reservation_data, request.user)
+
+    messages.success(request, "Réservation créée depuis la file d'attente.")
+    return redirect('employe_mes_reservations')
+
+def queue_quitter(request, queue_id):
+    wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
+    wq.statut = 'annule'
+    wq.save()
+    messages.info(request, "Vous avez quitté la file d'attente.")
+    return redirect('employe_mes_reservations')
+# dashboard/views.py - Ajoutez à la fin du fichier
+@login_required
+def api_stats_compare(request):
+    """API pour comparer deux périodes"""
+    if not request.user.is_staff: return JsonResponse({'error': 'Non autorisé'}, status=403)
+    from datetime import datetime, timedelta
+    type_period = request.GET.get('type', 'month')
+    now = datetime.now()
+    if type_period == 'week':
+        period1_start, period1_end = now - timedelta(days=14), now - timedelta(days=7)
+        period2_start, period2_end = now - timedelta(days=7), now
+        label1, label2 = "Semaine précédente", "Semaine actuelle"
+    elif type_period == 'quarter':
+        period1_start, period1_end = now - timedelta(days=90), now - timedelta(days=45)
+        period2_start, period2_end = now - timedelta(days=45), now
+        label1, label2 = "Trimestre précédent", "Trimestre actuel"
+    elif type_period == 'year':
+        period1_start, period1_end = now - timedelta(days=730), now - timedelta(days=365)
+        period2_start, period2_end = now - timedelta(days=365), now
+        label1, label2 = "Année précédente", "Année actuelle"
+    else:
+        period1_start, period1_end = now - timedelta(days=60), now - timedelta(days=30)
+        period2_start, period2_end = now - timedelta(days=30), now
+        label1, label2 = "Mois précédent", "Mois actuel"
+    return JsonResponse({'period1': {'total': db.acces_logs.count_documents({'timestamp': {'$gte': period1_start, '$lt': period1_end}}), 'label': label1}, 'period2': {'total': db.acces_logs.count_documents({'timestamp': {'$gte': period2_start, '$lt': period2_end}}), 'label': label2}})
+
+@login_required
+def api_stats_export_excel(request):
+    """Export Excel avec openpyxl"""
+    if not request.user.is_staff: return JsonResponse({'error': 'Non autorisé'}, status=403)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.chart import BarChart, Reference
+    from datetime import datetime, timedelta
+    from io import BytesIO
+    from django.http import HttpResponse
+    days = int(request.GET.get('days', 30))
+    start_date = datetime.now() - timedelta(days=days)
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = "Accès quotidiens"
+    ws1.append(['Date', 'Accès autorisés', 'Accès refusés', 'Total', 'Taux succès (%)'])
+    for i in range(days, -1, -1):
+        day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        a = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
+        r = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
+        ws1.append([day_start.strftime('%d/%m/%Y'), a, r, a + r, round(a/(a+r)*100, 1) if (a+r) > 0 else 0])
+    header_font, header_fill = Font(bold=True, color="FFFFFF"), PatternFill(start_color="1f6feb", fill_type="solid")
+    for col in range(1, 6):
+        cell = ws1.cell(row=1, column=col)
+        cell.font = header_font; cell.fill = header_fill; cell.alignment = Alignment(horizontal="center")
+        ws1.column_dimensions[chr(64 + col)].width = 15
+    buffer = BytesIO()
+    wb.save(buffer); buffer.seek(0)
+    return HttpResponse(buffer, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={'Content-Disposition': f'attachment; filename="statistiques_{datetime.now().strftime("%Y%m%d")}.xlsx"'})
+    # ─── Chemin du logo (à adapter si votre app ne s'appelle pas "dashboard") ────
+LOGO_PATH = os.path.join(settings.MEDIA_ROOT, 'avatars', 'logo SIGR-CA.png')
+
+
+def _logo_img(width=4.5 * cm, height=4 * cm):
+    """Retourne un objet Image ReportLab si le logo existe, sinon None."""
+    if os.path.exists(LOGO_PATH):
+        return RLImage(LOGO_PATH, width=width, height=height)
+    return None
+
+
+def _photo_img_from_resource(photo_val, max_w=7 * cm, max_h=5 * cm):
+    """
+    Construit un objet Image ReportLab depuis :
+      - une URL  http(s)://...
+      - un data URL  data:image/...;base64,...
+    Retourne None si impossible.
+    """
+    if not photo_val:
+        return None
+    try:
+        if photo_val.startswith('data:image'):
+            # base64 data URL → bytes
+            header, b64data = photo_val.split(',', 1)
+            import base64
+            img_bytes = base64.b64decode(b64data)
+            buf = io.BytesIO(img_bytes)
+        elif photo_val.startswith('http'):
+            req = urllib.request.Request(photo_val, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                img_bytes = resp.read()
+            buf = io.BytesIO(img_bytes)
+        else:
+            return None
+        return RLImage(buf, width=max_w, height=max_h)
+    except Exception:
+        return None
+
+
+def _build_header(elements, title_text, subtitle_text, styles):
+    """En-tête commun : logo à gauche, titre à droite, ligne bleue."""
+    title_style = ParagraphStyle(
+        'HdrTitle', parent=styles['Heading1'],
+        fontSize=16, textColor=colors.HexColor('#1f6feb'),
+        spaceAfter=2, leading=20,
+    )
+    sub_style = ParagraphStyle(
+        'HdrSub', parent=styles['Normal'],
+        fontSize=9, textColor=colors.grey,
+    )
+
+    logo = _logo_img()
+    if logo:
+        hdr_table = Table(
+            [[logo, [Paragraph(title_text, title_style), Paragraph(subtitle_text, sub_style)]]],
+            colWidths=[5 * cm, 12.5 * cm],
+        )
+        hdr_table.setStyle(TableStyle([
+            ('VALIGN',  (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(hdr_table)
+    else:
+        elements.append(Paragraph(title_text, title_style))
+        elements.append(Paragraph(subtitle_text, sub_style))
+
+    elements.append(Spacer(1, 0.3 * cm))
+    elements.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#1f6feb')))
+    elements.append(Spacer(1, 0.4 * cm))
 

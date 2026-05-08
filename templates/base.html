@@ -201,6 +201,63 @@
       margin-top:4px; 
     }
     .logout-btn:hover { background:var(--red2); border-color:rgba(248,81,73,.25); }
+
+    /* ── Paramètres dropdown ── */
+    .nav-item-dropdown { position:relative; }
+
+    .nav-dropdown-trigger { cursor:pointer; user-select:none; }
+    .nav-dropdown-trigger.open {
+      background:var(--blue3);
+      color:var(--blue2);
+      border-color:rgba(31,111,235,.2);
+    }
+    .nav-dropdown-trigger.open .nav-dropdown-arrow { transform:rotate(180deg); }
+
+    .nav-dropdown-menu {
+      display:none;
+      flex-direction:column;
+      gap:2px;
+      background:var(--bg3);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      margin:4px 0 2px 10px;
+      padding:4px;
+      overflow:hidden;
+      animation:dropIn .18s ease;
+    }
+    .nav-dropdown-menu.open { display:flex; }
+
+    @keyframes dropIn {
+      from { opacity:0; transform:translateY(-6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    .nav-dropdown-item {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 10px;
+      border-radius:6px;
+      font-size:12.5px;
+      color:var(--text2);
+      text-decoration:none;
+      transition:var(--transition);
+      border:1px solid transparent;
+    }
+    .nav-dropdown-item:hover {
+      background:var(--bg4);
+      color:var(--text);
+    }
+    .nav-dropdown-item.nav-dropdown-logout {
+      color:var(--red);
+      margin-top:2px;
+      border-top:1px solid var(--border2);
+      padding-top:8px;
+    }
+    .nav-dropdown-item.nav-dropdown-logout:hover {
+      background:var(--red2);
+      border-color:rgba(248,81,73,.2);
+    }
     
     /* ========== TOPBAR ========== */
     .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
@@ -656,6 +713,15 @@
 
   <!-- SIDEBAR ADMIN -->
   {% if user.is_authenticated and user.is_staff %}
+  <div style="padding:10px 8px 4px;">
+    <div class="user-card">
+      <div class="user-av">{{ user.username|slice:":2"|upper }}</div>
+      <div>
+        <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
+        <div class="user-role">⚙️ Administrateur</div>
+      </div>
+    </div>
+  </div>
   <nav>
     <div class="nav-group">Principal</div>
     <a href="{% url 'dashboard' %}" class="nav-item {% block nav_dashboard %}{% endblock %}">
@@ -676,6 +742,7 @@
     <a href="{% url 'reservation_list' %}" class="nav-item {% block nav_reservations %}{% endblock %}">
       <span class="nav-ico">📆</span><span>Réservations</span>
     </a>
+    
     <a href="{% url 'ressources' %}" class="nav-item {% block nav_ressources %}{% endblock %}">
       <span class="nav-ico">🚪</span><span>Ressources & Bureaux</span>
     </a>
@@ -711,14 +778,7 @@
       <span class="nav-ico">⚙️</span><span>Paramètres</span>
     </a>
   </nav>
-  <div class="sidebar-footer">
-    <div class="user-card" onclick="location.href='{% url 'logout' %}'" title="Se déconnecter">
-      <div class="user-av">{{ user.username|slice:":2"|upper }}</div>
-      <div>
-        <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
-        <div class="user-role">⚙️ Administrateur</div>
-      </div>
-    </div>
+  <div class="sidebar-footer" style="padding:8px;">
   </div>
 
   <!-- SIDEBAR EMPLOYÉ -->
@@ -758,11 +818,7 @@
       <span class="nav-ico">❓</span><span>Aide</span>
     </a>
   </nav>
-  <div class="sidebar-footer">
-    <a href="{% url 'employe_logout' %}" class="logout-btn">
-      <span class="nav-ico">🚪</span><span>Se déconnecter</span>
-    </a>
-  </div>
+  
 
   <!-- NON CONNECTÉ -->
   {% else %}
@@ -800,6 +856,11 @@
         <span id="theme-lbl">Mode clair</span>
       </div>
       {% block topbar_actions %}{% endblock %}
+      {% if user.is_authenticated %}
+      <a href="{% url 'logout' %}" class="pill" style="background:var(--red2); border:1px solid rgba(248,81,73,.3); color:var(--red); text-decoration:none; font-weight:600; gap:5px;">
+        <span>🚪</span><span>Déconnecter</span>
+      </a>
+      {% endif %}
     </div>
   </div>
 
@@ -891,6 +952,38 @@ document.addEventListener('DOMContentLoaded', function() {
     updateAdminNotifBadge();
     setInterval(updateNotifBadge, 30000);
     setInterval(updateAdminNotifBadge, 30000);
+});
+
+// ── Paramètres dropdown toggle ───────────────────────────────────────────
+function toggleParamMenu(triggerEl) {
+  if (!triggerEl) return;
+  var menu   = document.getElementById('param-submenu');
+  var isOpen = menu.classList.contains('open');
+
+  // Fermer si déjà ouvert, ouvrir sinon
+  menu.classList.toggle('open', !isOpen);
+  triggerEl.classList.toggle('open', !isOpen);
+}
+
+// Fermer le menu si on clique ailleurs
+document.addEventListener('click', function(e) {
+  var dropdown = document.querySelector('.nav-item-dropdown');
+  if (dropdown && !dropdown.contains(e.target)) {
+    var menu    = document.getElementById('param-submenu');
+    var trigger = document.querySelector('.nav-dropdown-trigger');
+    if (menu)    menu.classList.remove('open');
+    if (trigger) trigger.classList.remove('open');
+  }
+});
+
+// Ouvrir automatiquement si on est sur la page paramètres
+document.addEventListener('DOMContentLoaded', function() {
+  var trigger = document.querySelector('.nav-dropdown-trigger');
+  if (trigger && trigger.classList.contains('active')) {
+    var menu = document.getElementById('param-submenu');
+    if (menu) menu.classList.add('open');
+    trigger.classList.add('open');
+  }
 });
 
 {% block extra_js %}{% endblock %}

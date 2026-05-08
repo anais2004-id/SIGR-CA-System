@@ -498,6 +498,224 @@ HIERARCHY_COLLECTIONS = {
     'etages': 'etages',
     'salles': 'bureaux',  # existant
 }
+# ============================================================
+#  WORKFLOW D'APPROBATION MULTI-NIVEAUX
+# ============================================================
+
+class ApprovalRule(models.Model):
+    """Règles d'auto-approbation selon rôle / catégorie / durée"""
+    nom = models.CharField(max_length=200)
+    role_concerne = models.CharField(max_length=50, blank=True,
+        help_text="ex: 'directeur', 'chef_zone', 'employe'")
+    categorie_ressource = models.CharField(max_length=50, blank=True,
+        help_text="ex: 'salle', 'vehicule' — vide = toutes")
+    duree_max_minutes = models.IntegerField(default=0,
+        help_text="0 = illimité. Auto-approuve si durée <= cette valeur")
+    nb_participants_max = models.IntegerField(default=0,
+        help_text="0 = illimité")
+    auto_approve = models.BooleanField(default=False)
+    niveau_approbation_requis = models.IntegerField(default=1,
+        help_text="1 = responsable zone, 2 = + direction")
+    actif = models.BooleanField(default=True)
+    priorite = models.IntegerField(default=100,
+        help_text="Plus petit = évalué en premier")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'approval_rules'
+        ordering = ['priorite']
+
+    def __str__(self):
+        return f"{self.nom} (niv {self.niveau_approbation_requis})"
+
+
+class ZoneManager(models.Model):
+    """Responsable d'une zone / bureau (pour approbation niveau 1)"""
+    zone_id = models.CharField(max_length=100,
+        help_text="ID du bureau ou zone")
+    zone_nom = models.CharField(max_length=200)
+    manager_id = models.CharField(max_length=100)
+    manager_nom = models.CharField(max_length=200)
+    manager_email = models.EmailField()
+    niveau = models.IntegerField(default=1)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'zone_managers'
+        unique_together = ('zone_id', 'manager_id', 'niveau')
+
+    def __str__(self):
+        return f"{self.manager_nom} → {self.zone_nom} (niv {self.niveau})"
+
+
+class ApprovalDelegation(models.Model):
+    """Délégation temporaire d'un manager vers un autre"""
+    delegant_id = models.CharField(max_length=100)
+    delegant_nom = models.CharField(max_length=200)
+    delegataire_id = models.CharField(max_length=100)
+    delegataire_nom = models.CharField(max_length=200)
+    delegataire_email = models.EmailField()
+    motif = models.CharField(max_length=255, blank=True)
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField()
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'approval_delegations'
+        ordering = ['-date_debut']
+
+    def is_active_now(self):
+        now = timezone.now()
+        return self.actif and self.date_debut <= now <= self.date_fin
+
+
+class ApprovalRequest(models.Model):
+    """Demande d'approbation rattachée à une réservation"""
+    STATUS_CHOICES = [
+        ('en_attente', 'En attente'),
+        ('approuvee',  'Approuvée'),
+        ('rejetee',    'Rejetée'),
+        ('escaladee',  'Escaladée'),
+        ('expiree',    'Expirée'),
+    ]
+    reservation_id = models.CharField(max_length=100, db_index=True)
+    niveau = models.IntegerField(default=1)
+    niveau_max = models.IntegerField(default=1)
+    approbateur_id = models.CharField(max_length=100, blank=True)
+    approbateur_nom = models.CharField(max_length=200, blank=True)
+    statut = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                              default='en_attente')
+    auto_approuvee = models.BooleanField(default=False)
+    date_limite = models.DateTimeField(blank=True, null=True,
+        help_text="Au-delà : escalade ou expiration")
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(blank=True, null=True)
+    decided_by_id = models.CharField(max_length=100, blank=True)
+    decided_by_nom = models.CharField(max_length=200, blank=True)
+    commentaire = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'approval_requests'
+        ordering = ['-created_at']
+
+
+class ApprovalAuditLog(models.Model):
+    """Historique d'audit des décisions"""
+    ACTION_CHOICES = [
+        ('creation',   'Création demande'),
+        ('approbation','Approbation'),
+        ('rejet',      'Rejet'),
+        ('delegation', 'Délégation'),
+        ('escalade',   'Escalade'),
+        ('auto_approve','Auto-approbation'),
+        ('annulation', 'Annulation'),
+    ]
+    reservation_id = models.CharField(max_length=100, db_index=True)
+    approval_request_id = models.IntegerField(blank=True, null=True)
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    acteur_id = models.CharField(max_length=100)
+    acteur_nom = models.CharField(max_length=200)
+    acteur_role = models.CharField(max_length=50, blank=True)
+    niveau = models.IntegerField(default=0)
+    ancien_statut = models.CharField(max_length=30, blank=True)
+    nouveau_statut = models.CharField(max_length=30, blank=True)
+    commentaire = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'approval_audit_log'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['reservation_id', 'created_at'])]
+class WaitingQueue(models.Model):
+    """File d'attente sur ressources occupées"""
+    STATUS_CHOICES = [
+        ('en_attente', 'En attente'),
+        ('notifie',    'Notifié'),
+        ('converti',   'Converti en réservation'),
+        ('expire',     'Expiré'),
+        ('annule',     'Annulé'),
+    ]
+    resource_id   = models.CharField(max_length=100, db_index=True)
+    resource_nom  = models.CharField(max_length=200)
+    user_id       = models.CharField(max_length=100, db_index=True)
+    user_nom      = models.CharField(max_length=200)
+    user_email    = models.EmailField()
+    date_debut_souhaitee = models.DateTimeField()
+    date_fin_souhaitee   = models.DateTimeField()
+    nb_participants = models.IntegerField(default=1)
+    titre         = models.CharField(max_length=200, blank=True)
+    description   = models.TextField(blank=True)
+    flexible_minutes = models.IntegerField(default=0,
+        help_text="Tolérance horaire pour proposer alternatives")
+    position      = models.IntegerField(default=1)
+    statut        = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                                     default='en_attente')
+    notifie_at    = models.DateTimeField(blank=True, null=True)
+    expire_at     = models.DateTimeField(blank=True, null=True,
+        help_text="Date limite pour confirmer après notification")
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'waiting_queue'
+        ordering = ['resource_id', 'position']
+        indexes = [models.Index(fields=['resource_id', 'statut'])]
+# dashboard/models.py - Ajoutez ces modèles
+
+class ApprovalRequest(models.Model):
+    id = models.CharField(max_length=100, primary_key=True)
+    reservation_id = models.CharField(max_length=100)
+    demandeur_id = models.CharField(max_length=100)
+    demandeur_nom = models.CharField(max_length=200)
+    approbateur_id = models.CharField(max_length=100)
+    ressource_nom = models.CharField(max_length=200)
+    titre = models.CharField(max_length=200, blank=True)
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField()
+    nb_participants = models.IntegerField(default=1)
+    niveau = models.IntegerField(default=1)
+    statut = models.CharField(max_length=20, default='en_attente')
+    commentaire = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ApprovalAuditLog(models.Model):
+    reservation_id = models.CharField(max_length=100)
+    reservation_titre = models.CharField(max_length=200, blank=True)
+    action = models.CharField(max_length=20)
+    approbateur_id = models.CharField(max_length=100)
+    approbateur_nom = models.CharField(max_length=200, blank=True)
+    commentaire = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ApprovalDelegation(models.Model):
+    delegant_id = models.CharField(max_length=100)
+    delegant_nom = models.CharField(max_length=200)
+    delegataire_id = models.CharField(max_length=100)
+    delegataire_nom = models.CharField(max_length=200)
+    delegataire_email = models.CharField(max_length=200, blank=True)
+    motif = models.TextField(blank=True)
+    date_debut = models.DateField()
+    date_fin = models.DateField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WaitingQueue(models.Model):
+    id = models.CharField(max_length=100, primary_key=True)
+    resource_id = models.CharField(max_length=100)
+    resource_nom = models.CharField(max_length=200)
+    user_id = models.CharField(max_length=100)
+    user_nom = models.CharField(max_length=200)
+    titre = models.CharField(max_length=200, blank=True)
+    date_debut_souhaitee = models.DateTimeField()
+    date_fin_souhaitee = models.DateTimeField()
+    nb_participants = models.IntegerField(default=1)
+    statut = models.CharField(max_length=20, default='en_attente')
+    created_at = models.DateTimeField(auto_now_add=True)
 
 # Indisponibilités planifiées
 # collection: indisponibilites

@@ -52,11 +52,11 @@
     right: 0;
     height: 3px;
 }
-.kpi-card.green::before { background: linear-gradient(90deg, #22c55e, #4ade80); }
-.kpi-card.blue::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.kpi-card.green::before  { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.kpi-card.blue::before   { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
 .kpi-card.purple::before { background: linear-gradient(90deg, #a855f7, #c084fc); }
-.kpi-card.amber::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-.kpi-card.cyan::before { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+.kpi-card.amber::before  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.kpi-card.cyan::before   { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
 .kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
 .kpi-header {
     display: flex;
@@ -71,7 +71,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-.kpi-icon { font-size: 28px; opacity: 0.8; }
+.kpi-icon  { font-size: 28px; opacity: 0.8; }
 .kpi-value {
     font-size: 36px;
     font-weight: 700;
@@ -84,11 +84,11 @@
     color: var(--text3);
     margin-top: 8px;
 }
-.green .kpi-value { color: #22c55e; }
-.blue .kpi-value { color: #3b82f6; }
+.green  .kpi-value { color: #22c55e; }
+.blue   .kpi-value { color: #3b82f6; }
 .purple .kpi-value { color: #a855f7; }
-.amber .kpi-value { color: #f59e0b; }
-.cyan .kpi-value { color: #06b6d4; }
+.amber  .kpi-value { color: #f59e0b; }
+.cyan   .kpi-value { color: #06b6d4; }
 
 /* ========== TABLE ========== */
 .sessions-table-wrapper {
@@ -111,15 +111,17 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 .sessions-table td {
     padding: 14px 12px;
     border-bottom: 1px solid var(--border2);
     vertical-align: middle;
 }
-.sessions-table tr:hover td {
-    background: var(--bg3);
-}
+.sessions-table tr:hover td { background: var(--bg3); }
+
 .user-cell {
     display: flex;
     align-items: center;
@@ -137,17 +139,10 @@
     color: white;
     flex-shrink: 0;
 }
-.user-info {
-    flex: 1;
-}
-.user-name {
-    font-weight: 600;
-    margin-bottom: 2px;
-}
-.user-email {
-    font-size: 11px;
-    color: var(--text3);
-}
+.user-info { flex: 1; }
+.user-name  { font-weight: 600; margin-bottom: 2px; }
+.user-email { font-size: 11px; color: var(--text3); }
+
 .date-cell {
     font-family: var(--mono);
     font-size: 12px;
@@ -163,19 +158,14 @@
     font-size: 11px;
     font-weight: 600;
 }
-.badge-success { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+.badge-success { background: rgba(34,197,94,0.12);  color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
 .badge-warning { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
-.badge-danger { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
-.badge-info { background: rgba(59,130,246,0.12); color: #3b82f6; border: 1px solid rgba(59,130,246,0.2); }
-.badge-gray { background: var(--bg4); color: var(--text2); border: 1px solid var(--border); }
-.action-buttons {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.inline-form {
-    display: inline;
-}
+.badge-danger  { background: rgba(239,68,68,0.12);  color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+.badge-info    { background: rgba(59,130,246,0.12); color: #3b82f6; border: 1px solid rgba(59,130,246,0.2); }
+.badge-gray    { background: var(--bg4); color: var(--text2); border: 1px solid var(--border); }
+
+.action-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.inline-form    { display: inline; }
 
 /* ========== LIVE INDICATOR ========== */
 .live-indicator {
@@ -198,7 +188,7 @@
 }
 @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.2); }
+    50%       { opacity: 0.5; transform: scale(1.2); }
 }
 
 /* ========== MODAL ========== */
@@ -226,10 +216,7 @@
     padding: 18px 22px;
     border-bottom: 1px solid var(--border);
 }
-.modal-header h3 {
-    margin: 0;
-    font-size: 18px;
-}
+.modal-header h3 { margin: 0; font-size: 18px; }
 .modal-close {
     background: none;
     border: none;
@@ -298,7 +285,7 @@
     </div>
     <div class="kpi-card amber">
         <div class="kpi-header">
-            <span class="kpi-label">Inactifs >30min</span>
+            <span class="kpi-label">Inactifs &gt;30min</span>
             <span class="kpi-icon">⏰</span>
         </div>
         <div class="kpi-value">{{ inactive_sessions|default:0 }}</div>
@@ -339,61 +326,61 @@
                 </tr>
             </thead>
             <tbody id="sessions-body">
-    {% for session in active_sessions %}
-    <tr>
-        <td>
-            <div class="user-cell">
-                <div class="user-avatar" style="background:{% if session.user.is_staff %}#a855f7{% else %}#3b82f6{% endif %}">
-                    {{ session.user.username|slice:":2"|upper }}
-                </div>
-                <div class="user-info">
-                    <div class="user-name">{{ session.user.get_full_name|default:session.user.username }}</div>
-                    <div class="user-email">{{ session.user.email|default:"—" }}</div>
-                </div>
-            </div>
-        </td>
-        <td>
-            {% if session.user.is_staff %}
-                <span class="badge badge-info">👑 Administrateur</span>
-            {% else %}
-                <span class="badge badge-gray">👤 Employé</span>
-            {% endif %}
-        </td>
-        <td>
-            <span class="badge badge-gray">
-                {% if session.device_type == 'desktop' %}💻 Ordinateur
-                {% elif session.device_type == 'mobile' %}📱 Mobile
-                {% else %}📟 Tablette{% endif %}
-            </span>
-        </td>
-        <td class="date-cell">{{ session.login_time|date:"d/m/Y H:i:s" }}</td>
-        <td class="date-cell">{{ session.last_activity|date:"d/m/Y H:i:s" }}</td>
-        <td class="date-cell">{{ session.ip_address|default:"—" }}</td>
-        <td>
-            {% if session.last_activity > now|date:"U"|add:"-300" %}
-                <span class="badge badge-success">🟢 Actif</span>
-            {% elif session.last_activity > now|date:"U"|add:"-1800" %}
-                <span class="badge badge-warning">🟡 Inactif</span>
-            {% else %}
-                <span class="badge badge-danger">🔴 Très inactif</span>
-            {% endif %}
-        </td>
-        <td>
-            {% if session.session_key != request.session.session_key %}
-                <button class="btn btn-del btn-sm" onclick="terminateSession({{ session.id }}, '{{ session.user.username }}')">🔒 Terminer</button>
-            {% else %}
-                <span class="badge badge-gray">Vous</span>
-            {% endif %}
-        </td>
-    </tr>
-    {% empty %}
-    <tr>
-        <td colspan="8" style="text-align:center; padding:80px; color:var(--text3)">
-            🟢 Aucun utilisateur connecté
-        </td>
-    </tr>
-    {% endfor %}
-</tbody>
+                {% for session in active_sessions %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <div class="user-avatar" style="background:{% if session.user.is_staff %}#a855f7{% else %}#3b82f6{% endif %}">
+                                {{ session.user.username|slice:":2"|upper }}
+                            </div>
+                            <div class="user-info">
+                                <div class="user-name">{{ session.user.get_full_name|default:session.user.username }}</div>
+                                <div class="user-email">{{ session.user.email|default:"—" }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if session.user.is_staff %}
+                            <span class="badge badge-info">👑 Administrateur</span>
+                        {% else %}
+                            <span class="badge badge-gray">👤 Employé</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge badge-gray">
+                            {% if session.device_type == 'desktop' %}💻 Ordinateur
+                            {% elif session.device_type == 'mobile' %}📱 Mobile
+                            {% else %}📟 Tablette{% endif %}
+                        </span>
+                    </td>
+                    <td class="date-cell">{{ session.login_time|date:"d/m/Y H:i:s" }}</td>
+                    <td class="date-cell">{{ session.last_activity|date:"d/m/Y H:i:s" }}</td>
+                    <td class="date-cell">{{ session.ip_address|default:"—" }}</td>
+                    <td>
+                        {% if session.is_active %}
+                            <span class="badge badge-success">🟢 Actif</span>
+                        {% elif session.is_inactive %}
+                            <span class="badge badge-warning">🟡 Inactif</span>
+                        {% else %}
+                            <span class="badge badge-danger">🔴 Très inactif</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if session.session_key != request.session.session_key %}
+                            <button class="btn btn-del btn-sm" onclick="terminateSession({{ session.id }}, '{{ session.user.username }}')">🔒 Terminer</button>
+                        {% else %}
+                            <span class="badge badge-gray">Vous</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" style="text-align:center; padding:80px; color:var(--text3)">
+                        🟢 Aucun utilisateur connecté
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
         </table>
     </div>
 </div>
@@ -406,41 +393,43 @@
         <span class="card-sub">Dernières 24h</span>
         <button class="btn btn-ghost btn-sm" onclick="exportHistoryCSV()">⬇️ Exporter</button>
     </div>
-    <div class="sessions-table-wrapper" style="max-height: 400px; overflow-y: auto">
-        <table class="sessions-table">
-            <thead>
-                <tr>
-                    <th>Utilisateur</th>
-                    <th>Action</th>
-                    <th>Date/Heure</th>
-                    <th>IP</th>
-                </tr>
-            </thead>
-            <tbody id="history-body">
-                {% for log in recent_history %}
-                <tr>
-                    <td>{{ log.user.get_full_name|default:log.user.username }}</div>
-                    <td>
-                        {% if log.action == 'login' %}
-                            <span class="badge badge-success">🔓 Connexion</span>
-                        {% elif log.action == 'logout' %}
-                            <span class="badge badge-gray">🔒 Déconnexion</span>
-                        {% elif log.action == 'terminated' %}
-                            <span class="badge badge-danger">⚠️ Terminée</span>
-                        {% else %}
-                            <span class="badge badge-warning">⏰ Expiration</span>
-                        {% endif %}
-                    </div>
-                    <td class="date-cell">{{ log.timestamp|date:"d/m/Y H:i:s" }}</div>
-                    <td class="date-cell">{{ log.ip_address|default:"—" }}</div>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4" style="text-align:center; padding:60px">Aucun historique</div>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="sessions-table-wrapper">
+        <div style="max-height: 400px; overflow-y: scroll;">
+            <table class="sessions-table">
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        <th>Action</th>
+                        <th>Date/Heure</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body">
+                    {% for log in recent_history %}
+                    <tr>
+                        <td>{{ log.user.get_full_name|default:log.user.username }}</td>
+                        <td>
+                            {% if log.action == 'login' %}
+                                <span class="badge badge-success">🔓 Connexion</span>
+                            {% elif log.action == 'logout' %}
+                                <span class="badge badge-gray">🔒 Déconnexion</span>
+                            {% elif log.action == 'terminated' %}
+                                <span class="badge badge-danger">⚠️ Terminée</span>
+                            {% else %}
+                                <span class="badge badge-warning">⏰ Expiration</span>
+                            {% endif %}
+                        </td>
+                        <td class="date-cell">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+                        <td class="date-cell">{{ log.ip_address|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" style="text-align:center; padding:60px; color:var(--text3)">Aucun historique</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -468,16 +457,16 @@ async function refreshSessions() {
     try {
         const response = await fetch('/api/connected-users/');
         const data = await response.json();
-        
+
         document.getElementById('kpi-connected').textContent = data.total || 0;
         document.getElementById('live-timestamp').textContent = `Dernière mise à jour: ${data.timestamp || new Date().toLocaleTimeString()}`;
-        
+
         const tbody = document.getElementById('sessions-body');
         if (!data.users || data.users.length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:80px">🟢 Aucun utilisateur connecté</td></tr>`;
             return;
         }
-        
+
         tbody.innerHTML = data.users.map(user => {
             const isCurrent = user.session_key === '{{ request.session.session_key }}';
             let statusBadge = '', statusClass = '';
@@ -491,7 +480,7 @@ async function refreshSessions() {
                 statusBadge = '🔴 Très inactif';
                 statusClass = 'badge-danger';
             }
-            
+
             return `
                 <tr>
                     <td>
@@ -506,12 +495,15 @@ async function refreshSessions() {
                         </div>
                     </td>
                     <td>${user.is_staff ? '<span class="badge badge-info">👑 Administrateur</span>' : '<span class="badge badge-gray">👤 Employé</span>'}</td>
-                    <td><span class="badge badge-gray">${user.device_icon} ${user.device_type === 'desktop' ? 'Ordinateur' : 'Mobile'}</span></td>
+                    <td><span class="badge badge-gray">${user.device_icon || '💻'} ${user.device_type === 'desktop' ? 'Ordinateur' : user.device_type === 'mobile' ? 'Mobile' : 'Tablette'}</span></td>
                     <td class="date-cell">${user.login_time}</td>
                     <td class="date-cell">${user.last_activity}</td>
                     <td class="date-cell">${user.ip_address}</td>
                     <td><span class="badge ${statusClass}">${statusBadge}</span></td>
-                    <td>${isCurrent ? '<span class="badge badge-gray">Vous</span>' : `<button class="btn btn-del btn-sm" onclick="terminateSession(${user.id}, '${user.username}')">🔒 Terminer</button>`}</td>
+                    <td>${isCurrent
+                        ? '<span class="badge badge-gray">Vous</span>'
+                        : `<button class="btn btn-del btn-sm" onclick="terminateSession(${user.id}, '${user.username}')">🔒 Terminer</button>`
+                    }</td>
                 </tr>
             `;
         }).join('');
@@ -557,7 +549,7 @@ function startAutoRefresh() {
     }, 10000);
 }
 
-// ==================== EXPORT ====================
+// ==================== EXPORT SESSIONS ====================
 function exportSessionsCSV() {
     let csv = "Utilisateur,Rôle,Appareil,Connexion,Dernière activité,IP,Statut\n";
     document.querySelectorAll('#sessions-body tr').forEach(row => {
@@ -577,6 +569,7 @@ function exportSessionsCSV() {
     link.click();
 }
 
+// ==================== EXPORT HISTORIQUE ====================
 function exportHistoryCSV() {
     let csv = "Utilisateur,Action,Date/Heure,IP\n";
     document.querySelectorAll('#history-body tr').forEach(row => {

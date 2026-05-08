@@ -1,358 +1,715 @@
 {# dashboard/gestion_indisponibilites.html #}
 {% extends "base.html" %}
 {% block title %}Indisponibilités planifiées - SIGR-CA{% endblock %}
-{% block nav_ressources %}active{% endblock %}
+{% block nav_indispo %}active{% endblock %}
+{% block page_title %}Indisponibilités planifiées{% endblock %}
+{% block page_sub %}Gestion des maintenances, blocages et fermetures exceptionnelles{% endblock %}
+
+{# ══ CORRECTION TOPBAR : pas de div wrapper, éléments directs dans le slot ══ #}
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="openAddModal()">➕ Nouvelle indisponibilité</button>
+<button class="btn btn-ghost btn-sm" onclick="exportCSV()">📄 Export CSV</button>
+<button class="btn btn-ghost btn-sm" onclick="exportPDF()">📑 Export PDF</button>
+<button class="btn btn-ghost btn-sm" onclick="location.reload()">↻ Actualiser</button>
+{% endblock %}
 
 {% block content %}
 <style>
+/* ══════════════════════════════════════════════
+   KPI CARDS
+══════════════════════════════════════════════ */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+}
+@media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
+
+.stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 18px;
+    text-align: center;
+    transition: transform .2s, box-shadow .2s;
+    position: relative;
+    overflow: hidden;
+}
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 14px 14px 0 0;
+}
+.stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+.stat-value { font-size: 36px; font-weight: 700; font-family: var(--mono); line-height: 1; }
+.stat-label { font-size: 10px; color: var(--text3); margin-top: 8px; text-transform: uppercase; letter-spacing: .7px; }
+
+.stat-red   .stat-value { color: var(--red); }
+.stat-red::before       { background: var(--red); }
+.stat-amber .stat-value { color: var(--amber); }
+.stat-amber::before     { background: var(--amber); }
+.stat-blue  .stat-value { color: var(--blue); }
+.stat-blue::before      { background: var(--blue); }
+.stat-purple .stat-value { color: var(--purple); }
+.stat-purple::before    { background: var(--purple); }
+
+/* ══════════════════════════════════════════════
+   FILTER BAR
+══════════════════════════════════════════════ */
+.filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.filter-chip {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 12px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+}
+.filter-chip:hover  { background: var(--bg4); color: var(--text); }
+.filter-chip.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.search-input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 12px;
+    color: var(--text);
+    flex: 1;
+    min-width: 180px;
+    outline: none;
+    transition: border-color .2s;
+}
+.search-input:focus { border-color: var(--blue); }
+
+/* ══════════════════════════════════════════════
+   CARTES INDISPONIBILITÉS
+══════════════════════════════════════════════ */
+.indispo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 .indispo-card {
-  background: var(--bg2);
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  padding: 16px;
-  transition: all 0.2s;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-left: 5px solid var(--border);   /* surcharge par type ci-dessous */
+    border-radius: 12px;
+    padding: 0;
+    transition: transform .25s, box-shadow .25s, border-color .25s;
+    /* PAS d'overflow:hidden — sinon le border-left coloré est coupé par le border-radius */
+    overflow: visible;
+    position: relative;
 }
-.indispo-card.maintenance { border-left: 4px solid #f59e0b; }
-.indispo-card.reservation { border-left: 4px solid #f85149; }
-.indispo-card.fermeture { border-left: 4px solid #1f6feb; }
+.indispo-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(0,0,0,.35);
+    border-color: var(--border);
+}
+
+/* Couleur bord gauche selon type */
+.indispo-card.maintenance        { border-left-color: var(--amber); }
+.indispo-card.reservation_bloquee{ border-left-color: var(--red); }
+.indispo-card.fermeture          { border-left-color: var(--blue); }
+
+/* ── Corps de la carte ── */
+.indispo-body {
+    padding: 16px 20px 14px;
+}
+
 .indispo-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
 }
+
 .indispo-title {
-  font-weight: 600;
-  font-size: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    /* Autoriser le retour à la ligne — white-space:nowrap coupait les titres longs */
+    overflow: visible;
+    word-break: break-word;
 }
-.indispo-date {
-  font-size: 12px;
-  color: var(--text2);
-  font-family: monospace;
+
+.indispo-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    align-items: center;
 }
-.indispo-type {
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 500;
+
+/* ── Badges TYPE ── */
+.badge-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
 }
-.type-maintenance { background: rgba(245,158,11,0.12); color: #f59e0b; }
-.type-reservation { background: rgba(248,81,73,0.12); color: #f85149; }
-.type-fermeture { background: rgba(31,111,235,0.12); color: #1f6feb; }
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
+.badge-maintenance {
+    background: rgba(227,179,65,.13);
+    color: var(--amber);
+    border-color: rgba(227,179,65,.3);
 }
-.status-en_cours { background: rgba(248,81,73,0.12); color: #f85149; }
-.status-a_venir { background: rgba(245,158,11,0.12); color: #f59e0b; }
-.status-passee { background: rgba(107,114,128,0.12); color: #9ca3af; }
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  margin-top: 16px;
+.badge-reservation {
+    background: rgba(248,81,73,.13);
+    color: var(--red);
+    border-color: rgba(248,81,73,.3);
 }
-.calendar-day {
-  text-align: center;
-  padding: 8px;
-  border-radius: 8px;
-  background: var(--bg3);
-  font-size: 12px;
+.badge-fermeture {
+    background: rgba(31,111,235,.13);
+    color: var(--blue2);
+    border-color: rgba(31,111,235,.3);
 }
-.calendar-day.has-indispo {
-  background: rgba(245,158,11,0.2);
-  border: 1px solid #f59e0b;
+
+/* ── Badges STATUT ── */
+.badge-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
 }
+.badge-en-cours {
+    background: rgba(248,81,73,.13);
+    color: var(--red);
+    border-color: rgba(248,81,73,.3);
+}
+.badge-a-venir {
+    background: rgba(227,179,65,.13);
+    color: var(--amber);
+    border-color: rgba(227,179,65,.3);
+}
+.badge-passee {
+    background: rgba(45,186,111,.13);
+    color: var(--green);
+    border-color: rgba(45,186,111,.3);
+}
+
+/* ── Méta-infos ── */
+.indispo-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text2);
+    align-items: center;
+}
+.indispo-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.indispo-meta-item strong { color: var(--text); font-weight: 500; }
+
+.indispo-desc {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border2);
+    font-size: 11.5px;
+    color: var(--text2);
+    line-height: 1.55;
+}
+
+/* ── Pied de carte ── */
+.indispo-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--bg4, var(--bg2));
+    border-top: 1px solid var(--border2);
+    border-radius: 0 0 10px 10px;
+}
+.indispo-footer .btn { font-size: 12px; padding: 5px 14px; }
+
+/* ══════════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════════ */
+.empty-state {
+    text-align: center;
+    padding: 64px 20px;
+    color: var(--text3);
+}
+.empty-icon { font-size: 52px; margin-bottom: 14px; opacity: .45; }
+
+/* ══════════════════════════════════════════════
+   MODAL
+══════════════════════════════════════════════ */
+#indispoModal .modal {
+    width: 600px;
+    max-width: 95vw;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+.form-section {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+.form-section:last-of-type { border-bottom: none; }
+.form-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: var(--blue2);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+.form-row-double {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+@media (max-width: 560px) { .form-row-double { grid-template-columns: 1fr; } }
+.form-hint { font-size: 10px; color: var(--text3); margin-top: 4px; }
+
+/* ══════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════ */
+.toast-notify {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    z-index: 10000;
+    padding: 11px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all .3s ease;
+    pointer-events: none;
+    max-width: 340px;
+}
+.toast-notify.show  { opacity: 1; transform: translateY(0); }
+.toast-success { background: var(--green); }
+.toast-error   { background: var(--red); }
+.toast-info    { background: var(--blue); }
 </style>
 
-<div style="max-width: 1200px; margin: 0 auto;">
-  <!-- KPIs -->
-  <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
-    <div class="kpi k-red"><div class="kpi-value">{{ stats.en_cours }}</div><div class="kpi-label">En cours</div></div>
-    <div class="kpi k-amber"><div class="kpi-value">{{ stats.a_venir }}</div><div class="kpi-label">À venir</div></div>
-    <div class="kpi k-blue"><div class="kpi-value">{{ stats.passees }}</div><div class="kpi-label">Passées</div></div>
-    <div class="kpi k-purple"><div class="kpi-value">{{ stats.total }}</div><div class="kpi-label">Total</div></div>
-  </div>
+<!-- ═══════════════ KPIs ═══════════════ -->
+<div class="stats-grid">
+    <div class="stat-card stat-red">
+        <div class="stat-value">{{ stats.en_cours|default:0 }}</div>
+        <div class="stat-label">⚡ En cours</div>
+    </div>
+    <div class="stat-card stat-amber">
+        <div class="stat-value">{{ stats.a_venir|default:0 }}</div>
+        <div class="stat-label">⏰ À venir</div>
+    </div>
+    <div class="stat-card stat-blue">
+        <div class="stat-value">{{ stats.passees|default:0 }}</div>
+        <div class="stat-label">✅ Passées</div>
+    </div>
+    <div class="stat-card stat-purple">
+        <div class="stat-value">{{ stats.total|default:0 }}</div>
+        <div class="stat-label">📋 Total</div>
+    </div>
+</div>
 
-  <!-- Formulaire d'ajout -->
-  <div class="card" style="margin-bottom: 24px;">
-    <div class="card-head"><span>➕</span><span class="card-title">Planifier une indisponibilité</span></div>
+<!-- ═══════════════ FILTRES ═══════════════ -->
+<div class="filter-bar">
+    <button class="filter-chip active" data-filter="all"      onclick="filterIndispos('all', this)">📋 Toutes</button>
+    <button class="filter-chip"        data-filter="en_cours" onclick="filterIndispos('en_cours', this)">⚡ En cours</button>
+    <button class="filter-chip"        data-filter="a_venir"  onclick="filterIndispos('a_venir', this)">⏰ À venir</button>
+    <button class="filter-chip"        data-filter="passee"   onclick="filterIndispos('passee', this)">✅ Passées</button>
+    <input type="text" class="search-input" id="searchInput" placeholder="🔍 Rechercher..." oninput="filterIndispos()">
+</div>
+
+<!-- ═══════════════ LISTE ═══════════════ -->
+<div class="card">
+    <div class="card-head">
+        <span>📋</span>
+        <span class="card-title">Liste des indisponibilités</span>
+        <span class="card-sub" id="resultCount">{{ stats.total|default:0 }} entrée(s)</span>
+    </div>
     <div class="card-body">
-      <form id="indispoForm" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-        <div class="form-group">
-          <label class="form-label">Ressource *</label>
-          <select id="ressourceSelect" class="form-select" required>
-            <option value="">— Choisir une ressource —</option>
-            {% for r in ressources %}
-            <option value="{{ r.id }}" data-type="{{ r.type }}">{{ r.type_icon }} {{ r.nom }} ({{ r.type|title }})</option>
+        <div class="indispo-list" id="indispoList">
+
+            {% for i in indisponibilites %}
+            <div class="indispo-card {{ i.type_indispo }}"
+                 data-id="{{ i.id }}"
+                 data-statut="{{ i.statut }}"
+                 data-search="{{ i.titre|lower }} {{ i.ressource_nom|lower }} {{ i.description|lower }}">
+
+                <!-- Corps -->
+                <div class="indispo-body">
+
+                    <!-- En-tête : titre + badges -->
+                    <div class="indispo-header">
+                        <div class="indispo-title" title="{{ i.titre }}">{{ i.titre }}</div>
+                        <div class="indispo-badges">
+                            {# Badge TYPE #}
+                            <span class="badge-type
+                                {% if i.type_indispo == 'maintenance' %}badge-maintenance
+                                {% elif i.type_indispo == 'reservation_bloquee' %}badge-reservation
+                                {% else %}badge-fermeture{% endif %}">
+                                {% if i.type_indispo == 'maintenance' %}🔧 Maintenance
+                                {% elif i.type_indispo == 'reservation_bloquee' %}🚫 Bloquée
+                                {% else %}🚪 Fermeture{% endif %}
+                            </span>
+
+                            {# Badge STATUT #}
+                            <span class="badge-status
+                                {% if i.statut == 'en_cours' %}badge-en-cours
+                                {% elif i.statut == 'a_venir' %}badge-a-venir
+                                {% else %}badge-passee{% endif %}">
+                                {% if i.statut == 'en_cours' %}⚡ En cours
+                                {% elif i.statut == 'a_venir' %}⏰ À venir
+                                {% else %}✅ Passée{% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Méta-données -->
+                    <div class="indispo-meta">
+                        <div class="indispo-meta-item indispo-dates">
+                            📅&nbsp;<strong>{{ i.date_debut|date:"d/m/Y H:i" }}</strong>
+                            &nbsp;→&nbsp;
+                            <strong>{{ i.date_fin|date:"d/m/Y H:i" }}</strong>
+                        </div>
+                        <div class="indispo-meta-item indispo-resource">
+                            🏢&nbsp;<strong>{{ i.ressource_nom }}</strong>
+                        </div>
+                        {% if i.recurrence and i.recurrence != 'none' %}
+                        <div class="indispo-meta-item">
+                            🔁&nbsp;{{ i.recurrence|title }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if i.description %}
+                    <div class="indispo-desc">📝 {{ i.description }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Pied de carte -->
+                <div class="indispo-footer">
+                    <button class="btn btn-edit btn-sm" onclick="openEditModal('{{ i.id }}')">✏️ Modifier</button>
+                    <button class="btn btn-del btn-sm"  onclick="deleteIndispo('{{ i.id }}', '{{ i.titre|escapejs }}')">🗑️ Supprimer</button>
+                </div>
+            </div>
+            {% empty %}
+            <div class="empty-state">
+                <div class="empty-icon">📭</div>
+                <div style="font-size:15px;font-weight:600;margin-bottom:6px;">Aucune indisponibilité planifiée</div>
+                <div style="font-size:13px;">Cliquez sur <strong>➕ Nouvelle indisponibilité</strong> pour en ajouter une.</div>
+            </div>
             {% endfor %}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Type d'indisponibilité *</label>
-          <select id="typeIndispo" class="form-select" required>
-            <option value="maintenance">🔧 Maintenance programmée</option>
-            <option value="reservation_bloquee">🚫 Réservation bloquée</option>
-            <option value="fermeture">🚪 Fermeture exceptionnelle</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Titre *</label>
-          <input type="text" id="indispoTitre" class="form-input" placeholder="ex: Maintenance annuelle" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Description</label>
-          <textarea id="indispoDesc" class="form-textarea" rows="2" placeholder="Détails de l'indisponibilité..."></textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Date de début *</label>
-          <input type="datetime-local" id="indispoDebut" class="form-input" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Date de fin *</label>
-          <input type="datetime-local" id="indispoFin" class="form-input" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Récurrence</label>
-          <select id="indispoRecurrence" class="form-select">
-            <option value="none">Aucune</option>
-            <option value="daily">Quotidienne</option>
-            <option value="weekly">Hebdomadaire</option>
-            <option value="monthly">Mensuelle</option>
-          </select>
-        </div>
-        <div class="form-group" id="recurrenceEndGroup" style="display: none;">
-          <label class="form-label">Jusqu'au</label>
-          <input type="date" id="indispoRecurrenceEnd" class="form-input">
-        </div>
-        <div style="grid-column: span 2; display: flex; justify-content: flex-end;">
-          <button type="button" class="btn btn-primary" onclick="createIndisponibilite()">📅 Planifier</button>
-        </div>
-      </form>
-    </div>
-  </div>
 
-  <!-- Liste des indisponibilités -->
-  <div class="card">
-    <div class="card-head"><span>📋</span><span class="card-title">Indisponibilités planifiées</span></div>
-    <div class="card-body">
-      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-        {# FIX: pass event explicitly to filterIndispos #}
-        <button class="filter-tag active" onclick="filterIndispos(event, 'all')">Toutes</button>
-        <button class="filter-tag" onclick="filterIndispos(event, 'en_cours')">En cours</button>
-        <button class="filter-tag" onclick="filterIndispos(event, 'a_venir')">À venir</button>
-        <button class="filter-tag" onclick="filterIndispos(event, 'passees')">Passées</button>
-      </div>
-
-      {# Liste des cartes — à rendre côté serveur dans votre boucle réelle #}
-      {% for i in indisponibilites %}
-      <div class="indispo-card {{ i.type_indispo }}" data-statut="{{ i.statut }}" style="margin-bottom: 12px;">
-        <div class="indispo-header">
-          <span class="indispo-title">{{ i.titre }}</span>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <span class="indispo-type type-{{ i.type_indispo }}">{{ i.type_indispo|title }}</span>
-            <span class="status-badge status-{{ i.statut }}">{{ i.statut|title }}</span>
-            <button class="btn btn-ghost" style="padding:4px 8px; font-size:12px;" onclick="editIndispo('{{ i.id }}')">✏️</button>
-            <button class="btn btn-ghost" style="padding:4px 8px; font-size:12px; color:#f85149;" onclick="deleteIndispo('{{ i.id }}', '{{ i.titre|escapejs }}')">🗑️</button>
-          </div>
         </div>
-        <div class="indispo-date">
-          📅 {{ i.date_debut|date:"d/m/Y H:i" }} → {{ i.date_fin|date:"d/m/Y H:i" }}
-          {% if i.ressource_nom %} &nbsp;·&nbsp; 🏢 {{ i.ressource_nom }}{% endif %}
-        </div>
-        {% if i.description %}<p style="margin:8px 0 0; font-size:13px; color:var(--text2);">{{ i.description }}</p>{% endif %}
-      </div>
-      {% empty %}
-      <p style="color:var(--text2); text-align:center; padding:32px 0;">Aucune indisponibilité planifiée.</p>
-      {% endfor %}
     </div>
-  </div>
 </div>
 
-<!-- Modal d'édition -->
-<div id="editModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:1000;" onclick="if(event.target===this)closeEditModal()">
-  <div class="modal" style="background:var(--bg2); border-radius:12px; width:520px; max-width:95vw; padding:0;">
-    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
-      <h3 style="margin:0;">✏️ Modifier l'indisponibilité</h3>
-      <button class="modal-close" onclick="closeEditModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text2);">✕</button>
+<!-- ═══════════════ MODAL AJOUT / MODIFICATION ═══════════════ -->
+<div id="indispoModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+        <div class="modal-title" id="modalTitle">➕ Nouvelle indisponibilité</div>
+        <div class="modal-sub"   id="modalSub">Planifiez une maintenance, un blocage ou une fermeture exceptionnelle</div>
+
+        <form id="indispoForm" onsubmit="return false;">
+            <input type="hidden" id="editId" value="">
+
+            <!-- Section 1 : Général -->
+            <div class="form-section">
+                <div class="form-section-title">🏢 Informations générales</div>
+
+                <div class="form-row">
+                    <label class="form-label">Ressource <span style="color:var(--red)">*</span></label>
+                    <select id="ressourceSelect" class="form-select" required>
+                        <option value="">— Sélectionnez une ressource —</option>
+                        {% for r in ressources %}
+                        <option value="{{ r.id }}" data-type="{{ r.type }}">
+                            {{ r.type_icon }} {{ r.nom }} ({{ r.type|title }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Titre <span style="color:var(--red)">*</span></label>
+                    <input type="text" id="indispoTitre" class="form-input"
+                           placeholder="ex: Maintenance annuelle serveurs" required>
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Type d'indisponibilité <span style="color:var(--red)">*</span></label>
+                    <select id="typeIndispo" class="form-select">
+                        <option value="maintenance">🔧 Maintenance programmée</option>
+                        <option value="reservation_bloquee">🚫 Réservation bloquée</option>
+                        <option value="fermeture">🚪 Fermeture exceptionnelle</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Section 2 : Période -->
+            <div class="form-section">
+                <div class="form-section-title">⏰ Période d'indisponibilité</div>
+
+                <div class="form-row-double">
+                    <div class="form-row">
+                        <label class="form-label">Date de début <span style="color:var(--red)">*</span></label>
+                        <input type="datetime-local" id="dateDebut" class="form-input" required>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Date de fin <span style="color:var(--red)">*</span></label>
+                        <input type="datetime-local" id="dateFin" class="form-input" required>
+                    </div>
+                </div>
+
+                <div class="form-row-double">
+                    <div class="form-row">
+                        <label class="form-label">Récurrence</label>
+                        <select id="recurrence" class="form-select">
+                            <option value="none">Aucune</option>
+                            <option value="daily">📅 Quotidienne</option>
+                            <option value="weekly">📆 Hebdomadaire</option>
+                            <option value="monthly">📅 Mensuelle</option>
+                        </select>
+                    </div>
+                    <div class="form-row" id="recurrenceEndGroup" style="display:none">
+                        <label class="form-label">Fin de récurrence</label>
+                        <input type="date" id="recurrenceEnd" class="form-input">
+                        <div class="form-hint">Optionnel — laisser vide pour illimitée</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3 : Complémentaire -->
+            <div class="form-section">
+                <div class="form-section-title">📝 Informations complémentaires</div>
+                <div class="form-row">
+                    <label class="form-label">Description</label>
+                    <textarea id="description" class="form-input" rows="3"
+                              placeholder="Détails, responsable, impact sur les usagers..."></textarea>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost"   onclick="closeModal()">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveIndisponibilite()">💾 Enregistrer</button>
+            </div>
+        </form>
     </div>
-    <div style="padding:20px; display:grid; gap:14px;">
-      <input type="hidden" id="editId">
-      <div class="form-group">
-        <label class="form-label">Titre *</label>
-        <input type="text" id="editTitre" class="form-input" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Type *</label>
-        <select id="editType" class="form-select">
-          <option value="maintenance">🔧 Maintenance programmée</option>
-          <option value="reservation_bloquee">🚫 Réservation bloquée</option>
-          <option value="fermeture">🚪 Fermeture exceptionnelle</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Description</label>
-        <textarea id="editDesc" class="form-textarea form-input" rows="2"></textarea>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-        <div class="form-group">
-          <label class="form-label">Date de début *</label>
-          <input type="datetime-local" id="editDebut" class="form-input" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Date de fin *</label>
-          <input type="datetime-local" id="editFin" class="form-input" required>
-        </div>
-      </div>
-    </div>
-    <div style="padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px;">
-      <button class="btn btn-ghost" onclick="closeEditModal()">Annuler</button>
-      <button class="btn btn-primary" onclick="saveEditIndispo()">💾 Enregistrer</button>
-    </div>
-  </div>
 </div>
 
-{# FIX: données sérialisées proprement via json_script — évite le filtre stringformat inexistant #}
-{{ indisponibilites_json|json_script:"indisposRaw" }}
+<!-- Toast -->
+<div id="toast" class="toast-notify"></div>
 
 <script>
-// FIX: déclaration unique de `now`
-const now = new Date();
+const CSRF = '{{ csrf_token }}';
+let currentFilter = 'all';
 
-// FIX: event listener unique pour la récurrence
-document.getElementById('indispoRecurrence').addEventListener('change', function () {
-  document.getElementById('recurrenceEndGroup').style.display = this.value !== 'none' ? 'block' : 'none';
+// ── Récurrence toggle ──────────────────────────────────────
+document.getElementById('recurrence')?.addEventListener('change', function () {
+    document.getElementById('recurrenceEndGroup').style.display =
+        this.value !== 'none' ? 'block' : 'none';
 });
 
-function _isOk(data) {
-  return data && (data.status === 'success' || data.success === true);
+// ── Modal ──────────────────────────────────────────────────
+function openAddModal() {
+    document.getElementById('indispoForm').reset();
+    document.getElementById('editId').value = '';
+    document.getElementById('recurrenceEndGroup').style.display = 'none';
+    document.getElementById('modalTitle').innerHTML = '➕ Nouvelle indisponibilité';
+    document.getElementById('modalSub').innerHTML   = 'Planifiez une maintenance, un blocage ou une fermeture exceptionnelle';
+
+    const now      = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    document.getElementById('dateDebut').value = formatDateTime(now);
+    document.getElementById('dateFin').value   = formatDateTime(tomorrow);
+
+    document.getElementById('indispoModal').style.display = 'flex';
 }
 
-// FIX: construction de indisposData depuis json_script (pas de filtre stringformat)
-const _rawIndispos = JSON.parse(document.getElementById('indisposRaw').textContent);
-const indisposData = {};
-_rawIndispos.forEach(function (i) {
-  indisposData[i.id] = {
-    titre:       i.titre        || '',
-    description: i.description  || '',
-    type_indispo: i.type_indispo || 'maintenance',
-    // Les dates viennent du JSON ; on les reformate pour datetime-local (YYYY-MM-DDTHH:mm)
-    date_debut:  i.date_debut ? i.date_debut.slice(0, 16) : '',
-    date_fin:    i.date_fin   ? i.date_fin.slice(0, 16)   : '',
-  };
-});
+function openEditModal(id) {
+    const item = document.querySelector(`.indispo-card[data-id="${id}"]`);
+    if (!item) return;
 
-function createIndisponibilite() {
-  const ressourceSelect = document.getElementById('ressourceSelect');
-  const ressourceId = ressourceSelect.value;
-  const ressourceType = ressourceSelect.options[ressourceSelect.selectedIndex]?.dataset.type;
+    const title       = item.querySelector('.indispo-title')?.innerText.trim() || '';
+    const datesEl     = item.querySelector('.indispo-dates');
+    const datesText   = datesEl ? datesEl.innerText : '';
+    const resource    = item.querySelector('.indispo-resource strong')?.innerText.trim() || '';
+    const descDiv     = item.querySelector('.indispo-desc');
+    const description = descDiv ? descDiv.innerText.replace(/^📝\s*/, '').trim() : '';
 
-  if (!ressourceId) { alert('Veuillez choisir une ressource'); return; }
+    // Extraire les dates : format "📅 dd/mm/yyyy hh:mm → dd/mm/yyyy hh:mm"
+    const dateMatch = datesText.match(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s*→\s*(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/);
 
-  const data = {
-    ressource_id:   ressourceId,
-    ressource_type: ressourceType,
-    titre:          document.getElementById('indispoTitre').value.trim(),
-    description:    document.getElementById('indispoDesc').value,
-    type_indispo:   document.getElementById('typeIndispo').value,
-    date_debut:     document.getElementById('indispoDebut').value,
-    date_fin:       document.getElementById('indispoFin').value,
-    recurrence:     document.getElementById('indispoRecurrence').value,
-    recurrence_end: document.getElementById('indispoRecurrenceEnd').value,
-  };
+    document.getElementById('editId').value       = id;
+    document.getElementById('indispoTitre').value = title;
+    document.getElementById('description').value  = description;
+    document.getElementById('modalTitle').innerHTML = '✏️ Modifier l\'indisponibilité';
+    document.getElementById('modalSub').innerHTML   = 'Modifiez les informations ci-dessous';
 
-  if (!data.titre || !data.date_debut || !data.date_fin) {
-    alert('Veuillez remplir tous les champs obligatoires');
-    return;
-  }
+    if (dateMatch) {
+        document.getElementById('dateDebut').value = convertToDateTimeLocal(dateMatch[1], dateMatch[2]);
+        document.getElementById('dateFin').value   = convertToDateTimeLocal(dateMatch[3], dateMatch[4]);
+    }
 
-  fetch('/api/indisponibilite/ajouter/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-    body: JSON.stringify(data),
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (_isOk(data)) {
-        alert('✅ ' + (data.message || 'Indisponibilité créée'));
-        location.reload();
-      } else {
-        alert('❌ ' + (data.message || data.error || 'Erreur'));
-      }
+    // Sélectionner la ressource
+    const sel = document.getElementById('ressourceSelect');
+    for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].text.includes(resource)) { sel.selectedIndex = i; break; }
+    }
+
+    document.getElementById('indispoModal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('indispoModal').style.display = 'none';
+}
+
+// ── Sauvegarde ─────────────────────────────────────────────
+function saveIndisponibilite() {
+    const isEdit       = document.getElementById('editId').value !== '';
+    const ressourceSel = document.getElementById('ressourceSelect');
+    const ressourceId  = ressourceSel.value;
+    const ressourceType= ressourceSel.options[ressourceSel.selectedIndex]?.dataset.type;
+    const titre        = document.getElementById('indispoTitre').value.trim();
+    const typeIndispo  = document.getElementById('typeIndispo').value;
+    const dateDebut    = document.getElementById('dateDebut').value;
+    const dateFin      = document.getElementById('dateFin').value;
+    const description  = document.getElementById('description').value.trim();
+    const recurrence   = document.getElementById('recurrence').value;
+    const recurrenceEnd= document.getElementById('recurrenceEnd').value;
+
+    if (!ressourceId) { showToast('Veuillez sélectionner une ressource', 'error'); return; }
+    if (!titre)       { showToast('Le titre est obligatoire', 'error');             return; }
+    if (!dateDebut)   { showToast('La date de début est obligatoire', 'error');    return; }
+    if (!dateFin)     { showToast('La date de fin est obligatoire', 'error');      return; }
+    if (new Date(dateFin) <= new Date(dateDebut)) {
+        showToast('La date de fin doit être après la date de début', 'error');
+        return;
+    }
+
+    const payload = { ressource_id: ressourceId, ressource_type: ressourceType,
+                      titre, type_indispo: typeIndispo, date_debut: dateDebut,
+                      date_fin: dateFin, description, recurrence, recurrence_end: recurrenceEnd };
+    const url    = isEdit
+        ? `/api/indisponibilite/${document.getElementById('editId').value}/modifier/`
+        : '/api/indisponibilite/ajouter/';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify(payload)
     })
-    .catch(err => alert('❌ Erreur réseau : ' + err));
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'success' || d.success) {
+            showToast(d.message || (isEdit ? 'Indisponibilité modifiée' : 'Indisponibilité créée'), 'success');
+            closeModal();
+            setTimeout(() => location.reload(), 900);
+        } else {
+            showToast(d.message || d.error || 'Erreur lors de la sauvegarde', 'error');
+        }
+    })
+    .catch(() => showToast('Erreur réseau', 'error'));
 }
 
+// ── Suppression ────────────────────────────────────────────
 function deleteIndispo(id, titre) {
-  if (!confirm(`Supprimer l'indisponibilité "${titre}" ?`)) return;
-  fetch(`/api/indisponibilite/${id}/supprimer/`, {
-    method: 'DELETE',
-    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-  })
+    if (!confirm(`Supprimer l'indisponibilité "${titre}" ?\nCette action est irréversible.`)) return;
+    fetch(`/api/indisponibilite/${id}/supprimer/`, {
+        method: 'DELETE',
+        headers: { 'X-CSRFToken': CSRF }
+    })
     .then(r => r.json())
-    .then(data => {
-      if (_isOk(data)) {
-        location.reload();
-      } else {
-        alert('❌ ' + (data.message || data.error || 'Erreur'));
-      }
+    .then(d => {
+        if (d.status === 'success' || d.success) {
+            showToast('Indisponibilité supprimée', 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast(d.message || 'Erreur lors de la suppression', 'error');
+        }
+    })
+    .catch(() => showToast('Erreur réseau', 'error'));
+}
+
+// ── Filtres ─────────────────────────────────────────────────
+function filterIndispos(statut, btn) {
+    if (statut !== undefined) {
+        currentFilter = statut;
+        document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+    }
+
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    let visible = 0;
+
+    document.querySelectorAll('.indispo-card').forEach(card => {
+        const matchFilter = currentFilter === 'all' || card.dataset.statut === currentFilter;
+        const matchSearch = !searchTerm || (card.dataset.search || '').includes(searchTerm);
+        const show = matchFilter && matchSearch;
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
     });
+
+    document.getElementById('resultCount').textContent = visible + ' entrée(s)';
 }
 
-function editIndispo(id) {
-  const data = indisposData[id];
-  if (!data) { alert('Indisponibilité introuvable'); return; }
-  document.getElementById('editId').value    = id;
-  document.getElementById('editTitre').value = data.titre;
-  document.getElementById('editDesc').value  = data.description;
-  document.getElementById('editType').value  = data.type_indispo;
-  document.getElementById('editDebut').value = data.date_debut;
-  document.getElementById('editFin').value   = data.date_fin;
-  document.getElementById('editModal').style.display = 'flex';
+// ── Exports ─────────────────────────────────────────────────
+function exportCSV() { window.location.href = '/api/indisponibilites/export-csv/'; }
+function exportPDF()  {
+    showToast('Génération du PDF en cours...', 'info');
+    window.open('/api/indisponibilites/export-pdf/', '_blank');
 }
 
-function closeEditModal() {
-  document.getElementById('editModal').style.display = 'none';
+// ── Utilitaires ──────────────────────────────────────────────
+function formatDateTime(date) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function convertToDateTimeLocal(dateStr, timeStr) {
+    const [d, m, y] = dateStr.split('/');
+    return `${y}-${m}-${d}T${timeStr}`;
 }
 
-function saveEditIndispo() {
-  const id = document.getElementById('editId').value;
-  const payload = {
-    titre:        document.getElementById('editTitre').value.trim(),
-    description:  document.getElementById('editDesc').value,
-    type_indispo: document.getElementById('editType').value,
-    date_debut:   document.getElementById('editDebut').value,
-    date_fin:     document.getElementById('editFin').value,
-  };
-  if (!payload.titre || !payload.date_debut || !payload.date_fin) {
-    alert('Veuillez remplir tous les champs obligatoires');
-    return;
-  }
-  // FIX: méthode PUT pour correspondre à la vue Django
-  fetch(`/api/indisponibilite/${id}/modifier/`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-    body: JSON.stringify(payload),
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (_isOk(data)) {
-        alert('✅ Indisponibilité modifiée');
-        location.reload();
-      } else {
-        alert('❌ ' + (data.message || data.error || 'Erreur'));
-      }
-    });
+function showToast(message, type) {
+    const t = document.getElementById('toast');
+    t.textContent = message;
+    t.className   = `toast-notify toast-${type} show`;
+    setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-// FIX: event passé explicitement, plus de référence à `event` global
-function filterIndispos(event, statut) {
-  document.querySelectorAll('.filter-tag').forEach(tag => tag.classList.remove('active'));
-  event.target.classList.add('active');
-  document.querySelectorAll('.indispo-card').forEach(card => {
-    card.style.display = (statut === 'all' || card.dataset.statut === statut) ? 'block' : 'none';
-  });
-}
+// Init
+document.addEventListener('DOMContentLoaded', () => filterIndispos('all'));
 </script>
 {% endblock %}

@@ -7,6 +7,7 @@
 {% block topbar_actions %}
 <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
 <button class="btn btn-ghost btn-sm" onclick="exportResourcesCSV()">⬇️ Exporter CSV</button>
+<button class="btn btn-ghost btn-sm" onclick="exportZonesPDF()">📄 Rapport zones PDF</button>
 <button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Ajouter</button>
 {% endblock %}
 
@@ -44,7 +45,7 @@
 .zone-badge.disponible{background:rgba(45,186,111,.12);color:#2dba6f}
 .zone-badge.occupe{background:rgba(227,179,65,.12);color:#e3b341}
 .zone-badge.plein{background:rgba(248,81,73,.12);color:#f85149}
-.zone-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:8px}
+.zone-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap}
 /* Matériel */
 .materiel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
 .materiel-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.2s}
@@ -55,10 +56,10 @@
 .materiel-name{font-size:14px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .materiel-category{font-size:10px;padding:2px 8px;border-radius:12px;background:var(--blue3);color:var(--blue2);flex-shrink:0}
 .materiel-body{padding:12px 14px}
-.materiel-info{font-size:12px;color:var(--text2);line-height:1.7}
+.materiel-info{font-size:12px;color:var(--text2);line-height:1.8}
 .materiel-info div{display:flex;align-items:baseline;gap:6px}
 .inv-badge{display:inline-block;font-family:monospace;font-size:11px;background:rgba(163,113,247,.12);color:var(--purple);border:1px solid rgba(163,113,247,.25);border-radius:6px;padding:2px 8px;font-weight:600}
-.materiel-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.materiel-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 /* Statut badges */
 .s-disponible{background:rgba(45,186,111,.12);color:#2dba6f;border:1px solid rgba(45,186,111,.25);padding:2px 8px;border-radius:12px;font-size:10px}
 .s-utilise{background:rgba(31,111,235,.12);color:var(--blue2);border:1px solid rgba(31,111,235,.25);padding:2px 8px;border-radius:12px;font-size:10px}
@@ -71,7 +72,7 @@
 .filter-select{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none}
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:1000}
-.modal{background:var(--bg2);border-radius:14px;width:600px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column}
+.modal{background:var(--bg2);border-radius:14px;width:680px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column}
 .modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--border);flex-shrink:0}
 .modal-header h3{margin:0;font-size:16px}
 .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);line-height:1}
@@ -84,8 +85,13 @@
 .form-textarea{resize:vertical;min-height:72px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.inv-preview{background:rgba(163,113,247,.08);border:1px dashed rgba(163,113,247,.35);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--purple);display:flex;align-items:center;gap:8px}
-.inv-preview strong{font-family:monospace;font-size:15px}
+/* Numéro inventaire */
+.inv-section{background:rgba(163,113,247,.06);border:1px dashed rgba(163,113,247,.35);border-radius:10px;padding:14px;margin-bottom:16px}
+.inv-section-title{font-size:12px;font-weight:700;color:var(--purple);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
+.inv-preview{background:rgba(163,113,247,.08);border:1px solid rgba(163,113,247,.25);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px;color:var(--purple);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inv-preview strong{font-family:monospace;font-size:16px;letter-spacing:1px}
+/* Séparateur de section */
+.section-divider{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--border2)}
 /* Toast */
 .toast{position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:10px;font-size:14px;color:#fff;font-weight:500;z-index:9999;opacity:0;transform:translateY(10px);transition:.3s;max-width:360px}
 .toast.show{opacity:1;transform:translateY(0)}
@@ -133,8 +139,8 @@
     <div class="zone-card"
          data-id="{{ bureau.id }}"
          data-name="{{ bureau.nom|lower }}"
-         data-etage="{{ bureau.etage|default:"0" }}"
-         data-securite="{{ bureau.niveau_securite|default:"standard" }}"
+         data-etage="{{ bureau.etage|default:'0' }}"
+         data-securite="{{ bureau.niveau_securite|default:'standard' }}"
          onclick="selectZone('{{ bureau.id }}', '{{ bureau.nom }}')">
       <div class="zone-header">
         <span class="zone-name">{{ bureau.nom }}</span>
@@ -144,11 +150,11 @@
         <div class="zone-capacity"><span>👥 Capacité</span><span><strong>{{ bureau.capacite_max|default:"10" }}</strong> pers</span></div>
         <div class="zone-bar">
           <div class="zone-fill {% if bureau.taux_occupation >= 70 %}high{% elif bureau.taux_occupation >= 30 %}mid{% else %}low{% endif %}"
-               style="width:{{ bureau.taux_occupation|default:"0" }}%"></div>
+               style="width:{{ bureau.taux_occupation|default:'0' }}%"></div>
         </div>
         <div class="zone-status">
-          <span>📊 <strong id="pct-{{ bureau.id }}">{{ bureau.taux_occupation|default:"0" }}%</strong></span>
-          <span class="zone-badge {% if bureau.taux_occupation >= 70 %}plein{% elif bureau.taux_occupation >= 30 %}occupe{% else %}disponible{% endif %}" id="badge-{{ bureau.id }}">
+          <span>📊 <strong>{{ bureau.taux_occupation|default:"0" }}%</strong></span>
+          <span class="zone-badge {% if bureau.taux_occupation >= 70 %}plein{% elif bureau.taux_occupation >= 30 %}occupe{% else %}disponible{% endif %}">
             {% if bureau.taux_occupation >= 70 %}🔴 Plein{% elif bureau.taux_occupation >= 30 %}🟡 Occupé{% else %}🟢 Disponible{% endif %}
           </span>
         </div>
@@ -158,8 +164,9 @@
         </div>
       </div>
       <div class="zone-footer">
-        <button class="btn btn-edit btn-sm" onclick="event.stopPropagation(); editZone('{{ bureau.id }}','{{ bureau.nom }}','{{ bureau.code_bureau|default:"" }}','{{ bureau.etage|default:"0" }}','{{ bureau.capacite_max|default:"10" }}','{{ bureau.niveau_securite|default:"standard" }}','{{ bureau.description|default:"" }}')">✏️ Modifier</button>
+        <button class="btn btn-edit btn-sm" onclick="event.stopPropagation(); editZone('{{ bureau.id }}','{{ bureau.nom }}','{{ bureau.code_bureau|default:'' }}','{{ bureau.etage|default:'0' }}','{{ bureau.capacite_max|default:'10' }}','{{ bureau.niveau_securite|default:'standard' }}','{{ bureau.description|default:'' }}')">✏️ Modifier</button>
         <a href="{% url 'bureau_detail' bureau.id %}" class="btn btn-ghost btn-sm" onclick="event.stopPropagation()">📊 Détail</a>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); exportZonePDF('{{ bureau.id }}', '{{ bureau.nom }}')">📄 PDF</button>
         <button class="btn btn-del btn-sm" onclick="event.stopPropagation(); deleteZone('{{ bureau.id }}', '{{ bureau.nom }}')">🗑️</button>
       </div>
     </div>
@@ -183,7 +190,7 @@
 <!-- ═══════════════════════ PANEL MATÉRIEL ═══════════════════════ -->
 <div id="panelMateriel" style="display:none">
   <div class="filters-bar">
-    <input type="text" id="searchMateriel" class="search-input" placeholder="🔍 Rechercher (nom, inventaire, série...)" oninput="filterMateriel()">
+    <input type="text" id="searchMateriel" class="search-input" placeholder="🔍 Rechercher (nom, inventaire, série, fournisseur...)" oninput="filterMateriel()">
     <select id="categorieFilter" class="filter-select" onchange="filterMateriel()">
       <option value="all">Toutes catégories</option>
       <option value="informatique">💻 Informatique</option>
@@ -210,7 +217,7 @@
     <div class="materiel-card"
          data-categorie="{{ mat.categorie }}"
          data-statut="{{ mat.statut }}"
-         data-nom="{{ mat.nom|lower }} {{ mat.num_inventaire|default:''|lower }} {{ mat.numero_serie|default:''|lower }}">
+         data-nom="{{ mat.nom|lower }} {{ mat.num_inventaire|default:''|lower }} {{ mat.numero_serie|default:''|lower }} {{ mat.fournisseur|default:''|lower }}">
       <div class="materiel-img">
         {% if mat.photo %}<img src="{{ mat.photo }}" alt="{{ mat.nom }}">
         {% elif mat.categorie == 'informatique' %}💻
@@ -231,11 +238,21 @@
           {% if mat.num_inventaire %}
           <div>🏷️ <span class="inv-badge">{{ mat.num_inventaire }}</span></div>
           {% endif %}
+          {% if mat.fournisseur %}
+          <div>🏢 Fournisseur : <strong>{{ mat.fournisseur }}</strong></div>
+          {% endif %}
           {% if mat.marque or mat.modele %}
           <div>🏭 {{ mat.marque }} {{ mat.modele }}</div>
           {% endif %}
           {% if mat.numero_serie %}
           <div>🔢 S/N : <code style="font-size:11px">{{ mat.numero_serie }}</code></div>
+          {% endif %}
+          {% if mat.processeur or mat.ram or mat.stockage %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+            {% if mat.processeur %}<span style="background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:10px">CPU: {{ mat.processeur }}</span>{% endif %}
+            {% if mat.ram %}<span style="background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:10px">RAM: {{ mat.ram }}</span>{% endif %}
+            {% if mat.stockage %}<span style="background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:10px">HDD: {{ mat.stockage }}</span>{% endif %}
+          </div>
           {% endif %}
           {% if mat.zone %}
           <div>🚪 Zone : {{ mat.zone }}</div>
@@ -253,7 +270,8 @@
       </div>
       <div class="materiel-footer">
         <button class="btn btn-edit btn-sm" onclick="editMateriel('{{ mat.id }}')">✏️ Modifier</button>
-        <button class="btn btn-del btn-sm" onclick="deleteMateriel('{{ mat.id }}', '{{ mat.nom }}')">🗑️ Supprimer</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportMaterielPDF('{{ mat.id }}')">📄 PDF</button>
+        <button class="btn btn-del btn-sm" onclick="deleteMateriel('{{ mat.id }}', '{{ mat.nom }}')">🗑️</button>
       </div>
     </div>
     {% empty %}
@@ -335,19 +353,45 @@
 
       <!-- ── Formulaire Matériel ── -->
       <div id="formMateriel" style="display:none">
-        <!-- Prévisualisation numéro inventaire -->
-        <div class="inv-preview" id="invPreview">
-          🏷️ Numéro d'inventaire généré automatiquement : <strong id="invPreviewVal">INF-2026-00001</strong>
+
+        <!-- SECTION : Numéro d'inventaire -->
+        <div class="inv-section">
+          <div class="inv-section-title">🏷️ Numéro d'inventaire</div>
+          <div class="form-row3">
+            <div class="form-group" style="margin-bottom:8px">
+              <label class="form-label">Entreprise fournisseur *</label>
+              <input type="text" class="form-input" id="matFournisseur" placeholder="ex: DELL, HP, SAMSUNG" oninput="updateInvPreview()" style="text-transform:uppercase">
+            </div>
+            <div class="form-group" style="margin-bottom:8px">
+              <label class="form-label">Année d'achat *</label>
+              <input type="number" class="form-input" id="matAnneeInv" placeholder="ex: 2026" min="2000" max="2100" oninput="updateInvPreview()">
+            </div>
+            <div class="form-group" style="margin-bottom:8px">
+              <label class="form-label">N° séquentiel</label>
+              <input type="number" class="form-input" id="matSeqInv" placeholder="auto" min="1" oninput="updateInvPreview()" title="Laissez vide pour numérotation automatique">
+            </div>
+          </div>
+          <!-- Prévisualisation -->
+          <div class="inv-preview" id="invPreview">
+            🏷️ Aperçu : <strong id="invPreviewVal">—</strong>
+          </div>
+          <!-- Champ inventaire complet (affiché en modification) -->
+          <div id="invExistantWrap" style="display:none;margin-top:8px">
+            <label class="form-label">N° inventaire existant</label>
+            <input type="text" class="form-input" id="matInvComplet" readonly style="font-family:monospace;color:var(--purple);background:var(--bg4)">
+          </div>
         </div>
 
+        <!-- SECTION : Informations générales -->
+        <div class="section-divider">Informations générales</div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Nom *</label>
-            <input type="text" class="form-input" id="matNom" placeholder="ex: Ordinateur portable Dell" required>
+            <label class="form-label">Nom du matériel *</label>
+            <input type="text" class="form-input" id="matNom" placeholder="ex: Ordinateur portable Dell Latitude" required>
           </div>
           <div class="form-group">
             <label class="form-label">Catégorie</label>
-            <select class="form-select" id="matCategorie" onchange="updateInvPreview()">
+            <select class="form-select" id="matCategorie" onchange="updateInvPreview(); toggleMachineFields()">
               <option value="informatique">💻 Informatique</option>
               <option value="mobilier">🪑 Mobilier</option>
               <option value="audiovisuel">📽️ Audiovisuel</option>
@@ -362,11 +406,11 @@
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Marque</label>
-            <input type="text" class="form-input" id="matMarque" placeholder="ex: Dell, HP, Samsung...">
+            <input type="text" class="form-input" id="matMarque" placeholder="ex: Dell, HP, Samsung">
           </div>
           <div class="form-group">
             <label class="form-label">Modèle</label>
-            <input type="text" class="form-input" id="matModele" placeholder="ex: Latitude 5520">
+            <input type="text" class="form-input" id="matModele" placeholder="ex: Latitude 5520, ProBook 450">
           </div>
         </div>
         <div class="form-row">
@@ -376,11 +420,49 @@
           </div>
           <div class="form-group">
             <label class="form-label">Date d'achat</label>
-            <input type="date" class="form-input" id="matDateAchat">
+            <input type="date" class="form-input" id="matDateAchat" onchange="syncAnneeFromDate()">
           </div>
         </div>
+
+        <!-- SECTION : Spécifications machine (affichées selon la catégorie) -->
+        <div id="machineSpecsSection" style="display:none">
+          <div class="section-divider">⚙️ Spécifications techniques</div>
+          <div class="form-row3">
+            <div class="form-group">
+              <label class="form-label">Processeur (CPU)</label>
+              <input type="text" class="form-input" id="matProcesseur" placeholder="ex: Intel i7-12e gén.">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mémoire RAM</label>
+              <input type="text" class="form-input" id="matRam" placeholder="ex: 16 Go DDR4">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Stockage</label>
+              <input type="text" class="form-input" id="matStockage" placeholder="ex: 512 Go SSD NVMe">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Système d'exploitation</label>
+              <input type="text" class="form-input" id="matOS" placeholder="ex: Windows 11 Pro">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Résolution écran</label>
+              <input type="text" class="form-input" id="matEcran" placeholder="ex: 15.6 pouces FHD">
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION : Affectation -->
+        <div class="section-divider">Affectation & statut</div>
         <div class="form-row">
-          
+          <div class="form-group">
+            <label class="form-label">Zone assignée</label>
+            <select class="form-select" id="matZone">
+              <option value="">— Aucune —</option>
+              {% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}
+            </select>
+          </div>
           <div class="form-group">
             <label class="form-label">Statut</label>
             <select class="form-select" id="matStatut">
@@ -393,11 +475,8 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Zone assignée</label>
-            <select class="form-select" id="matZone">
-              <option value="">— Aucune —</option>
-              {% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}
-            </select>
+            <label class="form-label">Valeur d'achat (DA)</label>
+            <input type="text" class="form-input" id="matValeur" placeholder="ex: 150 000">
           </div>
           <div class="form-group">
             <label class="form-label">Photo (URL)</label>
@@ -406,12 +485,11 @@
         </div>
         <div class="form-group">
           <label class="form-label">Description / Remarques</label>
-          <textarea class="form-textarea" id="matDesc" rows="2" placeholder="État, accessoires inclus, localisation précise..."></textarea>
+          <textarea class="form-textarea" id="matDesc" rows="2" placeholder="État, accessoires inclus, localisation précise, garantie..."></textarea>
         </div>
 
-        <!-- Champs cachés pour édition -->
+        <!-- Champs cachés -->
         <input type="hidden" id="materielId">
-        <input type="hidden" id="matInvExistant">
 
         <div class="modal-footer" style="padding:0;border:none;margin-top:4px">
           <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
@@ -429,7 +507,11 @@
 const CSRF = '{{ csrf_token }}';
 let materielsData = {{ materiels_json|safe|default:'[]' }};
 let selectedZoneId = null;
-let invCounters = {};
+
+const prefixes = {
+  informatique:'INF', mobilier:'MOB', audiovisuel:'AUD',
+  imprimante:'IMP', securite:'SEC', vehicule:'VEH', laboratoire:'LAB', autre:'MAT'
+};
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -442,9 +524,9 @@ function switchTab(tab) {
 
 // ─── Filtres ─────────────────────────────────────────────────────────────────
 function filterZones() {
-  const q  = document.getElementById('searchZone').value.toLowerCase();
-  const et = document.getElementById('etageFilter').value;
-  const sec= document.getElementById('securiteFilter').value;
+  const q   = document.getElementById('searchZone').value.toLowerCase();
+  const et  = document.getElementById('etageFilter').value;
+  const sec = document.getElementById('securiteFilter').value;
   document.querySelectorAll('#zonesGrid .zone-card').forEach(c => {
     const ok = c.dataset.name.includes(q)
       && (et  === 'all' || c.dataset.etage    === et)
@@ -454,15 +536,48 @@ function filterZones() {
 }
 
 function filterMateriel() {
-  const q  = document.getElementById('searchMateriel').value.toLowerCase();
-  const cat= document.getElementById('categorieFilter').value;
-  const st = document.getElementById('statutFilter').value;
+  const q   = document.getElementById('searchMateriel').value.toLowerCase();
+  const cat = document.getElementById('categorieFilter').value;
+  const st  = document.getElementById('statutFilter').value;
   document.querySelectorAll('#materielGrid .materiel-card').forEach(c => {
     const ok = c.dataset.nom.includes(q)
       && (cat === 'all' || c.dataset.categorie === cat)
       && (st  === 'all' || c.dataset.statut    === st);
     c.style.display = ok ? '' : 'none';
   });
+}
+
+// ─── Numéro d'inventaire ─────────────────────────────────────────────────────
+function updateInvPreview() {
+  const fournisseur = (document.getElementById('matFournisseur').value || '').trim().toUpperCase().replace(/\s+/g, '-').slice(0, 10);
+  const cat         = document.getElementById('matCategorie').value;
+  const prefix      = prefixes[cat] || 'MAT';
+  const annee       = document.getElementById('matAnneeInv').value || new Date().getFullYear();
+  const seqInput    = document.getElementById('matSeqInv').value;
+  const seqNum      = seqInput ? String(seqInput).padStart(5, '0') : 'XXXXX';
+
+  let preview = '';
+  if (fournisseur) {
+    preview = `${fournisseur}-${prefix}-${annee}-${seqNum}`;
+  } else {
+    preview = `${prefix}-${annee}-${seqNum}`;
+  }
+  document.getElementById('invPreviewVal').textContent = preview;
+}
+
+function syncAnneeFromDate() {
+  const dateVal = document.getElementById('matDateAchat').value;
+  if (dateVal) {
+    const annee = dateVal.split('-')[0];
+    document.getElementById('matAnneeInv').value = annee;
+    updateInvPreview();
+  }
+}
+
+function toggleMachineFields() {
+  const cat = document.getElementById('matCategorie').value;
+  const show = ['informatique', 'audiovisuel', 'imprimante', 'laboratoire'].includes(cat);
+  document.getElementById('machineSpecsSection').style.display = show ? 'block' : 'none';
 }
 
 // ─── Zones ───────────────────────────────────────────────────────────────────
@@ -475,7 +590,7 @@ function selectZone(id, name) {
   document.getElementById('detailTitle').textContent = name;
   document.getElementById('zoneDetail').style.display = 'block';
   fetch(`/api/bureau/${id}/stats/`).then(r => r.json()).then(data => {
-    const max = Math.max(...data.acces_par_jour, 1);
+    const max  = Math.max(...data.acces_par_jour, 1);
     const bars = data.acces_par_jour.map((v, i) =>
       `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;width:36px">
         <div style="width:20px;background:var(--blue);border-radius:4px;height:${Math.round(v/max*80)+4}px;min-height:4px"></div>
@@ -514,14 +629,14 @@ function closeDetail() {
 }
 
 function editZone(id, nom, code, etage, capacite, securite, desc) {
-  document.getElementById('modalTitle').textContent = '✏️ Modifier la zone';
-  document.getElementById('zoneId').value       = id;
-  document.getElementById('zoneNom').value      = nom;
-  document.getElementById('zoneCode').value     = code;
-  document.getElementById('zoneEtage').value    = etage;
-  document.getElementById('zoneCapacite').value = capacite;
-  document.getElementById('zoneSecurite').value = securite;
-  document.getElementById('zoneDesc').value     = desc;
+  document.getElementById('modalTitle').textContent  = '✏️ Modifier la zone';
+  document.getElementById('zoneId').value            = id;
+  document.getElementById('zoneNom').value           = nom;
+  document.getElementById('zoneCode').value          = code;
+  document.getElementById('zoneEtage').value         = etage;
+  document.getElementById('zoneCapacite').value      = capacite;
+  document.getElementById('zoneSecurite').value      = securite;
+  document.getElementById('zoneDesc').value          = desc;
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab('zone');
 }
@@ -533,42 +648,40 @@ function deleteZone(id, name) {
 }
 
 // ─── Matériel ─────────────────────────────────────────────────────────────────
-const prefixes = {
-  informatique:'INF', mobilier:'MOB', audiovisuel:'AUD',
-  imprimante:'IMP', securite:'SEC', vehicule:'VEH', laboratoire:'LAB', autre:'MAT'
-};
-
-function updateInvPreview() {
-  const cat    = document.getElementById('matCategorie').value;
-  const prefix = prefixes[cat] || 'MAT';
-  const annee  = new Date().getFullYear();
-  const existing = materielsData.filter(m => m.categorie === cat).length;
-  const seq    = existing + (invCounters[cat] || 0) + 1;
-  const preview= `${prefix}-${annee}-${String(seq).padStart(5,'0')}`;
-  document.getElementById('invPreviewVal').textContent = preview;
-}
-
 function editMateriel(id) {
   const m = materielsData.find(x => x.id === id);
   if (!m) return;
-  document.getElementById('modalTitle').textContent = '✏️ Modifier le matériel';
-  document.getElementById('materielId').value    = id;
-  document.getElementById('matInvExistant').value= m.num_inventaire || '';
-  document.getElementById('matNom').value        = m.nom || '';
-  document.getElementById('matCategorie').value  = m.categorie || 'informatique';
-  document.getElementById('matMarque').value     = m.marque || '';
-  document.getElementById('matModele').value     = m.modele || '';
-  document.getElementById('matSerie').value      = m.numero_serie || '';
-  document.getElementById('matDateAchat').value  = m.date_achat || '';
-  document.getElementById('matValeur').value     = m.valeur || '';
-  document.getElementById('matStatut').value     = m.statut || 'disponible';
-  document.getElementById('matZone').value       = m.zone || '';
-  document.getElementById('matPhoto').value      = m.photo || '';
-  document.getElementById('matDesc').value       = m.description || '';
-  const inv = m.num_inventaire;
-  document.getElementById('invPreview').innerHTML = inv
-    ? `🏷️ Numéro d'inventaire : <strong id="invPreviewVal" style="font-family:monospace;font-size:15px">${inv}</strong>`
-    : `🏷️ Numéro d'inventaire non assigné`;
+  document.getElementById('modalTitle').textContent      = '✏️ Modifier le matériel';
+  document.getElementById('materielId').value            = id;
+  document.getElementById('matNom').value                = m.nom || '';
+  document.getElementById('matCategorie').value          = m.categorie || 'informatique';
+  document.getElementById('matFournisseur').value        = m.fournisseur || '';
+  document.getElementById('matMarque').value             = m.marque || '';
+  document.getElementById('matModele').value             = m.modele || '';
+  document.getElementById('matSerie').value              = m.numero_serie || '';
+  document.getElementById('matDateAchat').value          = m.date_achat || '';
+  document.getElementById('matAnneeInv').value           = m.annee_inv || (m.date_achat ? m.date_achat.slice(0,4) : '');
+  document.getElementById('matSeqInv').value             = m.seq_inv || '';
+  document.getElementById('matProcesseur').value         = m.processeur || '';
+  document.getElementById('matRam').value                = m.ram || '';
+  document.getElementById('matStockage').value           = m.stockage || '';
+  document.getElementById('matOS').value                 = m.os || '';
+  document.getElementById('matEcran').value              = m.ecran || '';
+  document.getElementById('matStatut').value             = m.statut || 'disponible';
+  document.getElementById('matZone').value               = m.zone || '';
+  document.getElementById('matValeur').value             = m.valeur || '';
+  document.getElementById('matPhoto').value              = m.photo || '';
+  document.getElementById('matDesc').value               = m.description || '';
+  // Afficher le numéro existant
+  if (m.num_inventaire) {
+    document.getElementById('invExistantWrap').style.display = 'block';
+    document.getElementById('matInvComplet').value = m.num_inventaire;
+    document.getElementById('invPreviewVal').textContent = m.num_inventaire;
+  } else {
+    document.getElementById('invExistantWrap').style.display = 'none';
+    updateInvPreview();
+  }
+  toggleMachineFields();
   document.getElementById('mainModal').style.display = 'flex';
   switchModalTab('materiel');
 }
@@ -588,74 +701,98 @@ async function saveMateriel() {
   if (!nom) { showToast('Le nom est obligatoire', 'err'); return; }
 
   const btn = document.getElementById('btnSaveMat');
-  btn.disabled = true;
+  btn.disabled    = true;
   btn.textContent = '⏳ Enregistrement...';
+
+  const fournisseur = (document.getElementById('matFournisseur').value || '').trim().toUpperCase();
+  const anneeInv    = document.getElementById('matAnneeInv').value || new Date().getFullYear();
+  const seqInv      = document.getElementById('matSeqInv').value || '';
 
   const data = {
     id:           document.getElementById('materielId').value,
     nom,
     categorie:    document.getElementById('matCategorie').value,
+    fournisseur,
+    annee_inv:    anneeInv,
+    seq_inv:      seqInv,
     marque:       document.getElementById('matMarque').value,
     modele:       document.getElementById('matModele').value,
     numero_serie: document.getElementById('matSerie').value,
     date_achat:   document.getElementById('matDateAchat').value,
-    valeur:       document.getElementById('matValeur').value,
+    processeur:   document.getElementById('matProcesseur').value,
+    ram:          document.getElementById('matRam').value,
+    stockage:     document.getElementById('matStockage').value,
+    os:           document.getElementById('matOS').value,
+    ecran:        document.getElementById('matEcran').value,
     statut:       document.getElementById('matStatut').value,
     zone:         document.getElementById('matZone').value,
+    valeur:       document.getElementById('matValeur').value,
     photo:        document.getElementById('matPhoto').value,
     description:  document.getElementById('matDesc').value,
   };
 
   try {
     const r = await fetch('/api/materiel/ajouter/', {
-      method: 'POST',
+      method:  'POST',
       headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
-      body: JSON.stringify(data),
+      body:    JSON.stringify(data),
     });
     const d = await r.json();
     if (d.status === 'success') {
-      if (d.num_inventaire && !data.id) {
-        showToast(`✅ ${nom} ajouté — N° ${d.num_inventaire}`, 'ok');
-        const cat = data.categorie;
-        invCounters[cat] = (invCounters[cat] || 0) + 1;
-      } else {
-        showToast(`✅ ${nom} modifié`, 'ok');
-      }
+      showToast(data.id ? `✅ ${nom} modifié` : `✅ ${nom} ajouté — N° ${d.num_inventaire}`, 'ok');
       closeModal();
       setTimeout(() => location.reload(), 1000);
     } else {
-      showToast(d.message || 'Erreur lors de l\'enregistrement', 'err');
+      showToast(d.message || 'Erreur', 'err');
     }
   } catch(e) {
     showToast('Erreur réseau', 'err');
   } finally {
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = '💾 Enregistrer';
   }
+}
+
+// ─── Export PDF ───────────────────────────────────────────────────────────────
+function exportMaterielPDF(id) {
+  showToast('Génération du PDF...', 'info');
+  window.open(`/api/materiel/${id}/pdf/`, '_blank');
+}
+
+function exportZonePDF(id, nom) {
+  showToast(`Génération du rapport PDF — ${nom}...`, 'info');
+  window.open(`/api/zone/${id}/pdf/`, '_blank');
+}
+
+function exportZonesPDF() {
+  showToast('Génération du rapport global...', 'info');
+  window.open('/api/zones/rapport-pdf/', '_blank');
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 function openAddModal(type) {
   document.getElementById('modalTitle').textContent = type === 'zone' ? '➕ Nouvelle zone' : '➕ Nouveau matériel';
-  // Reset zone
   ['zoneId','zoneNom','zoneCode','zoneDesc'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('zoneEtage').value    = '0';
   document.getElementById('zoneCapacite').value = '10';
-  document.getElementById('zoneSecurite').value = 'standard';
-  document.getElementById('zoneStatut').value   = 'actif';
-  // Reset matériel
-  ['materielId','matNom','matMarque','matModele','matSerie','matDateAchat','matValeur','matPhoto','matDesc','matInvExistant'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
+  ['matNom','matFournisseur','matAnneeInv','matSeqInv','matMarque','matModele','matSerie',
+   'matDateAchat','matProcesseur','matRam','matStockage','matOS','matEcran',
+   'matValeur','matPhoto','matDesc','materielId'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
-  document.getElementById('matCategorie').value = 'informatique';
-  document.getElementById('matStatut').value    = 'disponible';
-  document.getElementById('matZone').value      = '';
-  document.getElementById('invPreview').innerHTML =
-    `🏷️ Numéro d'inventaire généré automatiquement : <strong id="invPreviewVal">INF-${new Date().getFullYear()}-00001</strong>`;
+  document.getElementById('matAnneeInv').value           = new Date().getFullYear();
+  document.getElementById('matCategorie').value          = 'informatique';
+  document.getElementById('matStatut').value             = 'disponible';
+  document.getElementById('invExistantWrap').style.display = 'none';
+  document.getElementById('mainModal').style.display     = 'flex';
+  toggleMachineFields();
   updateInvPreview();
+  switchModalTab(type);
+}
 
-  document.getElementById('mainModal').style.display = 'flex';
-  switchModalTab(type || 'zone');
+function closeModal() {
+  document.getElementById('mainModal').style.display = 'none';
 }
 
 function switchModalTab(tab) {
@@ -663,47 +800,23 @@ function switchModalTab(tab) {
   document.getElementById('formMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
   document.getElementById('modalTabZone').classList.toggle('active',     tab === 'zone');
   document.getElementById('modalTabMateriel').classList.toggle('active', tab === 'materiel');
-  if (tab === 'materiel') updateInvPreview();
-}
-
-function closeModal() {
-  document.getElementById('mainModal').style.display = 'none';
-}
-
-// ─── Occupation temps réel ─────────────────────────────────────────────────────
-function refreshOccupation() {
-  fetch('/api/occupation/').then(r => r.json()).then(data => {
-    data.bureaux.forEach(b => {
-      const pct  = document.getElementById('pct-' + b.id);
-      const badge= document.getElementById('badge-' + b.id);
-      const fill = document.querySelector(`.zone-card[data-id="${b.id}"] .zone-fill`);
-      if (pct)   pct.textContent  = b.taux + '%';
-      if (fill) { fill.style.width = b.taux + '%'; fill.className = 'zone-fill ' + (b.taux>=70?'high':b.taux>=30?'mid':'low'); }
-      if (badge) {
-        if (b.taux >= 70) { badge.innerHTML = '🔴 Plein';      badge.className = 'zone-badge plein'; }
-        else if (b.taux >= 30) { badge.innerHTML = '🟡 Occupé'; badge.className = 'zone-badge occupe'; }
-        else { badge.innerHTML = '🟢 Disponible'; badge.className = 'zone-badge disponible'; }
-      }
-    });
-  }).catch(() => {});
 }
 
 // ─── Utilitaires ──────────────────────────────────────────────────────────────
 function refreshPage() { location.reload(); }
-function exportResourcesCSV() { window.location.href = '/api/export/ressources/csv/'; }
 
-function showToast(msg, type) {
+function exportResourcesCSV() {
+  window.location.href = '/api/ressources/export-csv/';
+}
+
+function showToast(msg, type = 'info') {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = `toast ${type} show`;
+  t.className   = `toast ${type} show`;
   setTimeout(() => t.classList.remove('show'), 3500);
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-  refreshOccupation();
-  setInterval(refreshOccupation, 30000);
-  updateInvPreview();
-});
+// Initialisation
+updateInvPreview();
 </script>
 {% endblock %}
