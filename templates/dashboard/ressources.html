@@ -1,822 +1,832 @@
 {% extends "base.html" %}
-{% block title %}Ressources & Bureaux — SIGR-CA{% endblock %}
+{% block title %}Ressources & Bureaux · SIGR-CA{% endblock %}
 {% block nav_ressources %}active{% endblock %}
 {% block page_title %}Gestion des ressources{% endblock %}
 {% block page_sub %}Zones, salles, matériel et équipements{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
-<button class="btn btn-ghost btn-sm" onclick="exportResourcesCSV()">⬇️ Exporter CSV</button>
-<button class="btn btn-ghost btn-sm" onclick="exportZonesPDF()">📄 Rapport zones PDF</button>
-<button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Ajouter</button>
+<div style="display:flex;gap:8px;align-items:center;">
+  <button onclick="location.reload()" title="Actualiser" class="tb-ico-btn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  </button>
+  <button onclick="exportResourcesCSV()" title="Export CSV" class="tb-ico-btn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  </button>
+  <button onclick="exportZonesPDF()" title="Rapport PDF" class="tb-ico-btn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  </button>
+  <button onclick="resOpenModal('zone')"
+    style="height:36px;padding:0 16px;display:inline-flex;align-items:center;gap:6px;background:var(--blue);color:#fff;border:none;border-radius:9px;font-family:var(--font);font-weight:600;font-size:13px;cursor:pointer;transition:all .15s;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Ajouter
+  </button>
+  <div style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);">
+    <span style="width:6px;height:6px;border-radius:50%;background:var(--purple);display:inline-block;"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--purple);">{{ total_bureaux|add:total_materiel }} RESSOURCES</span>
+  </div>
+</div>
 {% endblock %}
 
 {% block content %}
 <style>
-.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
-@media(max-width:768px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
-.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;transition:.2s}
-.kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
-.kpi-header{display:flex;justify-content:space-between;margin-bottom:8px}
-.kpi-label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
-.kpi-value{font-size:28px;font-weight:600}
-.kpi.k-blue .kpi-value{color:var(--blue)}
-.kpi.k-green .kpi-value{color:var(--green)}
-.kpi.k-amber .kpi-value{color:var(--amber)}
-.kpi.k-purple .kpi-value{color:var(--purple)}
-.kpi.k-red .kpi-value{color:var(--red)}
-.tabs{display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;border:1px solid var(--border);margin-bottom:20px}
-.tab-btn{flex:1;padding:10px 16px;border-radius:8px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:.15s}
-.tab-btn.active{background:var(--bg2);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,.3)}
-.zones-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
-.zone-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.2s;cursor:pointer}
-.zone-card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--blue)}
-.zone-card.selected{border-color:var(--blue);background:var(--blue3)}
-.zone-header{padding:14px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-.zone-name{font-size:15px;font-weight:600}
-.zone-code{font-size:10px;color:var(--text3);font-family:monospace}
-.zone-body{padding:14px}
-.zone-capacity{display:flex;justify-content:space-between;margin-bottom:10px;font-size:12px}
-.zone-bar{background:var(--bg4);border-radius:6px;height:6px;overflow:hidden;margin-bottom:10px}
-.zone-fill{height:100%;border-radius:6px;transition:width .3s}
-.zone-fill.low{background:var(--green)}.zone-fill.mid{background:var(--amber)}.zone-fill.high{background:var(--red)}
-.zone-status{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2)}
-.zone-badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:500}
-.zone-badge.disponible{background:rgba(45,186,111,.12);color:#2dba6f}
-.zone-badge.occupe{background:rgba(227,179,65,.12);color:#e3b341}
-.zone-badge.plein{background:rgba(248,81,73,.12);color:#f85149}
-.zone-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap}
-/* Matériel */
-.materiel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
-.materiel-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.2s}
-.materiel-card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--blue)}
-.materiel-img{width:100%;height:140px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}
-.materiel-img img{width:100%;height:100%;object-fit:cover}
-.materiel-header{padding:12px 14px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px}
-.materiel-name{font-size:14px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.materiel-category{font-size:10px;padding:2px 8px;border-radius:12px;background:var(--blue3);color:var(--blue2);flex-shrink:0}
-.materiel-body{padding:12px 14px}
-.materiel-info{font-size:12px;color:var(--text2);line-height:1.8}
-.materiel-info div{display:flex;align-items:baseline;gap:6px}
-.inv-badge{display:inline-block;font-family:monospace;font-size:11px;background:rgba(163,113,247,.12);color:var(--purple);border:1px solid rgba(163,113,247,.25);border-radius:6px;padding:2px 8px;font-weight:600}
-.materiel-footer{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-/* Statut badges */
-.s-disponible{background:rgba(45,186,111,.12);color:#2dba6f;border:1px solid rgba(45,186,111,.25);padding:2px 8px;border-radius:12px;font-size:10px}
-.s-utilise{background:rgba(31,111,235,.12);color:var(--blue2);border:1px solid rgba(31,111,235,.25);padding:2px 8px;border-radius:12px;font-size:10px}
-.s-maintenance{background:rgba(227,179,65,.12);color:var(--amber);border:1px solid rgba(227,179,65,.25);padding:2px 8px;border-radius:12px;font-size:10px}
-.s-hors_service{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.25);padding:2px 8px;border-radius:12px;font-size:10px}
-/* Filtres */
-.filters-bar{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
-.search-input{flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none}
-.search-input:focus{border-color:var(--blue)}
-.filter-select{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none}
-/* Modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:1000}
-.modal{background:var(--bg2);border-radius:14px;width:680px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column}
-.modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--border);flex-shrink:0}
-.modal-header h3{margin:0;font-size:16px}
-.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);line-height:1}
-.modal-body{padding:22px;overflow-y:auto;flex:1}
-.modal-footer{padding:16px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
-.form-group{margin-bottom:15px}
-.form-label{display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
-.form-input,.form-select,.form-textarea{width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;outline:none;transition:.15s}
-.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(31,111,235,.12)}
-.form-textarea{resize:vertical;min-height:72px}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.form-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-/* Numéro inventaire */
-.inv-section{background:rgba(163,113,247,.06);border:1px dashed rgba(163,113,247,.35);border-radius:10px;padding:14px;margin-bottom:16px}
-.inv-section-title{font-size:12px;font-weight:700;color:var(--purple);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
-.inv-preview{background:rgba(163,113,247,.08);border:1px solid rgba(163,113,247,.25);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px;color:var(--purple);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.inv-preview strong{font-family:monospace;font-size:16px;letter-spacing:1px}
-/* Séparateur de section */
-.section-divider{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--border2)}
-/* Toast */
-.toast{position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:10px;font-size:14px;color:#fff;font-weight:500;z-index:9999;opacity:0;transform:translateY(10px);transition:.3s;max-width:360px}
-.toast.show{opacity:1;transform:translateY(0)}
-.toast.ok{background:#2dba6f}.toast.err{background:#f85149}.toast.info{background:var(--blue)}
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
+  --bg0:#080d17; --bg1:#0d1320; --bg2:#111827; --bg3:#162032; --bg4:#1c2b40; --bg5:#243347;
+  --border:rgba(99,140,185,.12); --border2:rgba(99,140,185,.18); --border3:rgba(99,140,185,.28);
+  --text1:#e8edf5; --text2:#8fa3bc; --text3:#56708a;
+  --blue:#3b82f6; --blue2:#60a5fa; --cyan:#06b6d4; --green:#10b981;
+  --amber:#f59e0b; --red:#ef4444; --purple:#8b5cf6;
+  --radius:14px; --radius-sm:8px;
+}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:var(--font)!important;background:var(--bg0)!important;}
+.dash-wrap{display:flex;flex-direction:column;gap:20px;padding-bottom:40px;}
+
+/* ── Topbar icon button ── */
+.tb-ico-btn{width:36px;height:36px;border-radius:9px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;}
+.tb-ico-btn:hover{background:var(--bg4);color:var(--text1);border-color:var(--border3);}
+
+/* ── KPI ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
+@media(max-width:1300px){.kpi-grid{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:768px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 18px 16px;position:relative;overflow:hidden;transition:transform .25s,box-shadow .25s;cursor:default;}
+.kpi::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top left,var(--kpi-glow,.05) 0%,transparent 65%);pointer-events:none;}
+.kpi:hover{transform:translateY(-4px);box-shadow:var(--kpi-shadow,none);}
+.kpi-accent{position:absolute;top:0;left:0;right:0;height:2px;background:var(--kpi-grad);box-shadow:0 0 12px var(--kpi-color);}
+.kpi-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+.kpi-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);}
+.kpi-icon-wrap{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--kpi-icon-bg);border:1px solid var(--kpi-icon-border);font-size:18px;flex-shrink:0;}
+.kpi-val{font-family:var(--mono);font-size:38px;font-weight:700;color:var(--kpi-color);line-height:1;margin-bottom:8px;text-shadow:0 0 30px var(--kpi-glow-text);}
+.kpi-sub{font-size:11px;color:var(--text3);}
+.kpi-bar{margin-top:12px;height:3px;background:var(--bg4);border-radius:2px;overflow:hidden;}
+.kpi-bar-fill{height:100%;background:var(--kpi-grad);border-radius:2px;transition:width 1s ease;}
+
+.kpi.blue  {--kpi-color:var(--blue);  --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6);--kpi-glow:rgba(59,130,246,.06); --kpi-shadow:0 0 20px rgba(59,130,246,.25); --kpi-icon-bg:rgba(59,130,246,.12); --kpi-icon-border:rgba(59,130,246,.22); --kpi-glow-text:rgba(59,130,246,.4);}
+.kpi.green {--kpi-color:var(--green); --kpi-grad:linear-gradient(90deg,#059669,#10b981);--kpi-glow:rgba(16,185,129,.06); --kpi-shadow:0 0 20px rgba(16,185,129,.25); --kpi-icon-bg:rgba(16,185,129,.12); --kpi-icon-border:rgba(16,185,129,.22); --kpi-glow-text:rgba(16,185,129,.4);}
+.kpi.amber {--kpi-color:var(--amber); --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b);--kpi-glow:rgba(245,158,11,.06);  --kpi-shadow:0 0 20px rgba(245,158,11,.25); --kpi-icon-bg:rgba(245,158,11,.12); --kpi-icon-border:rgba(245,158,11,.22); --kpi-glow-text:rgba(245,158,11,.4);}
+.kpi.purple{--kpi-color:var(--purple);--kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6);--kpi-glow:rgba(139,92,246,.06); --kpi-shadow:0 0 20px rgba(139,92,246,.25); --kpi-icon-bg:rgba(139,92,246,.12); --kpi-icon-border:rgba(139,92,246,.22); --kpi-glow-text:rgba(139,92,246,.4);}
+.kpi.red   {--kpi-color:var(--red);   --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444);--kpi-glow:rgba(239,68,68,.06);   --kpi-shadow:0 0 20px rgba(239,68,68,.25);  --kpi-icon-bg:rgba(239,68,68,.12);  --kpi-icon-border:rgba(239,68,68,.22);  --kpi-glow-text:rgba(239,68,68,.4);}
+
+/* ── Tabs ── */
+.res-tabs{display:flex;gap:4px;background:var(--bg3);padding:5px;border-radius:12px;border:1px solid var(--border);margin-bottom:0;}
+.res-tab{flex:1;padding:11px 20px;border-radius:9px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:var(--font);display:flex;align-items:center;justify-content:center;gap:8px;}
+.res-tab.active{background:var(--bg2);color:var(--text1);box-shadow:0 2px 8px rgba(0,0,0,.3);}
+.res-tab:hover:not(.active){color:var(--text1);}
+
+/* ── Filters bar ── */
+.filters-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.res-search{flex:1;min-width:200px;padding:10px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text1);font-size:13px;font-family:var(--font);outline:none;transition:all .15s;}
+.res-search:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.12);}
+.res-search::placeholder{color:var(--text3);}
+.res-select{padding:10px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text1);font-size:13px;font-family:var(--font);outline:none;cursor:pointer;min-width:150px;}
+
+/* ── Zone cards ── */
+.zones-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;}
+.zone-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .2s;cursor:pointer;}
+.zone-card:hover{transform:translateY(-3px);border-color:var(--border3);box-shadow:0 8px 30px rgba(0,0,0,.3);}
+.zone-hdr{padding:14px 16px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.zone-name{font-size:14px;font-weight:700;color:var(--text1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.zone-code{font-size:10px;color:var(--text3);font-family:var(--mono);flex-shrink:0;}
+.zone-body{padding:16px;}
+.zone-row{display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;color:var(--text2);}
+.zone-bar{background:var(--bg4);border-radius:6px;height:5px;overflow:hidden;margin-bottom:10px;}
+.zone-fill{height:100%;border-radius:6px;transition:width .5s ease;}
+.zone-fill.low{background:var(--green);}
+.zone-fill.mid{background:var(--amber);}
+.zone-fill.high{background:var(--red);}
+.zone-foot{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;}
+.zone-meta-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;font-family:var(--mono);}
+.tag-pub  {background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);}
+.tag-std  {background:rgba(59,130,246,.1);color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
+.tag-rest {background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2);}
+.tag-crit {background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+
+/* ── Materiel cards ── */
+.materiel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
+.mat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .2s;}
+.mat-card:hover{transform:translateY(-3px);border-color:var(--border3);box-shadow:0 8px 30px rgba(0,0,0,.3);}
+.mat-img{width:100%;height:120px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden;position:relative;}
+.mat-img img{width:100%;height:100%;object-fit:cover;}
+.mat-img-overlay{position:absolute;top:8px;right:8px;}
+.mat-hdr{padding:13px 15px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.mat-name{font-size:13px;font-weight:700;color:var(--text1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mat-cat-badge{font-size:10px;padding:3px 9px;border-radius:20px;background:rgba(59,130,246,.12);color:var(--blue2);border:1px solid rgba(59,130,246,.2);font-family:var(--mono);font-weight:600;flex-shrink:0;}
+.mat-body{padding:14px 15px;}
+.mat-row{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);margin-bottom:5px;}
+.mat-row strong{color:var(--text1);}
+.inv-badge{display:inline-block;font-family:var(--mono);font-size:11px;background:rgba(139,92,246,.12);color:var(--purple);border:1px solid rgba(139,92,246,.2);border-radius:6px;padding:2px 9px;font-weight:600;}
+.mat-foot{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:5px;justify-content:flex-end;}
+
+/* ── Status badges ── */
+.sbadge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--mono);letter-spacing:.5px;}
+.s-dispo  {background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.2);}
+.s-utilise{background:rgba(59,130,246,.12);color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
+.s-maint  {background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.2);}
+.s-hs     {background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.15);}
+.occ-dispo{background:rgba(16,185,129,.12);color:var(--green);}
+.occ-mid  {background:rgba(245,158,11,.12);color:var(--amber);}
+.occ-full {background:rgba(239,68,68,.12);color:var(--red);}
+
+/* ── Buttons ── */
+.btn{padding:7px 13px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:11.5px;font-family:var(--font);transition:all .15s;display:inline-flex;align-items:center;gap:5px;text-decoration:none;}
+.btn-primary{background:var(--blue);color:#fff;}
+.btn-primary:hover{background:var(--blue2);}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2);}
+.btn-ghost:hover{background:var(--bg4);color:var(--text1);border-color:var(--border3);}
+.btn-danger{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.btn-danger:hover{background:rgba(239,68,68,.1);}
+.btn-sm{padding:5px 10px;font-size:11px;}
+
+/* ── Empty state ── */
+.empty-state{text-align:center;padding:60px 20px;grid-column:1/-1;color:var(--text3);}
+.empty-ico{font-size:52px;margin-bottom:12px;opacity:.4;}
+
+/* ── Modal overlay ── */
+.res-modal-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,23,.88);backdrop-filter:blur(6px);align-items:center;justify-content:center;}
+.res-modal-overlay.open{display:flex;}
+.res-modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:560px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.55);animation:resModalIn .22s cubic-bezier(.22,1,.36,1);}
+@keyframes resModalIn{from{opacity:0;transform:translateY(18px) scale(.97);}to{opacity:1;transform:none;}}
+.res-modal-head{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:1;}
+.res-modal-title{font-weight:700;font-size:16px;color:var(--text1);}
+.res-modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;}
+.res-modal-close:hover{background:var(--bg4);color:var(--text1);}
+.res-modal-body{padding:24px;}
+.res-modal-foot{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg2);}
+
+/* ── Form elements ── */
+.form-group{margin-bottom:16px;}
+.form-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:6px;}
+.form-control{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-size:13px;font-family:var(--font);outline:none;transition:all .15s;}
+.form-control:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.1);}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+/* ── Toast ── */
+.res-toast{position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:10px;font-size:13px;color:#fff;font-weight:600;z-index:99999;opacity:0;transform:translateY(10px);transition:.3s;max-width:380px;pointer-events:none;font-family:var(--font);}
+
+*{scrollbar-width:thin;scrollbar-color:var(--bg5) transparent;}
 </style>
 
-<!-- KPIs -->
-<div class="kpi-grid">
-  <div class="kpi k-blue"><div class="kpi-header"><div class="kpi-label">Total zones</div></div><div class="kpi-value">{{ total_bureaux|default:"0" }}</div></div>
-  <div class="kpi k-green"><div class="kpi-header"><div class="kpi-label">Capacité totale</div></div><div class="kpi-value">{{ capacite_totale|default:"0" }}</div></div>
-  <div class="kpi k-amber"><div class="kpi-header"><div class="kpi-label">Occupation moy.</div></div><div class="kpi-value">{{ occupation_moy|default:"0" }}%</div></div>
-  <div class="kpi k-purple"><div class="kpi-header"><div class="kpi-label">Matériel total</div></div><div class="kpi-value">{{ total_materiel|default:"0" }}</div></div>
-  <div class="kpi k-red"><div class="kpi-header"><div class="kpi-label">En maintenance</div></div><div class="kpi-value">{{ materiel_maintenance|default:"0" }}</div></div>
-</div>
+<div class="dash-wrap">
 
-<!-- Onglets -->
-<div class="tabs" id="mainTabs">
-  <button class="tab-btn active" onclick="switchTab('zones')">🚪 Zones & Bureaux</button>
-  <button class="tab-btn" onclick="switchTab('materiel')">🖥️ Matériel & Équipements</button>
-</div>
-
-<!-- ═══════════════════════ PANEL ZONES ═══════════════════════ -->
-<div id="panelZones">
-  <div class="filters-bar">
-    <input type="text" id="searchZone" class="search-input" placeholder="🔍 Rechercher une zone..." oninput="filterZones()">
-    <select id="etageFilter" class="filter-select" onchange="filterZones()">
-      <option value="all">Tous les étages</option>
-      <option value="0">RDC</option>
-      <option value="1">Étage 1</option>
-      <option value="2">Étage 2</option>
-      <option value="3">Étage 3</option>
-    </select>
-    <select id="securiteFilter" class="filter-select" onchange="filterZones()">
-      <option value="all">Tous niveaux</option>
-      <option value="public">🟢 Public</option>
-      <option value="standard">🔵 Standard</option>
-      <option value="restreint">🟠 Restreint</option>
-      <option value="critique">🔴 Critique</option>
-    </select>
-    <button class="btn btn-primary btn-sm" onclick="openAddModal('zone')">+ Zone</button>
-  </div>
-
-  <div class="zones-grid" id="zonesGrid">
-    {% for bureau in bureaux %}
-    <div class="zone-card"
-         data-id="{{ bureau.id }}"
-         data-name="{{ bureau.nom|lower }}"
-         data-etage="{{ bureau.etage|default:'0' }}"
-         data-securite="{{ bureau.niveau_securite|default:'standard' }}"
-         onclick="selectZone('{{ bureau.id }}', '{{ bureau.nom }}')">
-      <div class="zone-header">
-        <span class="zone-name">{{ bureau.nom }}</span>
-        <span class="zone-code">{{ bureau.code_bureau|default:"—" }}</span>
-      </div>
-      <div class="zone-body">
-        <div class="zone-capacity"><span>👥 Capacité</span><span><strong>{{ bureau.capacite_max|default:"10" }}</strong> pers</span></div>
-        <div class="zone-bar">
-          <div class="zone-fill {% if bureau.taux_occupation >= 70 %}high{% elif bureau.taux_occupation >= 30 %}mid{% else %}low{% endif %}"
-               style="width:{{ bureau.taux_occupation|default:'0' }}%"></div>
-        </div>
-        <div class="zone-status">
-          <span>📊 <strong>{{ bureau.taux_occupation|default:"0" }}%</strong></span>
-          <span class="zone-badge {% if bureau.taux_occupation >= 70 %}plein{% elif bureau.taux_occupation >= 30 %}occupe{% else %}disponible{% endif %}">
-            {% if bureau.taux_occupation >= 70 %}🔴 Plein{% elif bureau.taux_occupation >= 30 %}🟡 Occupé{% else %}🟢 Disponible{% endif %}
-          </span>
-        </div>
-        <div class="zone-capacity" style="margin-top:8px">
-          <span>📍 Étage {{ bureau.etage|default:"RDC" }}</span>
-          <span>🔒 {{ bureau.niveau_securite|default:"standard"|title }}</span>
-        </div>
-      </div>
-      <div class="zone-footer">
-        <button class="btn btn-edit btn-sm" onclick="event.stopPropagation(); editZone('{{ bureau.id }}','{{ bureau.nom }}','{{ bureau.code_bureau|default:'' }}','{{ bureau.etage|default:'0' }}','{{ bureau.capacite_max|default:'10' }}','{{ bureau.niveau_securite|default:'standard' }}','{{ bureau.description|default:'' }}')">✏️ Modifier</button>
-        <a href="{% url 'bureau_detail' bureau.id %}" class="btn btn-ghost btn-sm" onclick="event.stopPropagation()">📊 Détail</a>
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); exportZonePDF('{{ bureau.id }}', '{{ bureau.nom }}')">📄 PDF</button>
-        <button class="btn btn-del btn-sm" onclick="event.stopPropagation(); deleteZone('{{ bureau.id }}', '{{ bureau.nom }}')">🗑️</button>
-      </div>
+  <!-- KPI STRIP -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Zones</span><div class="kpi-icon-wrap">🚪</div></div>
+      <div class="kpi-val">{{ total_bureaux|default:"0" }}</div>
+      <div class="kpi-sub">Bureaux & salles</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
     </div>
-    {% empty %}
-    <div style="text-align:center;padding:60px;grid-column:1/-1;color:var(--text2)">
-      🚪 Aucune zone — <button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('zone')">+ Ajouter</button>
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Capacité totale</span><div class="kpi-icon-wrap">👥</div></div>
+      <div class="kpi-val">{{ capacite_totale|default:"0" }}</div>
+      <div class="kpi-sub">Personnes</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%"></div></div>
     </div>
-    {% endfor %}
-  </div>
-
-  <!-- Détail zone -->
-  <div id="zoneDetail" style="margin-top:20px;display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-    <div style="padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
-      <span style="font-weight:600" id="detailTitle">Détail</span>
-      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="closeDetail()">✕ Fermer</button>
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Occupation moy.</span><div class="kpi-icon-wrap">📊</div></div>
+      <div class="kpi-val">{{ occupation_moy|default:"0" }}<span style="font-size:18px;color:var(--text3);">%</span></div>
+      <div class="kpi-sub">Taux moyen</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ occupation_moy|default:0 }}%"></div></div>
     </div>
-    <div style="padding:18px" id="detailContent"></div>
-  </div>
-</div>
-
-<!-- ═══════════════════════ PANEL MATÉRIEL ═══════════════════════ -->
-<div id="panelMateriel" style="display:none">
-  <div class="filters-bar">
-    <input type="text" id="searchMateriel" class="search-input" placeholder="🔍 Rechercher (nom, inventaire, série, fournisseur...)" oninput="filterMateriel()">
-    <select id="categorieFilter" class="filter-select" onchange="filterMateriel()">
-      <option value="all">Toutes catégories</option>
-      <option value="informatique">💻 Informatique</option>
-      <option value="mobilier">🪑 Mobilier</option>
-      <option value="audiovisuel">📽️ Audiovisuel</option>
-      <option value="imprimante">🖨️ Imprimante</option>
-      <option value="securite">🔒 Sécurité</option>
-      <option value="vehicule">🚗 Véhicule</option>
-      <option value="laboratoire">🔬 Laboratoire</option>
-      <option value="autre">📦 Autre</option>
-    </select>
-    <select id="statutFilter" class="filter-select" onchange="filterMateriel()">
-      <option value="all">Tous statuts</option>
-      <option value="disponible">✅ Disponible</option>
-      <option value="utilise">🔄 Utilisé</option>
-      <option value="maintenance">🔧 Maintenance</option>
-      <option value="hors_service">❌ Hors service</option>
-    </select>
-    <button class="btn btn-primary btn-sm" onclick="openAddModal('materiel')">+ Matériel</button>
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Matériel</span><div class="kpi-icon-wrap">🖥️</div></div>
+      <div class="kpi-val">{{ total_materiel|default:"0" }}</div>
+      <div class="kpi-sub">Équipements</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Maintenance</span><div class="kpi-icon-wrap">🔧</div></div>
+      <div class="kpi-val">{{ materiel_maintenance|default:"0" }}</div>
+      <div class="kpi-sub">En réparation</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_materiel %}{% widthratio materiel_maintenance total_materiel 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
   </div>
 
-  <div class="materiel-grid" id="materielGrid">
-    {% for mat in materiels %}
-    <div class="materiel-card"
-         data-categorie="{{ mat.categorie }}"
-         data-statut="{{ mat.statut }}"
-         data-nom="{{ mat.nom|lower }} {{ mat.num_inventaire|default:''|lower }} {{ mat.numero_serie|default:''|lower }} {{ mat.fournisseur|default:''|lower }}">
-      <div class="materiel-img">
-        {% if mat.photo %}<img src="{{ mat.photo }}" alt="{{ mat.nom }}">
-        {% elif mat.categorie == 'informatique' %}💻
-        {% elif mat.categorie == 'mobilier' %}🪑
-        {% elif mat.categorie == 'audiovisuel' %}📽️
-        {% elif mat.categorie == 'imprimante' %}🖨️
-        {% elif mat.categorie == 'securite' %}🔒
-        {% elif mat.categorie == 'vehicule' %}🚗
-        {% elif mat.categorie == 'laboratoire' %}🔬
-        {% else %}📦{% endif %}
+  <!-- ONGLETS -->
+  <div class="res-tabs" id="resTabs">
+    <button class="res-tab active" onclick="resTab('zones',this)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Zones & Bureaux <span style="font-family:var(--mono);font-size:10px;background:var(--bg4);padding:2px 7px;border-radius:10px;">{{ total_bureaux|default:"0" }}</span>
+    </button>
+    <button class="res-tab" onclick="resTab('materiel',this)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Matériel & Équipements <span style="font-family:var(--mono);font-size:10px;background:var(--bg4);padding:2px 7px;border-radius:10px;">{{ total_materiel|default:"0" }}</span>
+    </button>
+  </div>
+
+  <!-- ══════════════════ PANEL ZONES ══════════════════ -->
+  <div id="panelZones">
+    <div class="filters-bar" style="margin-bottom:16px;">
+      <input type="text" id="searchZone" class="res-search" placeholder="🔍 Rechercher une zone..." oninput="filterZones()">
+      <select id="etageFilter" class="res-select" onchange="filterZones()">
+        <option value="all">Tous les étages</option>
+        <option value="0">RDC</option>
+        <option value="1">Étage 1</option>
+        <option value="2">Étage 2</option>
+        <option value="3">Étage 3</option>
+      </select>
+      <select id="securiteFilter" class="res-select" onchange="filterZones()">
+        <option value="all">Tous niveaux</option>
+        <option value="public">🟢 Public</option>
+        <option value="standard">🔵 Standard</option>
+        <option value="restreint">🟠 Restreint</option>
+        <option value="critique">🔴 Critique</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="resOpenModal('zone')">+ Zone</button>
+    </div>
+
+    <div class="zones-grid" id="zonesGrid">
+      {% for bureau in bureaux %}
+      <div class="zone-card"
+           data-id="{{ bureau.id }}"
+           data-name="{{ bureau.nom|lower }}"
+           data-etage="{{ bureau.etage|default:'0' }}"
+           data-securite="{{ bureau.niveau_securite|default:'standard' }}"
+           onclick="window.location.href='{% url 'bureau_detail' bureau.id %}'">
+
+        <div class="zone-hdr">
+          <span class="zone-name">{{ bureau.nom }}</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            <span class="zone-code">{{ bureau.code_bureau|default:"—" }}</span>
+            {% if bureau.niveau_securite == 'public' %}<span class="zone-meta-tag tag-pub">🟢 Public</span>
+            {% elif bureau.niveau_securite == 'restreint' %}<span class="zone-meta-tag tag-rest">🟠 Restreint</span>
+            {% elif bureau.niveau_securite == 'critique' %}<span class="zone-meta-tag tag-crit">🔴 Critique</span>
+            {% else %}<span class="zone-meta-tag tag-std">🔵 Standard</span>{% endif %}
+          </div>
+        </div>
+
+        <div class="zone-body">
+          <div class="zone-row">
+            <span style="color:var(--text3);">👥 Capacité</span>
+            <span style="font-weight:700;color:var(--text1);">{{ bureau.capacite_max|default:"10" }} pers.</span>
+          </div>
+          <div class="zone-bar">
+            <div class="zone-fill {% if bureau.taux_occupation >= 70 %}high{% elif bureau.taux_occupation >= 30 %}mid{% else %}low{% endif %}"
+                 style="width:{{ bureau.taux_occupation|default:'0' }}%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;color:var(--text3);">
+              {% if bureau.etage %}Étage {{ bureau.etage }}{% else %}RDC{% endif %} &nbsp;·&nbsp;
+              {{ bureau.taux_occupation|default:"0" }}% occupé
+            </span>
+            <span class="sbadge {% if bureau.taux_occupation >= 70 %}s-hs occ-full{% elif bureau.taux_occupation >= 30 %}s-maint occ-mid{% else %}s-dispo occ-dispo{% endif %}">
+              {% if bureau.taux_occupation >= 70 %}🔴 Plein{% elif bureau.taux_occupation >= 30 %}🟡 Occupé{% else %}🟢 Libre{% endif %}
+            </span>
+          </div>
+          {% if bureau.description %}
+          <div style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.5;border-top:1px solid var(--border);padding-top:8px;">
+            {{ bureau.description|truncatechars:80 }}
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="zone-foot">
+          <button class="btn btn-ghost btn-sm" title="Modifier"
+            onclick="event.stopPropagation();resEditZone('{{ bureau.id }}','{{ bureau.nom|escapejs }}','{{ bureau.code_bureau|default:''|escapejs }}','{{ bureau.etage|default:'0' }}','{{ bureau.capacite_max|default:'10' }}','{{ bureau.niveau_securite|default:'standard' }}','{{ bureau.description|default:''|escapejs }}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Modifier
+          </button>
+          <a href="{% url 'bureau_detail' bureau.id %}" class="btn btn-ghost btn-sm" onclick="event.stopPropagation()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Détail
+          </a>
+          <button class="btn btn-ghost btn-sm" title="Rapport PDF" onclick="event.stopPropagation();exportZonePDF('{{ bureau.id }}','{{ bureau.nom|escapejs }}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            PDF
+          </button>
+          <button class="btn btn-danger btn-sm" title="Supprimer" onclick="event.stopPropagation();resDeleteZone('{{ bureau.id }}','{{ bureau.nom|escapejs }}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="materiel-header">
-        <span class="materiel-name" title="{{ mat.nom }}">{{ mat.nom }}</span>
-        <span class="materiel-category">{{ mat.categorie|title }}</span>
+      {% empty %}
+      <div class="empty-state">
+        <div class="empty-ico">🚪</div>
+        <div style="margin-bottom:14px;">Aucune zone enregistrée</div>
+        <button class="btn btn-primary" onclick="resOpenModal('zone')">+ Ajouter une zone</button>
       </div>
-      <div class="materiel-body">
-        <div class="materiel-info">
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ══════════════════ PANEL MATÉRIEL ══════════════════ -->
+  <div id="panelMateriel" style="display:none;">
+    <div class="filters-bar" style="margin-bottom:16px;">
+      <input type="text" id="searchMateriel" class="res-search" placeholder="🔍 Nom, inventaire, série, fournisseur..." oninput="filterMateriel()">
+      <select id="categorieFilter" class="res-select" onchange="filterMateriel()">
+        <option value="all">Toutes catégories</option>
+        <option value="informatique">💻 Informatique</option>
+        <option value="mobilier">🪑 Mobilier</option>
+        <option value="audiovisuel">📽️ Audiovisuel</option>
+        <option value="imprimante">🖨️ Imprimante</option>
+        <option value="securite">🔒 Sécurité</option>
+        <option value="vehicule">🚗 Véhicule</option>
+        <option value="laboratoire">🔬 Laboratoire</option>
+        <option value="autre">📦 Autre</option>
+      </select>
+      <select id="statutFilter" class="res-select" onchange="filterMateriel()">
+        <option value="all">Tous statuts</option>
+        <option value="disponible">✅ Disponible</option>
+        <option value="utilise">🔄 Utilisé</option>
+        <option value="maintenance">🔧 Maintenance</option>
+        <option value="hors_service">❌ Hors service</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="resOpenModal('materiel')">+ Matériel</button>
+    </div>
+
+    <div class="materiel-grid" id="materielGrid">
+      {% for mat in materiels %}
+      <div class="mat-card"
+           data-categorie="{{ mat.categorie }}"
+           data-statut="{{ mat.statut }}"
+           data-nom="{{ mat.nom|lower }} {{ mat.num_inventaire|default:''|lower }} {{ mat.numero_serie|default:''|lower }} {{ mat.fournisseur|default:''|lower }}">
+
+        <div class="mat-img">
+          {% if mat.photo %}<img src="{{ mat.photo }}" alt="{{ mat.nom }}">
+          {% elif mat.categorie == 'informatique' %}💻
+          {% elif mat.categorie == 'mobilier' %}🪑
+          {% elif mat.categorie == 'audiovisuel' %}📽️
+          {% elif mat.categorie == 'imprimante' %}🖨️
+          {% elif mat.categorie == 'securite' %}🔒
+          {% elif mat.categorie == 'vehicule' %}🚗
+          {% elif mat.categorie == 'laboratoire' %}🔬
+          {% else %}📦{% endif %}
+          <div class="mat-img-overlay">
+            {% if mat.statut == 'disponible' %}<span class="sbadge s-dispo">✅</span>
+            {% elif mat.statut == 'utilise' %}<span class="sbadge s-utilise">🔄</span>
+            {% elif mat.statut == 'maintenance' %}<span class="sbadge s-maint">🔧</span>
+            {% else %}<span class="sbadge s-hs">❌</span>{% endif %}
+          </div>
+        </div>
+
+        <div class="mat-hdr">
+          <span class="mat-name" title="{{ mat.nom }}">{{ mat.nom }}</span>
+          <span class="mat-cat-badge">{{ mat.categorie|title }}</span>
+        </div>
+
+        <div class="mat-body">
           {% if mat.num_inventaire %}
-          <div>🏷️ <span class="inv-badge">{{ mat.num_inventaire }}</span></div>
+          <div class="mat-row">🏷️ <span class="inv-badge">{{ mat.num_inventaire }}</span></div>
           {% endif %}
           {% if mat.fournisseur %}
-          <div>🏢 Fournisseur : <strong>{{ mat.fournisseur }}</strong></div>
+          <div class="mat-row">🏢 <strong>{{ mat.fournisseur }}</strong></div>
           {% endif %}
           {% if mat.marque or mat.modele %}
-          <div>🏭 {{ mat.marque }} {{ mat.modele }}</div>
+          <div class="mat-row">🏭 {{ mat.marque }} {{ mat.modele }}</div>
           {% endif %}
           {% if mat.numero_serie %}
-          <div>🔢 S/N : <code style="font-size:11px">{{ mat.numero_serie }}</code></div>
-          {% endif %}
-          {% if mat.processeur or mat.ram or mat.stockage %}
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
-            {% if mat.processeur %}<span style="background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:10px">CPU: {{ mat.processeur }}</span>{% endif %}
-            {% if mat.ram %}<span style="background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:10px">RAM: {{ mat.ram }}</span>{% endif %}
-            {% if mat.stockage %}<span style="background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:10px">HDD: {{ mat.stockage }}</span>{% endif %}
-          </div>
+          <div class="mat-row">🔢 <code style="font-family:var(--mono);font-size:11px;color:var(--text3);">{{ mat.numero_serie }}</code></div>
           {% endif %}
           {% if mat.zone %}
-          <div>🚪 Zone : {{ mat.zone }}</div>
+          <div class="mat-row">📍 Zone : <strong>{{ mat.zone }}</strong></div>
           {% endif %}
-          {% if mat.date_achat %}
-          <div>📅 Achat : {{ mat.date_achat }}</div>
-          {% endif %}
-          <div>📊
-            {% if mat.statut == 'disponible' %}<span class="s-disponible">✅ Disponible</span>
-            {% elif mat.statut == 'utilise' %}<span class="s-utilise">🔄 Utilisé</span>
-            {% elif mat.statut == 'maintenance' %}<span class="s-maintenance">🔧 Maintenance</span>
-            {% else %}<span class="s-hors_service">❌ Hors service</span>{% endif %}
+          {% if mat.processeur or mat.ram or mat.stockage %}
+          <div style="margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;border:1px solid var(--border);font-size:11px;color:var(--text3);font-family:var(--mono);line-height:1.6;">
+            {% if mat.processeur %}CPU: {{ mat.processeur }}<br>{% endif %}
+            {% if mat.ram %}RAM: {{ mat.ram }}<br>{% endif %}
+            {% if mat.stockage %}HDD: {{ mat.stockage }}{% endif %}
           </div>
+          {% endif %}
+        </div>
+
+        <div class="mat-foot">
+          <button class="btn btn-ghost btn-sm" onclick="resEditMateriel('{{ mat.id }}')" title="Modifier">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Modifier
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="exportMaterielPDF('{{ mat.id }}')" title="Fiche PDF">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            PDF
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="resDeleteMateriel('{{ mat.id }}','{{ mat.nom|escapejs }}')" title="Supprimer">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
         </div>
       </div>
-      <div class="materiel-footer">
-        <button class="btn btn-edit btn-sm" onclick="editMateriel('{{ mat.id }}')">✏️ Modifier</button>
-        <button class="btn btn-ghost btn-sm" onclick="exportMaterielPDF('{{ mat.id }}')">📄 PDF</button>
-        <button class="btn btn-del btn-sm" onclick="deleteMateriel('{{ mat.id }}', '{{ mat.nom }}')">🗑️</button>
+      {% empty %}
+      <div class="empty-state">
+        <div class="empty-ico">🖥️</div>
+        <div style="margin-bottom:14px;">Aucun matériel enregistré</div>
+        <button class="btn btn-primary" onclick="resOpenModal('materiel')">+ Ajouter du matériel</button>
       </div>
+      {% endfor %}
     </div>
-    {% empty %}
-    <div style="text-align:center;padding:60px;grid-column:1/-1;color:var(--text2)">
-      🖥️ Aucun matériel — <button class="btn btn-primary" style="margin-top:12px" onclick="openAddModal('materiel')">+ Ajouter</button>
-    </div>
-    {% endfor %}
   </div>
-</div>
 
-<!-- ═══════════════════════ MODAL ═══════════════════════ -->
-<div id="mainModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 id="modalTitle">➕ Ajouter</h3>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+</div><!-- /dash-wrap -->
+
+<!-- ══════════════════════════════════════════
+     MODAL ZONE
+══════════════════════════════════════════ -->
+<div class="res-modal-overlay" id="resModalZone" onclick="if(event.target===this)resCloseModal('zone');">
+  <div class="res-modal">
+    <div class="res-modal-head">
+      <span class="res-modal-title" id="resZoneModalTitle">🚪 Nouvelle zone</span>
+      <button class="res-modal-close" type="button" onclick="resCloseModal('zone');">✕</button>
     </div>
-    <div class="modal-body">
-      <!-- Onglets modal -->
-      <div class="tabs" style="margin-bottom:18px">
-        <button class="tab-btn active" onclick="switchModalTab('zone')" id="modalTabZone">🚪 Zone</button>
-        <button class="tab-btn" onclick="switchModalTab('materiel')" id="modalTabMateriel">🖥️ Matériel</button>
-      </div>
-
-      <!-- ── Formulaire Zone ── -->
-      <div id="formZone">
-        <form method="post" action="{% url 'bureau_ajouter' %}" id="zoneForm">
-          {% csrf_token %}
-          <input type="hidden" name="bureau_id" id="zoneId">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Nom *</label>
-              <input type="text" class="form-input" name="nom" id="zoneNom" placeholder="ex: Salle de réunion A" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Code interne</label>
-              <input type="text" class="form-input" name="code_bureau" id="zoneCode" placeholder="ex: SR-A-01">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Étage</label>
-              <input type="number" class="form-input" name="etage" id="zoneEtage" value="0" min="0" max="20">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Capacité max (personnes)</label>
-              <input type="number" class="form-input" name="capacite_max" id="zoneCapacite" value="10" min="1">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Niveau de sécurité</label>
-              <select class="form-select" name="niveau_securite" id="zoneSecurite">
-                <option value="public">🟢 Public</option>
-                <option value="standard" selected>🔵 Standard</option>
-                <option value="restreint">🟠 Restreint</option>
-                <option value="critique">🔴 Critique</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Statut</label>
-              <select class="form-select" name="statut" id="zoneStatut">
-                <option value="actif" selected>✅ Actif</option>
-                <option value="inactif">⏸️ Inactif</option>
-                <option value="maintenance">🔧 Maintenance</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Description</label>
-            <textarea class="form-textarea" name="description" id="zoneDesc" placeholder="Équipements présents, accès, remarques..."></textarea>
-          </div>
-          <div class="modal-footer" style="padding:0;border:none;margin-top:4px">
-            <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
-            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- ── Formulaire Matériel ── -->
-      <div id="formMateriel" style="display:none">
-
-        <!-- SECTION : Numéro d'inventaire -->
-        <div class="inv-section">
-          <div class="inv-section-title">🏷️ Numéro d'inventaire</div>
-          <div class="form-row3">
-            <div class="form-group" style="margin-bottom:8px">
-              <label class="form-label">Entreprise fournisseur *</label>
-              <input type="text" class="form-input" id="matFournisseur" placeholder="ex: DELL, HP, SAMSUNG" oninput="updateInvPreview()" style="text-transform:uppercase">
-            </div>
-            <div class="form-group" style="margin-bottom:8px">
-              <label class="form-label">Année d'achat *</label>
-              <input type="number" class="form-input" id="matAnneeInv" placeholder="ex: 2026" min="2000" max="2100" oninput="updateInvPreview()">
-            </div>
-            <div class="form-group" style="margin-bottom:8px">
-              <label class="form-label">N° séquentiel</label>
-              <input type="number" class="form-input" id="matSeqInv" placeholder="auto" min="1" oninput="updateInvPreview()" title="Laissez vide pour numérotation automatique">
-            </div>
-          </div>
-          <!-- Prévisualisation -->
-          <div class="inv-preview" id="invPreview">
-            🏷️ Aperçu : <strong id="invPreviewVal">—</strong>
-          </div>
-          <!-- Champ inventaire complet (affiché en modification) -->
-          <div id="invExistantWrap" style="display:none;margin-top:8px">
-            <label class="form-label">N° inventaire existant</label>
-            <input type="text" class="form-input" id="matInvComplet" readonly style="font-family:monospace;color:var(--purple);background:var(--bg4)">
-          </div>
-        </div>
-
-        <!-- SECTION : Informations générales -->
-        <div class="section-divider">Informations générales</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Nom du matériel *</label>
-            <input type="text" class="form-input" id="matNom" placeholder="ex: Ordinateur portable Dell Latitude" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Catégorie</label>
-            <select class="form-select" id="matCategorie" onchange="updateInvPreview(); toggleMachineFields()">
-              <option value="informatique">💻 Informatique</option>
-              <option value="mobilier">🪑 Mobilier</option>
-              <option value="audiovisuel">📽️ Audiovisuel</option>
-              <option value="imprimante">🖨️ Imprimante</option>
-              <option value="securite">🔒 Sécurité</option>
-              <option value="vehicule">🚗 Véhicule</option>
-              <option value="laboratoire">🔬 Laboratoire</option>
-              <option value="autre">📦 Autre</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Marque</label>
-            <input type="text" class="form-input" id="matMarque" placeholder="ex: Dell, HP, Samsung">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Modèle</label>
-            <input type="text" class="form-input" id="matModele" placeholder="ex: Latitude 5520, ProBook 450">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Numéro de série</label>
-            <input type="text" class="form-input" id="matSerie" placeholder="ex: SN-XXXXXXXXXX">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Date d'achat</label>
-            <input type="date" class="form-input" id="matDateAchat" onchange="syncAnneeFromDate()">
-          </div>
-        </div>
-
-        <!-- SECTION : Spécifications machine (affichées selon la catégorie) -->
-        <div id="machineSpecsSection" style="display:none">
-          <div class="section-divider">⚙️ Spécifications techniques</div>
-          <div class="form-row3">
-            <div class="form-group">
-              <label class="form-label">Processeur (CPU)</label>
-              <input type="text" class="form-input" id="matProcesseur" placeholder="ex: Intel i7-12e gén.">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Mémoire RAM</label>
-              <input type="text" class="form-input" id="matRam" placeholder="ex: 16 Go DDR4">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Stockage</label>
-              <input type="text" class="form-input" id="matStockage" placeholder="ex: 512 Go SSD NVMe">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Système d'exploitation</label>
-              <input type="text" class="form-input" id="matOS" placeholder="ex: Windows 11 Pro">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Résolution écran</label>
-              <input type="text" class="form-input" id="matEcran" placeholder="ex: 15.6 pouces FHD">
-            </div>
-          </div>
-        </div>
-
-        <!-- SECTION : Affectation -->
-        <div class="section-divider">Affectation & statut</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Zone assignée</label>
-            <select class="form-select" id="matZone">
-              <option value="">— Aucune —</option>
-              {% for b in bureaux %}<option value="{{ b.nom }}">{{ b.nom }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Statut</label>
-            <select class="form-select" id="matStatut">
-              <option value="disponible">✅ Disponible</option>
-              <option value="utilise">🔄 Utilisé</option>
-              <option value="maintenance">🔧 Maintenance</option>
-              <option value="hors_service">❌ Hors service</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Valeur d'achat (DA)</label>
-            <input type="text" class="form-input" id="matValeur" placeholder="ex: 150 000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Photo (URL)</label>
-            <input type="text" class="form-input" id="matPhoto" placeholder="https://...">
-          </div>
+    <div class="res-modal-body">
+      <input type="hidden" id="resZoneId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nom de la zone *</label>
+          <input type="text" id="resZoneNom" class="form-control" placeholder="Salle de réunion A">
         </div>
         <div class="form-group">
-          <label class="form-label">Description / Remarques</label>
-          <textarea class="form-textarea" id="matDesc" rows="2" placeholder="État, accessoires inclus, localisation précise, garantie..."></textarea>
+          <label class="form-label">Code / Référence</label>
+          <input type="text" id="resZoneCode" class="form-control" placeholder="SALLE-A01" style="font-family:var(--mono);">
         </div>
-
-        <!-- Champs cachés -->
-        <input type="hidden" id="materielId">
-
-        <div class="modal-footer" style="padding:0;border:none;margin-top:4px">
-          <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
-          <button type="button" class="btn btn-primary" id="btnSaveMat" onclick="saveMateriel()">💾 Enregistrer</button>
+        <div class="form-group">
+          <label class="form-label">Étage</label>
+          <select id="resZoneEtage" class="form-control">
+            <option value="0">RDC</option>
+            <option value="1">Étage 1</option>
+            <option value="2">Étage 2</option>
+            <option value="3">Étage 3</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Capacité (personnes)</label>
+          <input type="number" id="resZoneCapacite" class="form-control" value="10" min="1">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Niveau de sécurité</label>
+          <select id="resZoneSecurite" class="form-control">
+            <option value="public">🟢 Public</option>
+            <option value="standard" selected>🔵 Standard</option>
+            <option value="restreint">🟠 Restreint</option>
+            <option value="critique">🔴 Critique</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Description</label>
+          <textarea id="resZoneDesc" class="form-control" rows="3" placeholder="Description de la zone..."></textarea>
         </div>
       </div>
+    </div>
+    <div class="res-modal-foot">
+      <button class="btn btn-ghost" type="button" onclick="resCloseModal('zone');">Annuler</button>
+      <button class="btn btn-primary" type="button" onclick="resSaveZone();" id="resBtnSaveZone">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Enregistrer
+      </button>
     </div>
   </div>
 </div>
 
-<!-- Toast -->
-<div class="toast" id="toast"></div>
-
-<script>
-const CSRF = '{{ csrf_token }}';
-let materielsData = {{ materiels_json|safe|default:'[]' }};
-let selectedZoneId = null;
-
-const prefixes = {
-  informatique:'INF', mobilier:'MOB', audiovisuel:'AUD',
-  imprimante:'IMP', securite:'SEC', vehicule:'VEH', laboratoire:'LAB', autre:'MAT'
-};
-
-// ─── Onglets ────────────────────────────────────────────────────────────────
-function switchTab(tab) {
-  document.getElementById('panelZones').style.display    = tab === 'zones'    ? 'block' : 'none';
-  document.getElementById('panelMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
-  document.querySelectorAll('#mainTabs .tab-btn').forEach((b, i) => {
-    b.classList.toggle('active', (i === 0 && tab === 'zones') || (i === 1 && tab === 'materiel'));
-  });
-}
-
-// ─── Filtres ─────────────────────────────────────────────────────────────────
-function filterZones() {
-  const q   = document.getElementById('searchZone').value.toLowerCase();
-  const et  = document.getElementById('etageFilter').value;
-  const sec = document.getElementById('securiteFilter').value;
-  document.querySelectorAll('#zonesGrid .zone-card').forEach(c => {
-    const ok = c.dataset.name.includes(q)
-      && (et  === 'all' || c.dataset.etage    === et)
-      && (sec === 'all' || c.dataset.securite === sec);
-    c.style.display = ok ? '' : 'none';
-  });
-}
-
-function filterMateriel() {
-  const q   = document.getElementById('searchMateriel').value.toLowerCase();
-  const cat = document.getElementById('categorieFilter').value;
-  const st  = document.getElementById('statutFilter').value;
-  document.querySelectorAll('#materielGrid .materiel-card').forEach(c => {
-    const ok = c.dataset.nom.includes(q)
-      && (cat === 'all' || c.dataset.categorie === cat)
-      && (st  === 'all' || c.dataset.statut    === st);
-    c.style.display = ok ? '' : 'none';
-  });
-}
-
-// ─── Numéro d'inventaire ─────────────────────────────────────────────────────
-function updateInvPreview() {
-  const fournisseur = (document.getElementById('matFournisseur').value || '').trim().toUpperCase().replace(/\s+/g, '-').slice(0, 10);
-  const cat         = document.getElementById('matCategorie').value;
-  const prefix      = prefixes[cat] || 'MAT';
-  const annee       = document.getElementById('matAnneeInv').value || new Date().getFullYear();
-  const seqInput    = document.getElementById('matSeqInv').value;
-  const seqNum      = seqInput ? String(seqInput).padStart(5, '0') : 'XXXXX';
-
-  let preview = '';
-  if (fournisseur) {
-    preview = `${fournisseur}-${prefix}-${annee}-${seqNum}`;
-  } else {
-    preview = `${prefix}-${annee}-${seqNum}`;
-  }
-  document.getElementById('invPreviewVal').textContent = preview;
-}
-
-function syncAnneeFromDate() {
-  const dateVal = document.getElementById('matDateAchat').value;
-  if (dateVal) {
-    const annee = dateVal.split('-')[0];
-    document.getElementById('matAnneeInv').value = annee;
-    updateInvPreview();
-  }
-}
-
-function toggleMachineFields() {
-  const cat = document.getElementById('matCategorie').value;
-  const show = ['informatique', 'audiovisuel', 'imprimante', 'laboratoire'].includes(cat);
-  document.getElementById('machineSpecsSection').style.display = show ? 'block' : 'none';
-}
-
-// ─── Zones ───────────────────────────────────────────────────────────────────
-function selectZone(id, name) {
-  if (selectedZoneId) {
-    document.querySelector(`.zone-card[data-id="${selectedZoneId}"]`)?.classList.remove('selected');
-  }
-  selectedZoneId = id;
-  document.querySelector(`.zone-card[data-id="${id}"]`)?.classList.add('selected');
-  document.getElementById('detailTitle').textContent = name;
-  document.getElementById('zoneDetail').style.display = 'block';
-  fetch(`/api/bureau/${id}/stats/`).then(r => r.json()).then(data => {
-    const max  = Math.max(...data.acces_par_jour, 1);
-    const bars = data.acces_par_jour.map((v, i) =>
-      `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;width:36px">
-        <div style="width:20px;background:var(--blue);border-radius:4px;height:${Math.round(v/max*80)+4}px;min-height:4px"></div>
-        <span style="font-size:10px;color:var(--text3)">${data.dates[i]}</span>
-       </div>`
-    ).join('');
-    document.getElementById('detailContent').innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-        <div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-weight:600">📊 Accès — 7 derniers jours</div>
-          <div style="display:flex;align-items:flex-end;gap:4px;height:90px">${bars}</div>
+<!-- ══════════════════════════════════════════
+     MODAL MATÉRIEL
+══════════════════════════════════════════ -->
+<div class="res-modal-overlay" id="resModalMateriel" onclick="if(event.target===this)resCloseModal('materiel');">
+  <div class="res-modal">
+    <div class="res-modal-head">
+      <span class="res-modal-title" id="resMatModalTitle">🖥️ Nouveau matériel</span>
+      <button class="res-modal-close" type="button" onclick="resCloseModal('materiel');">✕</button>
+    </div>
+    <div class="res-modal-body">
+      <input type="hidden" id="resMatId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nom *</label>
+          <input type="text" id="resMatNom" class="form-control" placeholder="Ordinateur Dell Latitude">
         </div>
-        <div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-weight:600">📍 Informations</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-            <div style="background:var(--bg3);border-radius:8px;padding:10px">
-              <div style="color:var(--text3);font-size:10px">Capacité</div>
-              <div style="font-weight:600;font-size:16px">${data.capacite}</div>
-            </div>
-            <div style="background:var(--bg3);border-radius:8px;padding:10px">
-              <div style="color:var(--text3);font-size:10px">Total accès (7j)</div>
-              <div style="font-weight:600;font-size:16px">${data.acces_par_jour.reduce((a,b)=>a+b,0)}</div>
-            </div>
+        <div class="form-group">
+          <label class="form-label">Catégorie</label>
+          <select id="resMatCategorie" class="form-control">
+            <option value="informatique">💻 Informatique</option>
+            <option value="mobilier">🪑 Mobilier</option>
+            <option value="audiovisuel">📽️ Audiovisuel</option>
+            <option value="imprimante">🖨️ Imprimante</option>
+            <option value="securite">🔒 Sécurité</option>
+            <option value="vehicule">🚗 Véhicule</option>
+            <option value="laboratoire">🔬 Laboratoire</option>
+            <option value="autre">📦 Autre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° Inventaire</label>
+          <input type="text" id="resMatInventaire" class="form-control" placeholder="INV-2024-001" style="font-family:var(--mono);">
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° Série</label>
+          <input type="text" id="resMatSerie" class="form-control" placeholder="SN-XXXXX" style="font-family:var(--mono);">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fournisseur</label>
+          <input type="text" id="resMatFournisseur" class="form-control" placeholder="Dell Technologies">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Marque / Modèle</label>
+          <input type="text" id="resMatMarque" class="form-control" placeholder="Dell Latitude 5540">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zone assignée</label>
+          <select id="resMatZone" class="form-control">
+            <option value="">— Choisir une zone —</option>
+            {% for bureau in bureaux %}
+            <option value="{{ bureau.nom }}">{{ bureau.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Statut</label>
+          <select id="resMatStatut" class="form-control">
+            <option value="disponible">✅ Disponible</option>
+            <option value="utilise">🔄 Utilisé</option>
+            <option value="maintenance">🔧 Maintenance</option>
+            <option value="hors_service">❌ Hors service</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Spécifications techniques (optionnel)</label>
+          <div class="form-grid" style="gap:10px;">
+            <input type="text" id="resMatCPU" class="form-control" placeholder="Processeur / CPU">
+            <input type="text" id="resMatRAM" class="form-control" placeholder="Mémoire RAM">
+            <input type="text" id="resMatHDD" class="form-control" placeholder="Stockage">
+            <input type="text" id="resMatOS"  class="form-control" placeholder="Système d'exploitation">
           </div>
         </div>
-      </div>`;
-  }).catch(() => {
-    document.getElementById('detailContent').innerHTML = '<p style="color:var(--text3)">Impossible de charger les stats.</p>';
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Description / Remarques</label>
+          <textarea id="resMatDesc" class="form-control" rows="2" placeholder="Notes supplémentaires..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="res-modal-foot">
+      <button class="btn btn-ghost" type="button" onclick="resCloseModal('materiel');">Annuler</button>
+      <button class="btn btn-primary" type="button" onclick="resSaveMateriel();" id="resBtnSaveMat">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Enregistrer
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="res-toast" id="restoast"></div>
+
+<script>
+const RES_CSRF = '{{ csrf_token }}';
+var materielsData = {{ materiels_json|safe|default:'[]' }};
+
+/* ══ Onglets ══ */
+function resTab(tab, el) {
+  document.getElementById('panelZones').style.display    = tab === 'zones'    ? 'block' : 'none';
+  document.getElementById('panelMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
+  document.querySelectorAll('#resTabs .res-tab').forEach(function(b){ b.classList.remove('active'); });
+  if (el) el.classList.add('active');
+}
+
+/* ══ Filtres ══ */
+function filterZones() {
+  var q   = document.getElementById('searchZone').value.toLowerCase();
+  var et  = document.getElementById('etageFilter').value;
+  var sec = document.getElementById('securiteFilter').value;
+  document.querySelectorAll('#zonesGrid .zone-card').forEach(function(c){
+    var ok = c.dataset.name.includes(q)
+          && (et  === 'all' || c.dataset.etage    === et)
+          && (sec === 'all' || c.dataset.securite === sec);
+    c.style.display = ok ? '' : 'none';
+  });
+}
+function filterMateriel() {
+  var q   = document.getElementById('searchMateriel').value.toLowerCase();
+  var cat = document.getElementById('categorieFilter').value;
+  var st  = document.getElementById('statutFilter').value;
+  document.querySelectorAll('#materielGrid .mat-card').forEach(function(c){
+    var ok = c.dataset.nom.includes(q)
+          && (cat === 'all' || c.dataset.categorie === cat)
+          && (st  === 'all' || c.dataset.statut    === st);
+    c.style.display = ok ? '' : 'none';
   });
 }
 
-function closeDetail() {
-  document.getElementById('zoneDetail').style.display = 'none';
-  document.querySelector(`.zone-card[data-id="${selectedZoneId}"]`)?.classList.remove('selected');
-  selectedZoneId = null;
-}
-
-function editZone(id, nom, code, etage, capacite, securite, desc) {
-  document.getElementById('modalTitle').textContent  = '✏️ Modifier la zone';
-  document.getElementById('zoneId').value            = id;
-  document.getElementById('zoneNom').value           = nom;
-  document.getElementById('zoneCode').value          = code;
-  document.getElementById('zoneEtage').value         = etage;
-  document.getElementById('zoneCapacite').value      = capacite;
-  document.getElementById('zoneSecurite').value      = securite;
-  document.getElementById('zoneDesc').value          = desc;
-  document.getElementById('mainModal').style.display = 'flex';
-  switchModalTab('zone');
-}
-
-function deleteZone(id, name) {
-  if (!confirm(`Supprimer la zone "${name}" ? Cette action est irréversible.`)) return;
-  fetch(`/bureaux/${id}/supprimer/`, { method:'POST', headers:{'X-CSRFToken':CSRF} })
-    .then(() => { showToast('Zone supprimée', 'ok'); setTimeout(() => location.reload(), 800); });
-}
-
-// ─── Matériel ─────────────────────────────────────────────────────────────────
-function editMateriel(id) {
-  const m = materielsData.find(x => x.id === id);
-  if (!m) return;
-  document.getElementById('modalTitle').textContent      = '✏️ Modifier le matériel';
-  document.getElementById('materielId').value            = id;
-  document.getElementById('matNom').value                = m.nom || '';
-  document.getElementById('matCategorie').value          = m.categorie || 'informatique';
-  document.getElementById('matFournisseur').value        = m.fournisseur || '';
-  document.getElementById('matMarque').value             = m.marque || '';
-  document.getElementById('matModele').value             = m.modele || '';
-  document.getElementById('matSerie').value              = m.numero_serie || '';
-  document.getElementById('matDateAchat').value          = m.date_achat || '';
-  document.getElementById('matAnneeInv').value           = m.annee_inv || (m.date_achat ? m.date_achat.slice(0,4) : '');
-  document.getElementById('matSeqInv').value             = m.seq_inv || '';
-  document.getElementById('matProcesseur').value         = m.processeur || '';
-  document.getElementById('matRam').value                = m.ram || '';
-  document.getElementById('matStockage').value           = m.stockage || '';
-  document.getElementById('matOS').value                 = m.os || '';
-  document.getElementById('matEcran').value              = m.ecran || '';
-  document.getElementById('matStatut').value             = m.statut || 'disponible';
-  document.getElementById('matZone').value               = m.zone || '';
-  document.getElementById('matValeur').value             = m.valeur || '';
-  document.getElementById('matPhoto').value              = m.photo || '';
-  document.getElementById('matDesc').value               = m.description || '';
-  // Afficher le numéro existant
-  if (m.num_inventaire) {
-    document.getElementById('invExistantWrap').style.display = 'block';
-    document.getElementById('matInvComplet').value = m.num_inventaire;
-    document.getElementById('invPreviewVal').textContent = m.num_inventaire;
+/* ══ Modal helpers ══ */
+function resOpenModal(type) {
+  if (type === 'zone') {
+    document.getElementById('resZoneId').value     = '';
+    document.getElementById('resZoneNom').value    = '';
+    document.getElementById('resZoneCode').value   = '';
+    document.getElementById('resZoneEtage').value  = '0';
+    document.getElementById('resZoneCapacite').value = '10';
+    document.getElementById('resZoneSecurite').value = 'standard';
+    document.getElementById('resZoneDesc').value   = '';
+    document.getElementById('resZoneModalTitle').textContent = '🚪 Nouvelle zone';
+    document.getElementById('resModalZone').classList.add('open');
+    document.body.style.overflow = 'hidden';
   } else {
-    document.getElementById('invExistantWrap').style.display = 'none';
-    updateInvPreview();
+    document.getElementById('resMatId').value          = '';
+    document.getElementById('resMatNom').value         = '';
+    document.getElementById('resMatInventaire').value  = '';
+    document.getElementById('resMatSerie').value       = '';
+    document.getElementById('resMatFournisseur').value = '';
+    document.getElementById('resMatMarque').value      = '';
+    document.getElementById('resMatZone').value        = '';
+    document.getElementById('resMatStatut').value      = 'disponible';
+    document.getElementById('resMatCategorie').value   = 'informatique';
+    document.getElementById('resMatCPU').value         = '';
+    document.getElementById('resMatRAM').value         = '';
+    document.getElementById('resMatHDD').value         = '';
+    document.getElementById('resMatOS').value          = '';
+    document.getElementById('resMatDesc').value        = '';
+    document.getElementById('resMatModalTitle').textContent = '🖥️ Nouveau matériel';
+    document.getElementById('resModalMateriel').classList.add('open');
+    document.body.style.overflow = 'hidden';
   }
-  toggleMachineFields();
-  document.getElementById('mainModal').style.display = 'flex';
-  switchModalTab('materiel');
 }
 
-function deleteMateriel(id, name) {
-  if (!confirm(`Supprimer le matériel "${name}" ? Cette action est irréversible.`)) return;
-  fetch(`/api/materiel/${id}/supprimer/`, { method:'DELETE', headers:{'X-CSRFToken':CSRF} })
-    .then(r => r.json())
-    .then(d => {
-      if (d.status === 'success') { showToast('Matériel supprimé', 'ok'); setTimeout(() => location.reload(), 800); }
-      else showToast(d.message || 'Erreur', 'err');
-    });
+function resCloseModal(type) {
+  if (type === 'zone') {
+    document.getElementById('resModalZone').classList.remove('open');
+  } else {
+    document.getElementById('resModalMateriel').classList.remove('open');
+  }
+  document.body.style.overflow = '';
 }
 
-async function saveMateriel() {
-  const nom = document.getElementById('matNom').value.trim();
-  if (!nom) { showToast('Le nom est obligatoire', 'err'); return; }
+/* Échap */
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'Escape') return;
+  resCloseModal('zone');
+  resCloseModal('materiel');
+});
 
-  const btn = document.getElementById('btnSaveMat');
-  btn.disabled    = true;
-  btn.textContent = '⏳ Enregistrement...';
+/* ══ Zone : édition ══ */
+function resEditZone(id, nom, code, etage, capacite, securite, desc) {
+  document.getElementById('resZoneId').value      = id;
+  document.getElementById('resZoneNom').value     = nom;
+  document.getElementById('resZoneCode').value    = code;
+  document.getElementById('resZoneEtage').value   = etage;
+  document.getElementById('resZoneCapacite').value= capacite;
+  document.getElementById('resZoneSecurite').value= securite;
+  document.getElementById('resZoneDesc').value    = desc;
+  document.getElementById('resZoneModalTitle').textContent = '✏️ Modifier : ' + nom;
+  document.getElementById('resModalZone').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
 
-  const fournisseur = (document.getElementById('matFournisseur').value || '').trim().toUpperCase();
-  const anneeInv    = document.getElementById('matAnneeInv').value || new Date().getFullYear();
-  const seqInv      = document.getElementById('matSeqInv').value || '';
+/* ══ Zone : sauvegarder (POST vers Django) ══ */
+function resSaveZone() {
+  var nom = document.getElementById('resZoneNom').value.trim();
+  if (!nom) { resToast('Le nom est obligatoire', 'err'); return; }
+  var id = document.getElementById('resZoneId').value;
+  var btn = document.getElementById('resBtnSaveZone');
+  btn.disabled = true; btn.textContent = 'Enregistrement...';
 
-  const data = {
-    id:           document.getElementById('materielId').value,
-    nom,
-    categorie:    document.getElementById('matCategorie').value,
-    fournisseur,
-    annee_inv:    anneeInv,
-    seq_inv:      seqInv,
-    marque:       document.getElementById('matMarque').value,
-    modele:       document.getElementById('matModele').value,
-    numero_serie: document.getElementById('matSerie').value,
-    date_achat:   document.getElementById('matDateAchat').value,
-    processeur:   document.getElementById('matProcesseur').value,
-    ram:          document.getElementById('matRam').value,
-    stockage:     document.getElementById('matStockage').value,
-    os:           document.getElementById('matOS').value,
-    ecran:        document.getElementById('matEcran').value,
-    statut:       document.getElementById('matStatut').value,
-    zone:         document.getElementById('matZone').value,
-    valeur:       document.getElementById('matValeur').value,
-    photo:        document.getElementById('matPhoto').value,
-    description:  document.getElementById('matDesc').value,
+  var formData = new FormData();
+  formData.append('csrfmiddlewaretoken', RES_CSRF);
+  formData.append('nom',             nom);
+  formData.append('code_bureau',     document.getElementById('resZoneCode').value.trim());
+  formData.append('etage',           document.getElementById('resZoneEtage').value);
+  formData.append('capacite_max',    document.getElementById('resZoneCapacite').value);
+  formData.append('niveau_securite', document.getElementById('resZoneSecurite').value);
+  formData.append('description',     document.getElementById('resZoneDesc').value.trim());
+
+  var url = id ? '/bureaux/' + id + '/modifier/' : '/bureaux/ajouter/';
+  fetch(url, { method: 'POST', body: formData })
+    .then(function(r){
+      if (r.ok || r.redirected) {
+        resToast('✅ Zone enregistrée', 'ok');
+        resCloseModal('zone');
+        setTimeout(function(){ location.reload(); }, 700);
+      } else {
+        resToast('Erreur serveur : ' + r.status, 'err');
+      }
+    })
+    .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); })
+    .finally(function(){ btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Enregistrer'; });
+}
+
+/* ══ Zone : supprimer ══ */
+function resDeleteZone(id, name) {
+  if (!confirm('Supprimer la zone "' + name + '" ?\n\nCette action est irréversible.')) return;
+  var formData = new FormData();
+  formData.append('csrfmiddlewaretoken', RES_CSRF);
+  fetch('/bureaux/' + id + '/supprimer/', { method: 'POST', body: formData })
+    .then(function(){ resToast('✅ Zone supprimée', 'ok'); setTimeout(function(){ location.reload(); }, 800); })
+    .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); });
+}
+
+/* ══ Matériel : édition (charge depuis JSON local) ══ */
+function resEditMateriel(id) {
+  var mat = null;
+  for (var i = 0; i < materielsData.length; i++) {
+    if (String(materielsData[i].id) === String(id)) { mat = materielsData[i]; break; }
+  }
+  if (!mat) { resToast('Données non disponibles, rechargez la page', 'err'); return; }
+
+  document.getElementById('resMatId').value          = mat.id || '';
+  document.getElementById('resMatNom').value         = mat.nom || '';
+  document.getElementById('resMatInventaire').value  = mat.num_inventaire || '';
+  document.getElementById('resMatSerie').value       = mat.numero_serie || '';
+  document.getElementById('resMatFournisseur').value = mat.fournisseur || '';
+  document.getElementById('resMatMarque').value      = (mat.marque || '') + (mat.modele ? ' ' + mat.modele : '');
+  document.getElementById('resMatZone').value        = mat.zone || '';
+  document.getElementById('resMatStatut').value      = mat.statut || 'disponible';
+  document.getElementById('resMatCategorie').value   = mat.categorie || 'autre';
+  document.getElementById('resMatCPU').value         = mat.processeur || '';
+  document.getElementById('resMatRAM').value         = mat.ram || '';
+  document.getElementById('resMatHDD').value         = mat.stockage || '';
+  document.getElementById('resMatOS').value          = mat.os || '';
+  document.getElementById('resMatDesc').value        = mat.description || '';
+  document.getElementById('resMatModalTitle').textContent = '✏️ Modifier : ' + (mat.nom || '');
+  document.getElementById('resModalMateriel').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+/* ══ Matériel : sauvegarder ══ */
+function resSaveMateriel() {
+  var nom = document.getElementById('resMatNom').value.trim();
+  if (!nom) { resToast('Le nom est obligatoire', 'err'); return; }
+  var id  = document.getElementById('resMatId').value;
+  var btn = document.getElementById('resBtnSaveMat');
+  btn.disabled = true; btn.textContent = 'Enregistrement...';
+
+  var payload = {
+    id:           id || null,
+    nom:          nom,
+    categorie:    document.getElementById('resMatCategorie').value,
+    num_inventaire: document.getElementById('resMatInventaire').value.trim(),
+    numero_serie: document.getElementById('resMatSerie').value.trim(),
+    fournisseur:  document.getElementById('resMatFournisseur').value.trim(),
+    marque:       document.getElementById('resMatMarque').value.trim(),
+    zone:         document.getElementById('resMatZone').value,
+    statut:       document.getElementById('resMatStatut').value,
+    processeur:   document.getElementById('resMatCPU').value.trim(),
+    ram:          document.getElementById('resMatRAM').value.trim(),
+    stockage:     document.getElementById('resMatHDD').value.trim(),
+    os:           document.getElementById('resMatOS').value.trim(),
+    description:  document.getElementById('resMatDesc').value.trim(),
   };
 
-  try {
-    const r = await fetch('/api/materiel/ajouter/', {
-      method:  'POST',
-      headers: {'Content-Type':'application/json','X-CSRFToken':CSRF},
-      body:    JSON.stringify(data),
-    });
-    const d = await r.json();
+  fetch('/api/materiel/ajouter/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': RES_CSRF },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
     if (d.status === 'success') {
-      showToast(data.id ? `✅ ${nom} modifié` : `✅ ${nom} ajouté — N° ${d.num_inventaire}`, 'ok');
-      closeModal();
-      setTimeout(() => location.reload(), 1000);
+      resToast('✅ Matériel enregistré', 'ok');
+      resCloseModal('materiel');
+      setTimeout(function(){ location.reload(); }, 700);
     } else {
-      showToast(d.message || 'Erreur', 'err');
+      resToast(d.message || 'Erreur serveur', 'err');
     }
-  } catch(e) {
-    showToast('Erreur réseau', 'err');
-  } finally {
-    btn.disabled    = false;
-    btn.textContent = '💾 Enregistrer';
-  }
+  })
+  .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); })
+  .finally(function(){ btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Enregistrer'; });
 }
 
-// ─── Export PDF ───────────────────────────────────────────────────────────────
-function exportMaterielPDF(id) {
-  showToast('Génération du PDF...', 'info');
-  window.open(`/api/materiel/${id}/pdf/`, '_blank');
+/* ══ Matériel : supprimer ══ */
+function resDeleteMateriel(id, name) {
+  if (!confirm('Supprimer "' + name + '" ?')) return;
+  fetch('/api/materiel/' + id + '/supprimer/', {
+    method: 'DELETE', headers: { 'X-CSRFToken': RES_CSRF }
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d.status === 'success') { resToast('✅ Matériel supprimé', 'ok'); setTimeout(function(){ location.reload(); }, 800); }
+    else resToast(d.message || 'Erreur', 'err');
+  })
+  .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); });
 }
 
-function exportZonePDF(id, nom) {
-  showToast(`Génération du rapport PDF — ${nom}...`, 'info');
-  window.open(`/api/zone/${id}/pdf/`, '_blank');
-}
+/* ══ Exports ══ */
+function exportMaterielPDF(id)      { resToast('📄 Génération PDF...', 'info'); window.open('/api/materiel/' + id + '/pdf/', '_blank'); }
+function exportZonePDF(id, nom)     { resToast('📄 Génération rapport zone...', 'info'); window.open('/api/zone/' + id + '/pdf/', '_blank'); }
+function exportZonesPDF()           { resToast('📄 Génération rapport global...', 'info'); window.open('/api/zones/rapport-pdf/', '_blank'); }
+function exportResourcesCSV()       { window.location.href = '/api/ressources/export-csv/'; }
 
-function exportZonesPDF() {
-  showToast('Génération du rapport global...', 'info');
-  window.open('/api/zones/rapport-pdf/', '_blank');
-}
-
-// ─── Modal ────────────────────────────────────────────────────────────────────
-function openAddModal(type) {
-  document.getElementById('modalTitle').textContent = type === 'zone' ? '➕ Nouvelle zone' : '➕ Nouveau matériel';
-  ['zoneId','zoneNom','zoneCode','zoneDesc'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('zoneEtage').value    = '0';
-  document.getElementById('zoneCapacite').value = '10';
-  ['matNom','matFournisseur','matAnneeInv','matSeqInv','matMarque','matModele','matSerie',
-   'matDateAchat','matProcesseur','matRam','matStockage','matOS','matEcran',
-   'matValeur','matPhoto','matDesc','materielId'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  document.getElementById('matAnneeInv').value           = new Date().getFullYear();
-  document.getElementById('matCategorie').value          = 'informatique';
-  document.getElementById('matStatut').value             = 'disponible';
-  document.getElementById('invExistantWrap').style.display = 'none';
-  document.getElementById('mainModal').style.display     = 'flex';
-  toggleMachineFields();
-  updateInvPreview();
-  switchModalTab(type);
-}
-
-function closeModal() {
-  document.getElementById('mainModal').style.display = 'none';
-}
-
-function switchModalTab(tab) {
-  document.getElementById('formZone').style.display     = tab === 'zone'     ? 'block' : 'none';
-  document.getElementById('formMateriel').style.display = tab === 'materiel' ? 'block' : 'none';
-  document.getElementById('modalTabZone').classList.toggle('active',     tab === 'zone');
-  document.getElementById('modalTabMateriel').classList.toggle('active', tab === 'materiel');
-}
-
-// ─── Utilitaires ──────────────────────────────────────────────────────────────
-function refreshPage() { location.reload(); }
-
-function exportResourcesCSV() {
-  window.location.href = '/api/ressources/export-csv/';
-}
-
-function showToast(msg, type = 'info') {
-  const t = document.getElementById('toast');
+/* ══ Toast ══ */
+function resToast(msg, type) {
+  var t = document.getElementById('restoast');
   t.textContent = msg;
-  t.className   = `toast ${type} show`;
-  setTimeout(() => t.classList.remove('show'), 3500);
+  t.style.background = type === 'ok' ? '#10b981' : type === 'err' ? '#ef4444' : '#3b82f6';
+  t.style.opacity = '1'; t.style.transform = 'translateY(0)';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(10px)'; }, 3000);
 }
 
-// Initialisation
-updateInvPreview();
+/* ══ KPI counter animation ══ */
+document.querySelectorAll('.kpi-val').forEach(function(el){
+  var text = el.textContent.replace(/\s/g,' ');
+  var num = parseInt(text.replace(/[^0-9]/g,''), 10);
+  if (isNaN(num) || num === 0) return;
+  var duration = 900, step = num / duration * 16, current = 0;
+  var timer = setInterval(function(){
+    current = Math.min(current + step, num);
+    el.textContent = Math.round(current) + (text.includes('%') ? '%' : '');
+    if (current >= num) clearInterval(timer);
+  }, 16);
+});
 </script>
 {% endblock %}

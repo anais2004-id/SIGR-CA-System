@@ -1,302 +1,350 @@
 {% extends "base.html" %}
 
-{% block title %}Notifications Admin - SIGR-CA{% endblock %}
+{% block title %}Notifications Admin · SIGR-CA{% endblock %}
 {% block page_title %}Centre de notifications{% endblock %}
 {% block page_sub %}Gestion des alertes et notifications administrateur{% endblock %}
 {% block nav_notifications %}active{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-ghost btn-sm" onclick="markAllAsRead()">✓ Tout marquer comme lu</button>
-<button class="btn btn-ghost btn-sm" onclick="deleteAllNotifications()">🗑️ Tout supprimer</button>
-<button class="btn btn-ghost btn-sm" onclick="sendTestNotification()">🔔 Envoyer test</button>
-<button class="btn btn-ghost btn-sm" onclick="refreshNotifications()">↻ Actualiser</button>
+<div style="display:flex; gap:10px; align-items:center;">
+  
+  <!-- Bouton Tout marquer comme lu -->
+  <button onclick="markAllAsRead()" 
+          style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; white-space:nowrap;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    Tout marquer comme lu
+  </button>
+  
+  <!-- Bouton Tout supprimer -->
+  <button onclick="deleteAllNotifications()" 
+          style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--red); border:1px solid rgba(239,68,68,.2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; white-space:nowrap;"
+          onmouseover="this.style.background='rgba(239,68,68,.08)';this.style.borderColor='rgba(239,68,68,.3)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--red)';this.style.borderColor='rgba(239,68,68,.2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    Tout supprimer
+  </button>
+  
+  <!-- Badge stats -->
+  <div class="live-pill" style="background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:var(--amber);">
+    <span class="live-dot" style="background:var(--amber);"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;" id="topUnreadBadge">{{ unread_count }} NON LUE{{ unread_count|pluralize:"S" }}</span>
+  </div>
+  
+</div>
 {% endblock %}
 
 {% block content %}
-
 <style>
-.notification-filters {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+/* ═══════════════════════════════════════
+   FONTS & TOKENS
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
+  --border: rgba(99,140,185,.12); --border2: rgba(99,140,185,.18); --border3: rgba(99,140,185,.28);
+  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
+  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6;
+  --radius: 14px; --radius-sm: 8px;
 }
-.filter-btn {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
+
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══════════════════════════════════════
+   CARD
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
 }
-.filter-btn:hover, .filter-btn.active {
-  background: var(--blue);
-  color: white;
-  border-color: var(--blue);
+.card-head {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
 }
-.notification-item {
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-  transition: all 0.2s;
+.card-head-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge { font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; font-family: var(--mono); letter-spacing: .5px; }
+
+/* ═══════════════════════════════════════
+   STATS ROW
+═══════════════════════════════════════ */
+.stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; font-family: var(--mono);
+  background: var(--bg3); border: 1px solid var(--border2);
 }
-.notification-item:hover {
-  transform: translateX(4px);
-  border-color: var(--blue);
+.stat-badge.blue  { background: rgba(59,130,246,.08); color: var(--blue2); border-color: rgba(59,130,246,.2); }
+.stat-badge.amber { background: rgba(245,158,11,.08); color: var(--amber); border-color: rgba(245,158,11,.2); }
+
+/* ═══════════════════════════════════════
+   FILTER TABS
+═══════════════════════════════════════ */
+.filter-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.filter-chip {
+  padding: 7px 14px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  cursor: pointer; font-size: 11.5px; font-weight: 600;
+  color: var(--text2); font-family: var(--font); transition: all .15s;
 }
-.notification-item.unread {
-  background: var(--blue3);
+.filter-chip.active { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 0 12px rgba(59,130,246,.3); }
+.filter-chip:hover:not(.active) { background: var(--bg4); color: var(--text1); }
+
+/* ═══════════════════════════════════════
+   NOTIFICATION ITEMS
+═══════════════════════════════════════ */
+.notif-list { display: flex; flex-direction: column; gap: 10px; }
+
+.notif-card {
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); overflow: hidden;
+  transition: all .2s;
+}
+.notif-card:hover { border-color: var(--border3); transform: translateX(4px); }
+.notif-card.unread {
   border-left: 3px solid var(--blue);
+  background: rgba(59,130,246,.04);
 }
-.notification-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+
+.notif-body { padding: 16px 18px; }
+
+.notif-header {
+  display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px;
 }
-.notification-icon {
-  font-size: 24px;
+.notif-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+.notif-title {
+  font-size: 14px; font-weight: 700; color: var(--text1);
+  flex: 1; line-height: 1.4;
 }
-.notification-title {
-  font-weight: 600;
-  flex: 1;
+.notif-badge-new {
+  display: inline-block; padding: 2px 8px; border-radius: 12px;
+  font-size: 9px; font-weight: 700; font-family: var(--mono);
+  background: var(--blue); color: #fff; margin-left: 8px;
+  vertical-align: middle;
 }
-.notification-date {
-  font-size: 11px;
-  color: var(--text3);
-  font-family: monospace;
+.notif-date {
+  font-size: 10.5px; color: var(--text3); font-family: var(--mono);
+  flex-shrink: 0; white-space: nowrap;
 }
-.notification-message {
-  font-size: 13px;
-  color: var(--text2);
-  margin-bottom: 12px;
-  padding-left: 36px;
-  white-space: pre-line;
+
+.notif-message {
+  font-size: 12.5px; color: var(--text2); padding-left: 34px;
+  line-height: 1.6; margin-bottom: 12px;
 }
-.notification-actions {
-  display: flex;
-  gap: 12px;
-  padding-left: 36px;
+
+.notif-footer {
+  display: flex; gap: 8px; padding-left: 34px;
+  padding-top: 10px; border-top: 1px solid var(--border);
 }
-.empty-state {
-  text-align: center;
-  padding: 60px;
-  color: var(--text3);
+
+/* ═══════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════ */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+.empty-icon { font-size: 52px; margin-bottom: 12px; opacity: .4; }
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn { padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 11px; font-family: var(--font); transition: all .15s; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue2); }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 10000;
+  padding: 14px 22px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  color: #fff; opacity: 0; transform: translateY(10px); transition: all .3s;
+  pointer-events: none; max-width: 360px;
 }
-.empty-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-}
-.notification-badge {
-  background: var(--blue);
-  color: white;
-  border-radius: 20px;
-  padding: 2px 8px;
-  font-size: 10px;
-  margin-left: 8px;
-}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.ok { background: var(--green); }
+.toast.err { background: var(--red); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
 
-<!-- Filtres -->
-<div class="notification-filters">
-  <button class="filter-btn active" onclick="filterNotifications('all')">📋 Toutes</button>
-  <button class="filter-btn" onclick="filterNotifications('reservation')">📅 Réservations</button>
-  <button class="filter-btn" onclick="filterNotifications('alerte')">⚠️ Alertes</button>
-  <button class="filter-btn" onclick="filterNotifications('systeme')">💻 Système</button>
-  <button class="filter-btn" onclick="filterNotifications('maintenance')">🔧 Maintenance</button>
-  <button class="filter-btn" onclick="filterNotifications('info')">ℹ️ Informations</button>
-</div>
+<div class="dash-wrap">
 
-<!-- Statistiques -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-  <div>
-    <span class="badge b-blue">📊 Total: {{ notifications|length }}</span>
-    <span class="badge b-amber">🟡 Non lues: {{ unread_count }}</span>
+  <!-- ══════════════════════════════════════════
+       STATISTIQUES
+  ══════════════════════════════════════════ -->
+  <div class="stats-row">
+    <span class="stat-badge blue">📊 Total : <strong>{{ notifications|length }}</strong></span>
+    <span class="stat-badge amber" id="unreadBadge">🟡 Non lues : <strong>{{ unread_count }}</strong></span>
   </div>
-</div>
 
-<!-- Liste des notifications -->
-<div id="notifications-container">
-  {% if notifications %}
-    {% for notif in notifications %}
-    <div class="notification-item {% if notif.status == 'non_lu' %}unread{% endif %}" 
-         data-type="{{ notif.categorie }}"
-         data-id="{{ notif.id }}">
-      <div class="notification-header">
-        <div class="notification-icon">{{ notif.icon|default:'🔔' }}</div>
-        <div class="notification-title">
-          {{ notif.titre }}
-          {% if notif.status == 'non_lu' %}
-            <span class="notification-badge">Nouveau</span>
-          {% endif %}
-        </div>
-        <div class="notification-date">{{ notif.created_at|date:"d/m/Y H:i" }}</div>
-      </div>
-      <div class="notification-message">{{ notif.message|linebreaksbr }}</div>
-      <div class="notification-actions">
-        {% if notif.status == 'non_lu' %}
-          <button class="btn btn-sm btn-primary" onclick="markAsRead('{{ notif.id }}')">✓ Marquer comme lu</button>
-        {% endif %}
-        {% if notif.action_url %}
-          <a href="{{ notif.action_url }}" class="btn btn-sm btn-ghost">Voir détails →</a>
-        {% endif %}
-        <button class="btn btn-sm btn-del" onclick="deleteNotification('{{ notif.id }}')">🗑️ Supprimer</button>
+  <!-- ══════════════════════════════════════════
+       FILTRES
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">🔍</div>
+      <span class="card-title">Filtrer les notifications</span>
+    </div>
+    <div style="padding:14px 20px;">
+      <div class="filter-bar">
+        <button class="filter-chip active" onclick="filterNotifications('all', this)">📋 Toutes</button>
+        <button class="filter-chip" onclick="filterNotifications('reservation', this)">📅 Réservations</button>
+        <button class="filter-chip" onclick="filterNotifications('alerte', this)">⚠️ Alertes</button>
+        <button class="filter-chip" onclick="filterNotifications('systeme', this)">💻 Système</button>
+        <button class="filter-chip" onclick="filterNotifications('maintenance', this)">🔧 Maintenance</button>
+        <button class="filter-chip" onclick="filterNotifications('info', this)">ℹ️ Informations</button>
       </div>
     </div>
-    {% endfor %}
-  {% else %}
-    <div class="empty-state">
-      <div class="empty-icon">🔔</div>
-      <div>Aucune notification</div>
-      <div style="font-size: 12px; margin-top: 8px;">Les notifications administrateur apparaîtront ici</div>
-      <button class="btn btn-primary btn-sm" style="margin-top: 16px;" onclick="sendTestNotification()">📨 Envoyer une notification test</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       LISTE NOTIFICATIONS
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">🔔</div>
+      <span class="card-title">Notifications</span>
+      <span class="card-badge" style="background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2);">{{ notifications|length }} notification{{ notifications|length|pluralize }}</span>
     </div>
-  {% endif %}
-</div>
+    <div style="padding:16px 20px;">
+      <div class="notif-list" id="notifications-container">
+        {% if notifications %}
+          {% for notif in notifications %}
+          <div class="notif-card {% if notif.status == 'non_lu' %}unread{% endif %}" data-type="{{ notif.categorie }}" data-id="{{ notif.id }}">
+            <div class="notif-body">
+              <div class="notif-header">
+                <div class="notif-icon">{{ notif.icon|default:'🔔' }}</div>
+                <div class="notif-title">
+                  {{ notif.titre }}
+                  {% if notif.status == 'non_lu' %}<span class="notif-badge-new">NOUVEAU</span>{% endif %}
+                </div>
+                <div class="notif-date">{{ notif.created_at|date:"d/m/Y H:i" }}</div>
+              </div>
+              <div class="notif-message">{{ notif.message|linebreaksbr }}</div>
+              <div class="notif-footer">
+                {% if notif.status == 'non_lu' %}
+                <button class="btn btn-primary btn-sm" onclick="markAsRead('{{ notif.id }}')">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Marquer comme lu
+                </button>
+                {% endif %}
+                {% if notif.action_url %}
+                <a href="{{ notif.action_url }}" class="btn btn-ghost btn-sm">Voir détails →</a>
+                {% endif %}
+                <button class="btn btn-ghost btn-sm" onclick="deleteNotification('{{ notif.id }}')" style="color:var(--red);border-color:rgba(239,68,68,.2);">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">
+            <div class="empty-icon">🔔</div>
+            <div style="font-size:15px;font-weight:600;color:var(--text1);margin-bottom:6px;">Aucune notification</div>
+            <div style="font-size:13px;">Les notifications administrateur apparaîtront ici</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div><!-- /dash-wrap -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
 
 <script>
-function filterNotifications(type) {
-  const items = document.querySelectorAll('.notification-item');
-  items.forEach(item => {
-    if (type === 'all' || item.dataset.type === type) {
-      item.style.display = '';
-    } else {
-      item.style.display = 'none';
-    }
+const CSRF = '{{ csrf_token }}';
+
+/* ─── Filtres ─── */
+function filterNotifications(type, btn) {
+  document.querySelectorAll('.notif-card').forEach(function(item) {
+    item.style.display = (type === 'all' || item.dataset.type === type) ? '' : 'none';
   });
-  
-  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
+  document.querySelectorAll('.filter-chip').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
 }
 
+/* ─── Marquer comme lu ─── */
 async function markAsRead(notificationId) {
   try {
-    const response = await fetch('/api/admin/notifications/mark-read/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token }}'
-      },
+    var r = await fetch('/api/admin/notifications/mark-read/', {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
       body: JSON.stringify({ notification_id: notificationId })
     });
-    
-    if (response.ok) {
-      const item = document.querySelector(`.notification-item[data-id="${notificationId}"]`);
-      if (item) {
-        item.classList.remove('unread');
-        updateUnreadCount();
-      }
+    if (r.ok) {
+      var item = document.querySelector('.notif-card[data-id="' + notificationId + '"]');
+      if (item) { item.classList.remove('unread'); updateUnreadCount(); }
     }
-  } catch (error) {
-    console.error('Erreur:', error);
-  }
+  } catch(e) { console.error('Erreur:', e); }
 }
 
 async function markAllAsRead() {
   try {
-    const response = await fetch('/api/admin/notifications/mark-read/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token }}'
-      },
+    var r = await fetch('/api/admin/notifications/mark-read/', {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
       body: JSON.stringify({ notification_id: null })
     });
-    
-    if (response.ok) {
-      document.querySelectorAll('.notification-item').forEach(item => {
-        item.classList.remove('unread');
-      });
+    if (r.ok) {
+      document.querySelectorAll('.notif-card').forEach(function(item) { item.classList.remove('unread'); });
       updateUnreadCount();
+      showToast('✅ Toutes les notifications sont marquées comme lues', 'ok');
     }
-  } catch (error) {
-    console.error('Erreur:', error);
-  }
+  } catch(e) { console.error('Erreur:', e); }
 }
 
+/* ─── Supprimer ─── */
 async function deleteNotification(notificationId) {
   if (!confirm('Supprimer cette notification ?')) return;
-  
   try {
-    const response = await fetch('/api/admin/notifications/delete/', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token }}'
-      },
+    var r = await fetch('/api/admin/notifications/delete/', {
+      method:'DELETE', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
       body: JSON.stringify({ notification_id: notificationId })
     });
-    
-    if (response.ok) {
-      const item = document.querySelector(`.notification-item[data-id="${notificationId}"]`);
-      if (item) {
-        item.remove();
-        updateUnreadCount();
-        
-        // Vérifier s'il reste des notifications
-        const remaining = document.querySelectorAll('.notification-item').length;
-        if (remaining === 0) {
-          location.reload();
-        }
-      }
+    if (r.ok) {
+      var item = document.querySelector('.notif-card[data-id="' + notificationId + '"]');
+      if (item) { item.remove(); updateUnreadCount(); }
+      if (document.querySelectorAll('.notif-card').length === 0) location.reload();
     }
-  } catch (error) {
-    console.error('Erreur:', error);
-  }
+  } catch(e) { console.error('Erreur:', e); }
 }
 
 async function deleteAllNotifications() {
-  if (!confirm('Supprimer TOUTES les notifications ? Cette action est irréversible.')) return;
-  
+  if (!confirm('Supprimer TOUTES les notifications ? Irréversible.')) return;
   try {
-    const response = await fetch('/api/admin/notifications/delete/', {
-      method: 'DELETE',
-      headers: {
-        'X-CSRFToken': '{{ csrf_token }}'
-      },
+    var r = await fetch('/api/admin/notifications/delete/', {
+      method:'DELETE', headers:{'X-CSRFToken':CSRF},
       body: JSON.stringify({ notification_id: null })
     });
-    
-    if (response.ok) {
-      location.reload();
-    }
-  } catch (error) {
-    console.error('Erreur:', error);
-  }
+    if (r.ok) location.reload();
+  } catch(e) { console.error('Erreur:', e); }
 }
 
-async function sendTestNotification() {
-  try {
-    const response = await fetch('/api/admin/notifications/test/', {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': '{{ csrf_token }}'
-      }
-    });
-    
-    if (response.ok) {
-      location.reload();
-    }
-  } catch (error) {
-    console.error('Erreur:', error);
-  }
-}
-
+/* ─── Update count ─── */
 function updateUnreadCount() {
-  const unreadItems = document.querySelectorAll('.notification-item.unread').length;
-  const badge = document.querySelector('.badge.b-amber');
-  if (badge) {
-    badge.textContent = `🟡 Non lues: ${unreadItems}`;
-  }
+  var count = document.querySelectorAll('.notif-card.unread').length;
+  var badge = document.getElementById('unreadBadge');
+  var topBadge = document.getElementById('topUnreadBadge');
+  if (badge) badge.innerHTML = '🟡 Non lues : <strong>' + count + '</strong>';
+  if (topBadge) topBadge.textContent = count + ' NON LUE' + (count > 1 ? 'S' : '');
 }
 
-function refreshNotifications() {
-  location.reload();
+/* ─── Toast ─── */
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(function() { t.classList.remove('show'); }, 3000);
 }
+
+function refreshNotifications() { location.reload(); }
 </script>
-
 {% endblock %}

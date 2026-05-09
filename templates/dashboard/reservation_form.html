@@ -1,233 +1,397 @@
 {% extends "base.html" %}
-{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} réservation - SIGR-CA{% endblock %}
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} réservation · SIGR-CA{% endblock %}
 {% block nav_reservations %}active{% endblock %}
 {% block page_title %}{% if is_edit %}Modifier la réservation{% else %}Nouvelle réservation{% endif %}{% endblock %}
-{% block page_sub %}{% if is_edit %}{{ reservation.titre }}{% else %}Réserver une salle ou ressource{% endif %}{% endblock %}
+{% block page_sub %}{% if is_edit %}{{ reservation.titre }}{% else %}Réserver une salle ou une ressource{% endif %}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{% url 'reservation_list' %}" class="btn btn-ghost btn-sm">← Retour</a>
-<button class="btn btn-ghost btn-sm" onclick="showSuggestions()">🤖 Suggestions IA</button>
+<div style="display:flex; gap:10px; align-items:center;">
+  
+  <!-- Bouton Retour -->
+  <a href="{% url 'reservation_list' %}" 
+     style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
+     onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+     onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    Retour
+  </a>
+  
+  <!-- Bouton Suggestions IA -->
+  <button onclick="showSuggestions()"
+          style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; white-space:nowrap;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    🤖 Suggestions IA
+  </button>
+  
+  <!-- Badge -->
+  <div class="live-pill" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple);">
+    <span class="live-dot" style="background:var(--purple);"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">{% if is_edit %}ÉDITION{% else %}CRÉATION{% endif %}</span>
+  </div>
+  
+</div>
 {% endblock %}
 
 {% block content %}
+<style>
+/* ═══════════════════════════════════════
+   FONTS & TOKENS (identiques dashboard)
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-<div style="max-width:800px;margin:0 auto">
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
+  --border: rgba(99,140,185,.12); --border2: rgba(99,140,185,.18); --border3: rgba(99,140,185,.28);
+  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
+  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6; --pink: #ec4899;
+  --radius: 14px; --radius-sm: 8px;
+}
 
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; max-width: 900px; margin: 0 auto; }
+
+/* ═══════════════════════════════════════
+   ALERTES
+═══════════════════════════════════════ */
+.alert {
+  padding: 14px 18px; border-radius: var(--radius); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px; font-size: 13px;
+}
+.alert-success { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); color: var(--green); }
+.alert-error   { background: rgba(239,68,68,.08);  border: 1px solid rgba(239,68,68,.2);  color: var(--red); }
+
+/* ═══════════════════════════════════════
+   CARD
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.card-head {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-head-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+
+/* ═══════════════════════════════════════
+   FORM
+═══════════════════════════════════════ */
+.form-section {
+  margin-bottom: 20px;
+}
+.form-section-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--text3);
+  margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.form-section-title::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+.form-label {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text3); margin-bottom: 6px;
+  display: block;
+}
+.form-label .required { color: var(--red); }
+
+.form-input, .form-select, textarea.form-input {
+  width: 100%; padding: 11px 14px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); font-size: 13px; color: var(--text1);
+  font-family: var(--font); outline: none; transition: all .15s;
+}
+.form-input:focus, .form-select:focus, textarea.form-input:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+}
+.form-input::placeholder { color: var(--text3); }
+.form-select { cursor: pointer; appearance: none; -webkit-appearance: none;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%238fa3bc" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>');
+  background-repeat: no-repeat; background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════
+   DISPO INDICATOR
+═══════════════════════════════════════ */
+#dispo-indicator {
+  display: none; padding: 12px 16px; border-radius: var(--radius-sm);
+  margin-bottom: 16px; font-size: 12.5px; font-weight: 600;
+}
+
+/* ═══════════════════════════════════════
+   SUGGESTIONS
+═══════════════════════════════════════ */
+.suggestion-chip {
+  display: block; width: 100%; text-align: left; padding: 10px 14px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); cursor: pointer;
+  font-family: var(--font); font-size: 12px; color: var(--text2);
+  transition: all .15s;
+}
+.suggestion-chip:hover {
+  border-color: var(--cyan); background: var(--bg4);
+  color: var(--text1); transform: translateX(4px);
+}
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn {
+  padding: 10px 20px; border-radius: var(--radius-sm); border: none; cursor: pointer;
+  font-weight: 600; font-size: 13px; font-family: var(--font);
+  transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
+  text-decoration: none;
+}
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
+</style>
+
+<div class="dash-wrap">
+
+  <!-- Messages -->
   {% if messages %}
   {% for message in messages %}
-  <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}" style="margin-bottom:16px">
-    <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-    <div><div class="alert-text">{{ message }}</div></div>
+  <div class="alert {% if message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">
+    <span>{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</span>
+    <span>{{ message }}</span>
   </div>
   {% endfor %}
   {% endif %}
 
+  <!-- Formulaire principal -->
   <div class="card">
     <div class="card-head">
-      <span>{% if is_edit %}✏️{% else %}➕{% endif %}</span>
+      <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">
+        {% if is_edit %}✏️{% else %}➕{% endif %}
+      </div>
       <span class="card-title">{% if is_edit %}Modifier la réservation{% else %}Créer une réservation{% endif %}</span>
-      <span class="card-sub">Contrôle d'accès intégré</span>
     </div>
-    <div class="card-body" style="padding:28px 32px">
+    <div style="padding: 24px 28px;">
       <form method="post" id="reservationForm">
         {% csrf_token %}
 
-        <!-- Titre -->
-        <div class="form-row">
-          <label class="form-label">Titre de la réservation <span style="color:var(--red)">*</span></label>
-          <input class="form-input" name="titre" value="{{ reservation.titre|default:'' }}"
-                 placeholder="ex: Réunion direction, Formation équipe..." required>
-        </div>
-
-        <!-- Salle + Employé -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-  <label class="form-label">Salle ou ressource <span style="color:var(--red)">*</span></label>
-  <select class="form-select" name="resource_id" id="resourceSelect" onchange="onResourceChange()" required>
-    <option value="">— Choisir une salle ou une ressource —</option>
-
-    {% if bureaux %}
-    <optgroup label="🚪 Salles / Zones">
-      {% for b in bureaux %}
-      <option value="{{ b.id }}" data-type="salle" data-capacite="{{ b.capacite_max|default:'' }}"
-        {% if reservation.resource_id|stringformat:"s" == b.id or reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}>
-        🚪 {{ b.nom }}{% if b.capacite_max %} (Cap. {{ b.capacite_max }}){% endif %}
-      </option>
-      {% endfor %}
-    </optgroup>
-    {% endif %}
-
-    {% if materiels %}
-    <optgroup label="📦 Matériel / Équipements">
-      {% for m in materiels %}
-      <option value="{{ m.id }}" data-type="materiel"
-        {% if reservation.resource_id|stringformat:"s" == m.id or reservation.materiel_id|stringformat:"s" == m.id %}selected{% endif %}>
-        {{ m.type_icon|default:"📦" }} {{ m.nom }}{% if m.categorie %} — {{ m.categorie }}{% endif %}
-      </option>
-      {% endfor %}
-    </optgroup>
-    {% endif %}
-  </select>
-
-  <input type="hidden" name="resource_type" id="resourceType" value="salle">
-
-  <div id="resourceHint" style="margin-top:6px; font-size:11px; color:var(--text3)"></div>
-</div>
-          <div class="form-row">
-            <label class="form-label">Réservé par <span style="color:var(--red)">*</span></label>
-            <select class="form-select" name="employe_id" required>
-              <option value="">— Choisir un employé —</option>
-              {% for e in employes %}
-              <option value="{{ e.id }}"
-                {% if reservation.employe_id|stringformat:"s" == e.id %}selected{% endif %}>
-                {{ e.nom }} {{ e.prenom }} — {{ e.departement }}
-              </option>
-              {% endfor %}
-            </select>
+        <!-- Section Informations -->
+        <div class="form-section">
+          <div class="form-section-title">📋 Informations</div>
+          
+          <div style="margin-bottom: 14px;">
+            <label class="form-label">Titre de la réservation <span class="required">*</span></label>
+            <input class="form-input" name="titre" value="{{ reservation.titre|default:'' }}"
+                   placeholder="Ex: Réunion direction, Formation équipe..." required>
           </div>
-        </div>
 
-        <!-- Dates -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Date et heure de début <span style="color:var(--red)">*</span></label>
-            <input class="form-input" name="date_debut" type="datetime-local" id="dateDebut"
-                   value="{{ reservation.date_debut_str|default:'' }}"
-                   onchange="checkDispo()" required>
-          </div>
-          <div class="form-row">
-            <label class="form-label">Date et heure de fin <span style="color:var(--red)">*</span></label>
-            <input class="form-input" name="date_fin" type="datetime-local" id="dateFin"
-                   value="{{ reservation.date_fin_str|default:'' }}"
-                   onchange="checkDispo()" required>
-          </div>
-        </div>
-
-        <!-- Récurrence -->
-        <div class="form-row">
-          <label class="form-label">Récurrence</label>
-          <select class="form-select" id="recurrenceSelect" onchange="toggleRecurrence()">
-            <option value="none">Aucune</option>
-            <option value="daily">Quotidienne</option>
-            <option value="weekly">Hebdomadaire</option>
-            <option value="monthly">Mensuelle</option>
-          </select>
-        </div>
-
-        <div id="recurrenceOptions" style="display:none; margin-top:12px; padding:12px; background:var(--bg3); border-radius:8px">
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
-            <div class="form-row">
-              <label class="form-label">Jusqu'au</label>
-              <input type="date" id="recurrenceEnd" class="form-input">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Salle ou ressource <span class="required">*</span></label>
+              <select class="form-select" name="resource_id" id="resourceSelect" onchange="onResourceChange()" required>
+                <option value="">— Choisir —</option>
+                {% if bureaux %}
+                <optgroup label="🚪 Salles / Zones">
+                  {% for b in bureaux %}
+                  <option value="{{ b.id }}" data-type="salle" data-capacite="{{ b.capacite_max|default:'' }}"
+                    {% if reservation.resource_id|stringformat:"s" == b.id or reservation.bureau_id|stringformat:"s" == b.id %}selected{% endif %}>
+                    🚪 {{ b.nom }}{% if b.capacite_max %} ({{ b.capacite_max }} pers.){% endif %}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+                {% if materiels %}
+                <optgroup label="📦 Matériel / Équipements">
+                  {% for m in materiels %}
+                  <option value="{{ m.id }}" data-type="materiel"
+                    {% if reservation.resource_id|stringformat:"s" == m.id or reservation.materiel_id|stringformat:"s" == m.id %}selected{% endif %}>
+                    {{ m.type_icon|default:"📦" }} {{ m.nom }} — {{ m.categorie|default:"Matériel" }}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+              </select>
+              <input type="hidden" name="resource_type" id="resourceType" value="salle">
+              <div id="resourceHint" style="margin-top:6px; font-size:11px; color:var(--text3);"></div>
             </div>
-            <div class="form-row">
-              <label class="form-label">Occurrences max</label>
-              <input type="number" id="recurrenceCount" class="form-input" value="10" min="1" max="100">
+            <div>
+              <label class="form-label">Réservé par <span class="required">*</span></label>
+              <select class="form-select" name="employe_id" required>
+                <option value="">— Choisir un employé —</option>
+                {% for e in employes %}
+                <option value="{{ e.id }}" {% if reservation.employe_id|stringformat:"s" == e.id %}selected{% endif %}>
+                  👤 {{ e.nom }} {{ e.prenom }} — {{ e.departement|default:"" }}
+                </option>
+                {% endfor %}
+              </select>
             </div>
           </div>
         </div>
 
-        <!-- Indicateur disponibilité -->
-        <div id="dispo-indicator" style="display:none;padding:10px 14px;border-radius:var(--radius);margin-bottom:16px;font-size:12.5px;font-weight:500"></div>
-
-        <!-- Participants + Statut -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-row">
-            <label class="form-label">Nombre de participants</label>
-            <input class="form-input" name="nb_participants" type="number" min="1" max="100"
-                   value="{{ reservation.nb_participants|default:'1' }}">
+        <!-- Section Créneau -->
+        <div class="form-section">
+          <div class="form-section-title">⏰ Créneau</div>
+          
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Date et heure de début <span class="required">*</span></label>
+              <input class="form-input" name="date_debut" type="datetime-local" id="dateDebut"
+                     value="{{ reservation.date_debut_str|default:'' }}" onchange="checkDispo()" required>
+            </div>
+            <div>
+              <label class="form-label">Date et heure de fin <span class="required">*</span></label>
+              <input class="form-input" name="date_fin" type="datetime-local" id="dateFin"
+                     value="{{ reservation.date_fin_str|default:'' }}" onchange="checkDispo()" required>
+            </div>
           </div>
-          {% if is_edit %}
-          <div class="form-row">
-            <label class="form-label">Statut</label>
-            <select class="form-select" name="statut">
-              <option value="confirmee" {% if reservation.statut == 'confirmee' %}selected{% endif %}>✅ Confirmée</option>
-              <option value="en_attente" {% if reservation.statut == 'en_attente' %}selected{% endif %}>⏳ En attente</option>
-              <option value="annulee" {% if reservation.statut == 'annulee' %}selected{% endif %}>❌ Annulée</option>
+
+          <!-- Indicateur disponibilité -->
+          <div id="dispo-indicator"></div>
+
+          <!-- Récurrence -->
+          <div style="margin-top: 14px;">
+            <label class="form-label">Récurrence</label>
+            <select class="form-select" id="recurrenceSelect" onchange="toggleRecurrence()" style="width: auto; min-width: 200px;">
+              <option value="none">Aucune</option>
+              <option value="daily">🔄 Quotidienne</option>
+              <option value="weekly">📅 Hebdomadaire</option>
+              <option value="monthly">📆 Mensuelle</option>
             </select>
           </div>
-          {% endif %}
+
+          <div id="recurrenceOptions" style="display:none; margin-top:12px; padding:14px; background:var(--bg3); border-radius:var(--radius-sm); border:1px solid var(--border2);">
+            <div class="form-grid">
+              <div>
+                <label class="form-label">Jusqu'au</label>
+                <input type="date" id="recurrenceEnd" class="form-input">
+              </div>
+              <div>
+                <label class="form-label">Occurrences max</label>
+                <input type="number" id="recurrenceCount" class="form-input" value="10" min="1" max="100">
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Équipements requis -->
-        
+        <!-- Section Détails -->
+        <div class="form-section">
+          <div class="form-section-title">📝 Détails</div>
+          
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Nombre de participants</label>
+              <input class="form-input" name="nb_participants" type="number" min="1" max="100"
+                     value="{{ reservation.nb_participants|default:'1' }}">
+            </div>
+            {% if is_edit %}
+            <div>
+              <label class="form-label">Statut</label>
+              <select class="form-select" name="statut">
+                <option value="confirmee" {% if reservation.statut == 'confirmee' %}selected{% endif %}>✅ Confirmée</option>
+                <option value="en_attente" {% if reservation.statut == 'en_attente' %}selected{% endif %}>⏳ En attente</option>
+                <option value="annulee" {% if reservation.statut == 'annulee' %}selected{% endif %}>❌ Annulée</option>
+              </select>
+            </div>
+            {% endif %}
+          </div>
 
-        <!-- Description -->
-        <div class="form-row">
-          <label class="form-label">Description / Objet</label>
-          <textarea class="form-input" name="description" rows="3"
-                    placeholder="Détails de la réunion, matériel requis...">{{ reservation.description|default:'' }}</textarea>
+          <div style="margin-top: 14px;">
+            <label class="form-label">Description / Objet</label>
+            <textarea class="form-input" name="description" rows="3"
+                      placeholder="Détails de la réservation, matériel requis...">{{ reservation.description|default:'' }}</textarea>
+          </div>
         </div>
 
         <!-- Boutons -->
-        <div style="display:flex;gap:12px;justify-content:flex-end;padding-top:24px;border-top:1px solid var(--border);margin-top:8px">
+        <div style="display:flex; gap:12px; justify-content:flex-end; padding-top:20px; border-top:1px solid var(--border); margin-top:8px;">
           <a href="{% url 'reservation_list' %}" class="btn btn-ghost">Annuler</a>
           <button type="submit" class="btn btn-primary" id="submitBtn">
-            {% if is_edit %}💾 Enregistrer{% else %}📆 Confirmer la réservation{% endif %}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            {% if is_edit %}Enregistrer les modifications{% else %}Confirmer la réservation{% endif %}
           </button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Créneaux du jour sélectionné -->
-  <div class="card" id="creneaux-card" style="display:none;margin-top:16px">
-    <div class="card-head"><span>🕐</span><span class="card-title">Créneaux déjà réservés — salle sélectionnée</span></div>
-    <div class="card-body" id="creneaux-body">
-      <div style="color:var(--text3);font-size:12px">Sélectionnez une salle et une date pour voir les créneaux.</div>
+  <!-- Créneaux du jour -->
+  <div class="card" id="creneaux-card" style="display:none;">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">🕐</div>
+      <span class="card-title">Créneaux réservés — salle sélectionnée</span>
+    </div>
+    <div style="padding: 16px 20px;" id="creneaux-body">
+      <div style="color:var(--text3);font-size:12px;text-align:center;padding:20px;">Sélectionnez une salle et une date pour voir les créneaux.</div>
     </div>
   </div>
 
   <!-- Suggestions IA -->
-  <div class="card" style="margin-top:16px">
-    <div class="card-head"><span>🤖</span><span class="card-title">Suggestions intelligentes</span></div>
-    <div class="card-body" id="suggestions-container">
-      <div style="color:var(--text3);font-size:12px">Sélectionnez une salle pour voir les créneaux recommandés.</div>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">🤖</div>
+      <span class="card-title">Suggestions intelligentes</span>
+      <button class="btn btn-ghost btn-sm" onclick="showSuggestions()" style="font-size:11px; padding:6px 12px;">
+        🔄 Actualiser
+      </button>
+    </div>
+    <div style="padding: 16px 20px;" id="suggestions-container">
+      <div style="color:var(--text3);font-size:12px;text-align:center;padding:20px;">
+        Sélectionnez une ressource pour voir les créneaux recommandés.
+      </div>
     </div>
   </div>
-</div>
 
-<style>
-.form-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text2);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  display: block;
-}
-.form-input, .form-select, textarea.form-input {
-  width: 100%;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--text);
-  font-family: var(--font);
-  outline: none;
-  transition: all 0.15s;
-}
-.form-input:focus, .form-select:focus, textarea.form-input:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 2px rgba(31,111,235,0.1);
-}
-</style>
+</div><!-- /dash-wrap -->
 
 {% endblock %}
 
 {% block extra_js %}
+<script>
+/* ─── Variables ─── */
 var dispoTimer = null;
 
+/* ─── Changement de ressource ─── */
+function onResourceChange() {
+  var sel  = document.getElementById('resourceSelect');
+  var opt  = sel.options[sel.selectedIndex];
+  var type = opt ? (opt.getAttribute('data-type') || 'salle') : 'salle';
+  document.getElementById('resourceType').value = type;
+
+  var hint = document.getElementById('resourceHint');
+  if (type === 'materiel') {
+    hint.innerHTML = '📦 Ressource matérielle — réservation individuelle.';
+    document.getElementById('creneaux-card').style.display = 'none';
+  } else {
+    var cap = opt.getAttribute('data-capacite');
+    hint.innerHTML = '🚪 Salle' + (cap ? ' — capacité : <strong>' + cap + ' personnes</strong>.' : '.');
+    loadBureauSchedule();
+  }
+  checkDispo();
+}
+
+/* ─── Vérification disponibilité ─── */
 function checkDispo() {
-  var sel       = document.getElementById('resourceSelect');
+  var sel        = document.getElementById('resourceSelect');
   var resourceId = sel ? sel.value : '';
-  var type      = document.getElementById('resourceType').value || 'salle';
-  var debut     = document.getElementById('dateDebut').value;
-  var fin       = document.getElementById('dateFin').value;
-  var indicator = document.getElementById('dispo-indicator');
-  var submitBtn = document.getElementById('submitBtn');
+  var type       = document.getElementById('resourceType').value || 'salle';
+  var debut      = document.getElementById('dateDebut').value;
+  var fin        = document.getElementById('dateFin').value;
+  var indicator  = document.getElementById('dispo-indicator');
+  var submitBtn  = document.getElementById('submitBtn');
 
   if (!resourceId || !debut || !fin) {
     indicator.style.display = 'none';
@@ -236,8 +400,8 @@ function checkDispo() {
 
   if (new Date(fin) <= new Date(debut)) {
     indicator.style.display = 'block';
-    indicator.style.background = 'var(--red2)';
-    indicator.style.border = '1px solid rgba(248,81,73,.3)';
+    indicator.style.background = 'rgba(239,68,68,.08)';
+    indicator.style.border = '1px solid rgba(239,68,68,.2)';
     indicator.style.color = 'var(--red)';
     indicator.textContent = '⚠️ La date de fin doit être après la date de début.';
     submitBtn.disabled = true;
@@ -247,39 +411,36 @@ function checkDispo() {
   clearTimeout(dispoTimer);
   dispoTimer = setTimeout(function() {
     indicator.style.display = 'block';
-    indicator.style.background = 'var(--blue3)';
-    indicator.style.border = '1px solid rgba(31,111,235,.2)';
+    indicator.style.background = 'rgba(59,130,246,.08)';
+    indicator.style.border = '1px solid rgba(59,130,246,.2)';
     indicator.style.color = 'var(--blue2)';
     indicator.textContent = '⏳ Vérification de la disponibilité...';
 
-    var url;
-    if (type === 'materiel') {
-      url = '/api/materiels/' + resourceId + '/disponibilite/?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin);
-    } else {
-      url = '/api/bureaux/'   + resourceId + '/disponibilite/?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin);
-    }
+    var url = type === 'materiel' 
+      ? '/api/materiels/' + resourceId + '/disponibilite/?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin)
+      : '/api/bureaux/' + resourceId + '/disponibilite/?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin);
 
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.disponible) {
-          indicator.style.background = 'var(--green2)';
-          indicator.style.border = '1px solid rgba(45,186,111,.3)';
+          indicator.style.background = 'rgba(16,185,129,.08)';
+          indicator.style.border = '1px solid rgba(16,185,129,.2)';
           indicator.style.color = 'var(--green)';
-          indicator.textContent = (type === 'materiel' ? '✅ Matériel disponible' : '✅ Salle disponible') + ' sur ce créneau !';
+          indicator.innerHTML = '✅ ' + (type === 'materiel' ? 'Matériel disponible' : 'Salle disponible') + ' sur ce créneau !';
           submitBtn.disabled = false;
         } else {
-          indicator.style.background = 'var(--red2)';
-          indicator.style.border = '1px solid rgba(248,81,73,.3)';
+          indicator.style.background = 'rgba(239,68,68,.08)';
+          indicator.style.border = '1px solid rgba(239,68,68,.2)';
           indicator.style.color = 'var(--red)';
           var motif = data.motif ? ' (' + data.motif + ')' : '';
-          indicator.textContent = (type === 'materiel' ? '❌ Matériel indisponible' : '❌ Salle déjà réservée') + motif + '. Choisissez un autre créneau.';
+          indicator.innerHTML = '❌ ' + (type === 'materiel' ? 'Matériel indisponible' : 'Salle déjà réservée') + motif + '.';
           submitBtn.disabled = true;
         }
       })
       .catch(function() {
-        indicator.style.background = 'var(--amber2)';
-        indicator.style.border = '1px solid rgba(227,179,65,.3)';
+        indicator.style.background = 'rgba(245,158,11,.08)';
+        indicator.style.border = '1px solid rgba(245,158,11,.2)';
         indicator.style.color = 'var(--amber)';
         indicator.textContent = '⚠️ Impossible de vérifier la disponibilité.';
         submitBtn.disabled = false;
@@ -287,115 +448,61 @@ function checkDispo() {
   }, 600);
 }
 
+/* ─── Chargement créneaux du jour ─── */
 function loadBureauSchedule() {
-  var sel  = document.getElementById('resourceSelect');
-  var type = document.getElementById('resourceType').value || 'salle';
-  if (type !== 'salle') {
-    var card = document.getElementById('creneaux-card');
-    if (card) card.style.display = 'none';
-    return;
-  }
+  var sel      = document.getElementById('resourceSelect');
   var bureauId = sel ? sel.value : '';
   var dateField = document.getElementById('dateDebut');
+  var card     = document.getElementById('creneaux-card');
+
   if (!bureauId || !dateField.value) return;
 
   var date = dateField.value.split('T')[0];
-  var card = document.getElementById('creneaux-card');
-
+  
   fetch('/api/bureaux/' + bureauId + '/schedule/?date=' + date)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       card.style.display = 'block';
       var body = document.getElementById('creneaux-body');
       if (data.creneaux && data.creneaux.length > 0) {
-        body.innerHTML = data.creneaux.map(function(c) {
-          return '<div style="padding:8px; background:var(--bg3); border-radius:6px; margin-bottom:6px; font-size:12px">'
-               + '⏰ ' + c.debut + ' → ' + c.fin + ' — ' + (c.titre || 'Réservé')
-               + '</div>';
-        }).join('');
-      } else {
-        body.innerHTML = '<div style="color:var(--text3); font-size:12px">✅ Aucun créneau réservé ce jour-là.</div>';
-      }
-    })
-    .catch(function() {});
-}
-
-function loadBureauSchedule() {
-  var bureauId = document.getElementById("bureauSelect").value;
-  var dateField = document.getElementById("dateDebut");
-  if (!bureauId || !dateField.value) return;
-  
-  var date = dateField.value.split('T')[0];
-  var card = document.getElementById("creneaux-card");
-  
-  fetch(`/api/bureaux/${bureauId}/schedule/?date=${date}`)
-    .then(r => r.json())
-    .then(data => {
-      card.style.display = "block";
-      var body = document.getElementById("creneaux-body");
-      if (data.creneaux && data.creneaux.length > 0) {
-        body.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px">`;
-        data.creneaux.forEach(c => {
-          body.innerHTML += `<div style="display:flex; justify-content:space-between; padding:8px; background:var(--bg3); border-radius:6px">
-            <span>🕐 ${c.debut} → ${c.fin}</span>
-            <span>📋 ${c.titre}</span>
-            <span>👤 ${c.employe}</span>
-          </div>`;
+        var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+        data.creneaux.forEach(function(c) {
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;font-size:12px;">';
+          html += '<span style="font-family:var(--mono);color:var(--text2);">🕐 ' + c.debut + ' → ' + c.fin + '</span>';
+          html += '<span style="color:var(--text1);">📋 ' + (c.titre || 'Réservé') + '</span>';
+          html += '<span style="color:var(--text3);">👤 ' + (c.employe || '—') + '</span>';
+          html += '</div>';
         });
-        body.innerHTML += `</div>`;
+        html += '</div>';
+        body.innerHTML = html;
       } else {
-        body.innerHTML = `<div style="color:var(--green); padding:12px; text-align:center">✅ Aucune réservation pour cette date</div>`;
+        body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--green);">✅ Aucun créneau réservé ce jour-là.</div>';
       }
     });
 }
 
+/* ─── Récurrence ─── */
 function toggleRecurrence() {
-  var recurrence = document.getElementById("recurrenceSelect").value;
-  var options = document.getElementById("recurrenceOptions");
-  options.style.display = recurrence !== "none" ? "block" : "none";
+  var recurrence = document.getElementById('recurrenceSelect').value;
+  document.getElementById('recurrenceOptions').style.display = recurrence !== 'none' ? 'block' : 'none';
 }
 
-function showSuggestions() {
-  var bureauId = document.getElementById("bureauSelect").value;
-  var container = document.getElementById("suggestions-container");
-  
-  if (!bureauId) {
-    container.innerHTML = `<div style="color:var(--text3);font-size:12px">Veuillez d'abord sélectionner une salle.</div>`;
-    return;
-  }
-  
-  fetch(`/api/bureaux/${bureauId}/suggestions/`)
-    .then(r => r.json())
-    .then(data => {
-      container.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px">`;
-      data.suggestions.forEach(s => {
-        container.innerHTML += `
-          <div style="padding:10px; background:var(--bg3); border-radius:8px; cursor:pointer" onclick="applySuggestion('${s.debut}', '${s.fin}')">
-            <div style="font-weight:600">📅 ${s.date} - ${s.debut} → ${s.fin}</div>
-            <div style="font-size:12px; color:var(--text2)">📊 Taux d'occupation: ${s.taux}% · ✅ ${s.disponibilite}</div>
-          </div>`;
-      });
-      container.innerHTML += `</div>`;
-    });
-}
+/* ─── Suggestions IA ─── */
 function showSuggestions() {
   var sel = document.getElementById('resourceSelect');
   var resourceId = sel ? sel.value : '';
   var resourceType = document.getElementById('resourceType').value || 'salle';
   var dateInput = document.getElementById('dateDebut').value;
   var nbPart = document.querySelector('input[name="nb_participants"]').value || 1;
-
   var container = document.getElementById('suggestions-container');
 
   if (!resourceId) {
-    container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ Choisissez d\'abord une salle ou ressource.</div>';
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--amber);">⚠️ Choisissez d\'abord une ressource.</div>';
     return;
   }
 
-  // Date cible : celle sélectionnée, sinon aujourd'hui
   var date = dateInput ? dateInput.split('T')[0] : new Date().toISOString().split('T')[0];
-
-  container.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Recherche des meilleurs créneaux...</div>';
+  container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);"><div style="animation:spin 1s linear infinite;display:inline-block;font-size:24px;">⚙️</div><div style="margin-top:8px;">Recherche des créneaux...</div></div>';
 
   var url = '/api/suggestions-creneaux/?resource_id=' + encodeURIComponent(resourceId)
           + '&resource_type=' + encodeURIComponent(resourceType)
@@ -407,95 +514,75 @@ function showSuggestions() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.warning) {
-        container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ ' + data.warning + '</div>';
+        container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--amber);">⚠️ ' + data.warning + '</div>';
         return;
       }
       if (!data.suggestions || data.suggestions.length === 0) {
-        container.innerHTML = '<div style="color:var(--text3);font-size:12px">Aucun créneau libre ce jour-là. Essayez une autre date.</div>';
+        container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">Aucun créneau libre ce jour-là.</div>';
         return;
       }
 
-      var html = '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">'
-               + '✨ Créneaux disponibles le ' + new Date(date).toLocaleDateString('fr-FR') + ' :</div>'
-               + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">';
-
+      var html = '<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">✨ ' + data.suggestions.length + ' créneau(x) disponible(s) le ' + new Date(date).toLocaleDateString('fr-FR') + ' :</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      
       data.suggestions.forEach(function(s) {
-        html += '<button type="button" class="btn btn-ghost btn-sm" '
-              + 'style="text-align:left;padding:10px;border:1px solid var(--border);border-radius:8px" '
-              + 'onclick="applySuggestion(\'' + s.debut + '\',\'' + s.fin + '\')">'
-              + '<div style="font-weight:600;color:var(--blue2)">🕐 ' + s.debut_label + ' → ' + s.fin_label + '</div>'
-              + '<div style="font-size:10px;color:var(--text3);margin-top:2px">Score : ' + s.score + '</div>'
-              + '</button>';
+        html += '<div class="suggestion-chip" onclick="applySuggestion(\'' + s.debut + '\',\'' + s.fin + '\')">';
+        html += '<div style="font-weight:600;color:var(--cyan);">🕐 ' + (s.debut_label || s.debut) + ' → ' + (s.fin_label || s.fin) + '</div>';
+        html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;">Score de pertinence : ' + (s.score || 'N/A') + '</div>';
+        html += '</div>';
       });
+      
       html += '</div>';
       container.innerHTML = html;
     })
     .catch(function(err) {
-      container.innerHTML = '<div style="color:var(--red);font-size:12px">❌ Erreur : ' + err + '</div>';
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);">❌ Erreur : ' + err.message + '</div>';
     });
 }
 
+/* ─── Appliquer suggestion ─── */
 function applySuggestion(debut, fin) {
   document.getElementById('dateDebut').value = debut.slice(0, 16);
   document.getElementById('dateFin').value   = fin.slice(0, 16);
   if (typeof checkDispo === 'function') checkDispo();
-  // Faire défiler vers le formulaire
   document.getElementById('dateDebut').scrollIntoView({behavior: 'smooth', block: 'center'});
 }
 
-// Auto-recharger les suggestions quand l'utilisateur change de salle ou de date
+/* ─── Spin animation ─── */
+var styleEl = document.createElement('style');
+styleEl.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(styleEl);
+
+/* ─── Init ─── */
 document.addEventListener('DOMContentLoaded', function() {
+  onResourceChange();
+  
   var sel = document.getElementById('resourceSelect');
   var dateDebut = document.getElementById('dateDebut');
   if (sel) sel.addEventListener('change', function() { setTimeout(showSuggestions, 200); });
-  if (dateDebut) dateDebut.addEventListener('change', function() { setTimeout(showSuggestions, 200); });
+  if (dateDebut) dateDebut.addEventListener('change', function() { 
+    checkDispo(); 
+    loadBureauSchedule(); 
+    setTimeout(showSuggestions, 200); 
+  });
+  document.getElementById('dateFin')?.addEventListener('change', function() { checkDispo(); });
 });
-function onResourceChange() {
-  var sel  = document.getElementById('resourceSelect');
-  var opt  = sel.options[sel.selectedIndex];
-  var type = opt ? (opt.getAttribute('data-type') || 'salle') : 'salle';
-  document.getElementById('resourceType').value = type;
 
-  var hint = document.getElementById('resourceHint');
-  if (type === 'materiel') {
-    hint.innerHTML = '📦 Ressource matérielle — réservation individuelle.';
-  } else {
-    var cap = opt.getAttribute('data-capacite');
-    hint.innerHTML = '🚪 Salle' + (cap ? ' — capacité maximale : ' + cap + ' personnes.' : '.');
-  }
-
-  checkDispo();
-  loadBureauSchedule();
-}
-
-document.addEventListener('DOMContentLoaded', onResourceChange);
-function applySuggestion(debut, fin) {
-  var dateField = document.getElementById("dateDebut");
-  var finField = document.getElementById("dateFin");
-  var date = dateField.value.split('T')[0];
-  dateField.value = `${date}T${debut}`;
-  finField.value = `${date}T${fin}`;
-  checkDispo();
-}
-
-// Pré-remplir avec l'heure actuelle arrondie
-window.onload = function() {
-  var debField = document.getElementById("dateDebut");
-  var finField = document.getElementById("dateFin");
+/* ─── Pré-remplir les dates ─── */
+window.addEventListener('load', function() {
+  var debField = document.getElementById('dateDebut');
+  var finField = document.getElementById('dateFin');
   if (debField && !debField.value) {
     var now = new Date();
     now.setMinutes(0, 0, 0);
     now.setHours(now.getHours() + 1);
     var fin = new Date(now.getTime() + 60 * 60000);
     var fmt = function(d) {
-      return d.getFullYear() + "-" +
-             String(d.getMonth()+1).padStart(2,"0") + "-" +
-             String(d.getDate()).padStart(2,"0") + "T" +
-             String(d.getHours()).padStart(2,"0") + ":00";
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':00';
     };
     debField.value = fmt(now);
     finField.value = fmt(fin);
   }
-};
-
+});
+</script>
 {% endblock %}

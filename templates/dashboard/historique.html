@@ -1,505 +1,895 @@
 {% extends "base.html" %}
-{% block title %}Historique des accès - SIGR-CA{% endblock %}
+{% block title %}Historique des accès · SIGR-CA{% endblock %}
 {% block nav_historique %}active{% endblock %}
-{% block page_title %}Journal complet des accès{% endblock %}
-{% block page_sub %}Traçabilité et logs en temps réel{% endblock %}
+{% block page_title %}Journal des accès{% endblock %}
+{% block page_sub %}Traçabilité complète et logs en temps réel{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇️ Exporter CSV</button>
-<button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 Exporter PDF</button>
-<button class="btn btn-primary btn-sm" onclick="refreshHistory()">⟳ Actualiser</button>
+<div style="display:flex; gap:10px; align-items:center;">
+  <button class="btn btn-ghost btn-sm" onclick="exportHistoryCSV()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:8px; cursor:pointer; transition:all .18s;" onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Exporter CSV
+  </button>
+  <button class="btn btn-ghost btn-sm" onclick="exportHistoryPDF()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:8px; cursor:pointer; transition:all .18s;" onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    Rapport PDF
+  </button>
+  <button class="tb-action-btn" onclick="refreshHistory()" title="Actualiser">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  </button>
+  <div class="live-pill">
+    <span class="live-dot"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">LOGS LIVE</span>
+  </div>
+</div>
 {% endblock %}
 
 {% block content %}
+<style>
+/* ═══════════════════════════════════════
+   FONTS & TOKENS (identiques dashboard)
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-<!-- KPIs enrichis -->
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total accès</div><div class="kpi-icon">🔑</div></div>
-    <div class="kpi-value">{{ total_acces|default:"0" }}</div>
-    <div class="kpi-delta">Depuis le début</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Autorisés</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ acces_autorises|default:"0" }}</div>
-    <div class="kpi-delta">{{ taux_succes|default:0 }}% du total</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Refusés</div><div class="kpi-icon">🚫</div></div>
-    <div class="kpi-value">{{ acces_refuses|default:"0" }}</div>
-    <div class="kpi-delta neg">{{ taux_refus|default:0 }}% du total</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Aujourd'hui</div><div class="kpi-icon">📅</div></div>
-    <div class="kpi-value">{{ acces_aujourdhui|default:"0" }}</div>
-    <div class="kpi-delta">Journée en cours</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Accès récents</div><div class="kpi-icon">⏱️</div></div>
-    <div class="kpi-value">{{ acces_7jours|default:0 }}</div>
-    <div class="kpi-delta">7 derniers jours</div>
-  </div>
-</div>
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
 
-<!-- Filtres avancés -->
-<div class="card" style="margin-bottom:20px">
-  <div class="card-head">
-    <span>🔍</span>
-    <span class="card-title">Filtres avancés</span>
-    <span class="card-sub">Affiner la recherche</span>
-  </div>
-  <div class="card-body">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:16px">
-      <div>
-        <label class="form-label" style="font-size:10px">Recherche</label>
-        <input class="form-input" id="searchInput" placeholder="Nom, zone, badge..." oninput="filterHistory()">
+  --bg0: #080d17;
+  --bg1: #0d1320;
+  --bg2: #111827;
+  --bg3: #162032;
+  --bg4: #1c2b40;
+  --bg5: #243347;
+
+  --border:  rgba(99,140,185,.12);
+  --border2: rgba(99,140,185,.18);
+  --border3: rgba(99,140,185,.28);
+
+  --text1: #e8edf5;
+  --text2: #8fa3bc;
+  --text3: #56708a;
+
+  --blue:   #3b82f6;
+  --blue2:  #60a5fa;
+  --cyan:   #06b6d4;
+  --green:  #10b981;
+  --amber:  #f59e0b;
+  --red:    #ef4444;
+  --purple: #8b5cf6;
+  --pink:   #ec4899;
+
+  --glow-blue:   0 0 20px rgba(59,130,246,.25);
+  --glow-green:  0 0 20px rgba(16,185,129,.25);
+  --glow-red:    0 0 20px rgba(239,68,68,.25);
+  --glow-amber:  0 0 20px rgba(245,158,11,.25);
+  --glow-purple: 0 0 20px rgba(139,92,246,.25);
+  --glow-cyan:   0 0 20px rgba(6,182,212,.25);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+
+/* ═══════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════ */
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media (max-width:768px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 18px 16px;
+  position: relative; overflow: hidden;
+  transition: transform .25s, box-shadow .25s;
+  cursor: default;
+}
+.kpi::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%);
+  pointer-events: none;
+}
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+
+.kpi-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--kpi-grad);
+  box-shadow: 0 0 12px var(--kpi-color);
+}
+
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.kpi-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); }
+.kpi-icon-wrap {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--kpi-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent);
+  font-size: 18px; flex-shrink: 0;
+}
+.kpi-val {
+  font-family: var(--mono); font-size: 38px; font-weight: 700;
+  color: var(--kpi-color); line-height: 1;
+  margin-bottom: 8px;
+  text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent);
+}
+.kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
+.kpi-sub.up   { color: var(--green); }
+.kpi-sub.down { color: var(--red); }
+
+.kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+.kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+
+/* ═══════════════════════════════════════
+   CARD
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-head-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+
+/* ═══════════════════════════════════════
+   FILTER TABS
+═══════════════════════════════════════ */
+.filter-tab {
+  padding: 6px 14px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  cursor: pointer; font-size: 11px; font-weight: 600;
+  color: var(--text2); font-family: var(--font);
+  transition: all .18s;
+}
+.filter-tab.active {
+  background: var(--blue); color: #fff; border-color: var(--blue);
+  box-shadow: 0 0 12px rgba(59,130,246,.3);
+}
+.filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
+
+/* ═══════════════════════════════════════
+   TABLE
+═══════════════════════════════════════ */
+.tbl-wrap { overflow-x: auto; max-height: 480px; overflow-y: auto; }
+.tbl {
+  width: 100%; border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tbl thead th {
+  padding: 12px 14px; text-align: left;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  position: sticky; top: 0; z-index: 2;
+}
+.tbl tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+  vertical-align: middle;
+}
+.tbl tbody tr { transition: background .15s; }
+.tbl tbody tr:hover { background: var(--bg3); }
+.tbl tbody tr.new-row { animation: slide-in .35s cubic-bezier(.22,1,.36,1); }
+
+@keyframes slide-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+/* ═══════════════════════════════════════
+   AVATAR
+═══════════════════════════════════════ */
+.emp-av {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #fff;
+  font-family: var(--mono); flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(59,130,246,.3);
+}
+.emp-av.ok  { background: linear-gradient(135deg,#1d4ed8,#3b82f6); }
+.emp-av.nok { background: linear-gradient(135deg,#dc2626,#ef4444); box-shadow: 0 3px 10px rgba(239,68,68,.3); }
+
+/* ═══════════════════════════════════════
+   BADGES & STATUS
+═══════════════════════════════════════ */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  letter-spacing: .5px;
+}
+.badge-green  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.badge-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+.badge-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.2); }
+.badge-purple { background: rgba(139,92,246,.12); color: var(--purple); border: 1px solid rgba(139,92,246,.2); }
+.badge-gray   { background: rgba(107,114,128,.12); color: #9ca3af; border: 1px solid rgba(107,114,128,.2); }
+
+.feed-status {
+  padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 700;
+  letter-spacing: .5px; font-family: var(--mono); display: inline-block;
+}
+.feed-status.ok  { background: rgba(16,185,129,.1); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.feed-status.nok { background: rgba(239,68,68,.1);  color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn {
+  padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
+  font-weight: 600; font-size: 12px; font-family: var(--font);
+  transition: all .18s; display: inline-flex; align-items: center; gap: 5px;
+  text-decoration: none;
+}
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-ghost {
+  background: transparent; color: var(--text2);
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+/* ═══════════════════════════════════════
+   INPUTS
+═══════════════════════════════════════ */
+.form-input, .form-select {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 8px; font-size: 13px; color: var(--text1);
+  font-family: var(--font); outline: none; transition: all .15s;
+}
+.form-input:focus, .form-select:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+}
+.form-input::placeholder { color: var(--text3); }
+.form-select { cursor: pointer; }
+
+.form-label {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text3); margin-bottom: 6px;
+  display: block;
+}
+
+/* ═══════════════════════════════════════
+   GRAPHIQUES (dans cards)
+═══════════════════════════════════════ */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width:900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+.chart-container {
+  position: relative; height: 220px; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ═══════════════════════════════════════
+   PAGINATION
+═══════════════════════════════════════ */
+.pagination-btn {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border2);
+  background: var(--bg3); color: var(--text2); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; font-family: var(--font);
+  transition: all .15s;
+}
+.pagination-btn:hover:not(:disabled) { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+.pagination-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pagination-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
+
+/* Print */
+@media print {
+  .sidebar, .topbar, .btn, .filter-tab, .kpi-grid, .card-head button, .pagination-btn { display: none !important; }
+  body { background: white !important; color: black !important; }
+  .card { border: 1px solid #ccc !important; break-inside: avoid; }
+  .tbl thead th { background: #eee !important; color: #333 !important; }
+}
+</style>
+
+<div class="dash-wrap">
+
+  <!-- ══════════════════════════════════════════
+       KPI STRIP (5 colonnes)
+  ══════════════════════════════════════════ -->
+  <div class="kpi-grid">
+
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Total accès</span>
+        <div class="kpi-icon-wrap">🔑</div>
       </div>
-      <div>
-        <label class="form-label" style="font-size:10px">Période</label>
-        <select class="form-select" id="periodFilter" onchange="filterHistory()">
-          <option value="all">Toute la période</option>
-          <option value="today">Aujourd'hui</option>
-          <option value="week">Cette semaine</option>
-          <option value="month">Ce mois</option>
-          <option value="custom">Personnalisée</option>
-        </select>
+      <div class="kpi-val" id="kpi-total">{{ total_acces|default:"0" }}</div>
+      <div class="kpi-sub">Depuis le début</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Autorisés</span>
+        <div class="kpi-icon-wrap">✅</div>
       </div>
-      <div>
-        <label class="form-label" style="font-size:10px">Résultat</label>
-        <div style="display:flex; gap:8px">
-          <button class="filter-tab active" onclick="filterResult('all',this)">Tous</button>
-          <button class="filter-tab" onclick="filterResult('AUTORISE',this)">Autorisés</button>
-          <button class="filter-tab" onclick="filterResult('REFUSE',this)">Refusés</button>
+      <div class="kpi-val" id="kpi-autorises">{{ acces_autorises|default:"0" }}</div>
+      <div class="kpi-sub up">
+        {% if total_acces %}{% widthratio acces_autorises total_acces 100 %}{% else %}0{% endif %}% du total
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_autorises total_acces 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi red">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Refusés</span>
+        <div class="kpi-icon-wrap">🚫</div>
+      </div>
+      <div class="kpi-val" id="kpi-refuses">{{ acces_refuses|default:"0" }}</div>
+      <div class="kpi-sub down">
+        {% if total_acces %}{% widthratio acces_refuses total_acces 100 %}{% else %}0{% endif %}% du total
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_refuses total_acces 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Aujourd'hui</span>
+        <div class="kpi-icon-wrap">📅</div>
+      </div>
+      <div class="kpi-val" id="kpi-today">{{ acces_aujourdhui|default:"0" }}</div>
+      <div class="kpi-sub">Journée en cours</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_aujourdhui total_acces 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Taux succès</span>
+        <div class="kpi-icon-wrap">📈</div>
+      </div>
+      <div class="kpi-val">
+        {% if total_acces %}{% widthratio acces_autorises total_acces 100 %}{% else %}0{% endif %}<span style="font-size:18px;color:var(--text3);">%</span>
+      </div>
+      <div class="kpi-sub up">Global</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_autorises total_acces 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+
+  </div><!-- /kpi-grid -->
+
+  <!-- ══════════════════════════════════════════
+       GRAPHIQUES
+  ══════════════════════════════════════════ -->
+  <div class="grid-2">
+
+    <!-- Graphique évolution 30 jours -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">📊</div>
+        <span class="card-title">Évolution des accès (30 jours)</span>
+      </div>
+      <div style="padding:16px 20px;">
+        <div class="chart-container">
+          <canvas id="accessChart"></canvas>
         </div>
       </div>
-      <div>
-        <label class="form-label" style="font-size:10px">Statut employé</label>
-        <div style="display:flex; gap:8px">
-          <button class="filter-tab" onclick="filterEmpStatus('all',this)">Tous</button>
-          <button class="filter-tab" onclick="filterEmpStatus('actif',this)">Actifs</button>
-          <button class="filter-tab" onclick="filterEmpStatus('inactif',this)">Archivés</button>
+    </div>
+
+    <!-- Répartition par zone -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">🥧</div>
+        <span class="card-title">Répartition par zone</span>
+      </div>
+      <div style="padding:16px 20px;">
+        <div class="chart-container">
+          <canvas id="zoneChart"></canvas>
         </div>
       </div>
     </div>
-    
-    <!-- Date picker pour période personnalisée -->
-    <div id="customDateRange" style="display:none; margin-top:16px; padding:12px; background:var(--bg3); border-radius:8px">
-      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
-        <div><label class="form-label" style="font-size:10px">Du</label><input type="date" id="dateStart" class="form-input" style="width:150px" onchange="filterHistory()"></div>
-        <div><label class="form-label" style="font-size:10px">Au</label><input type="date" id="dateEnd" class="form-input" style="width:150px" onchange="filterHistory()"></div>
-        <button class="btn btn-sm btn-primary" onclick="filterHistory()">Appliquer</button>
+
+  </div><!-- /grid-2 -->
+
+  <!-- ══════════════════════════════════════════
+       FILTRES AVANCÉS
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">🔍</div>
+      <span class="card-title">Filtres avancés</span>
+      <span class="card-badge badge-purple" id="filterCount">{{ logs|length }} entrées</span>
+    </div>
+    <div style="padding:18px 20px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:200px;">
+          <label class="form-label">Recherche</label>
+          <input class="form-input" id="searchInput" placeholder="Nom, badge, zone..." oninput="filterHistory()">
+        </div>
+        <div style="width:170px;">
+          <label class="form-label">Période</label>
+          <select class="form-select" id="periodFilter" onchange="handlePeriodChange()">
+            <option value="all">Toute la période</option>
+            <option value="today">Aujourd'hui</option>
+            <option value="week">Cette semaine</option>
+            <option value="month">Ce mois</option>
+            <option value="custom">Personnalisée</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Résultat</label>
+          <div style="display:flex; gap:6px;">
+            <button class="filter-tab active" onclick="filterResult('all', this)">Tous</button>
+            <button class="filter-tab" onclick="filterResult('AUTORISE', this)">Autorisés</button>
+            <button class="filter-tab" onclick="filterResult('REFUSE', this)">Refusés</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost" onclick="resetFilters()" style="height:38px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Reset
+        </button>
+      </div>
+
+      <!-- Date picker pour période personnalisée -->
+      <div id="customDateRange" style="display:none; margin-top:14px; padding:14px; background:var(--bg3); border-radius:10px; border:1px solid var(--border2);">
+        <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+          <div>
+            <label class="form-label">Du</label>
+            <input type="date" id="dateStart" class="form-input" style="width:160px;" onchange="filterHistory()">
+          </div>
+          <div>
+            <label class="form-label">Au</label>
+            <input type="date" id="dateEnd" class="form-input" style="width:160px;" onchange="filterHistory()">
+          </div>
+          <button class="btn btn-primary" onclick="filterHistory()" style="height:38px;">Appliquer</button>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Statistiques graphiques -->
-<div class="g2" style="margin-bottom:20px">
+  <!-- ══════════════════════════════════════════
+       TABLEAU DES LOGS
+  ══════════════════════════════════════════ -->
   <div class="card">
     <div class="card-head">
-      <span>📊</span>
-      <span class="card-title">Évolution des accès (30 jours)</span>
+      <div class="card-head-icon" style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.2);">📋</div>
+      <span class="card-title">Journal des accès</span>
     </div>
-    <div class="card-body">
-      <canvas id="accessChart" style="height:200px; width:100%"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-head">
-      <span>🥧</span>
-      <span class="card-title">Répartition par zone</span>
-    </div>
-    <div class="card-body">
-      <canvas id="zoneChart" style="height:200px; width:100%"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- Tableau des logs -->
-<div class="card">
-  <div class="card-head">
-    <span>📋</span>
-    <span class="card-title">Journal des accès</span>
-    <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
-      <span class="card-sub" id="logCount">{{ logs|length }} entrées</span>
-      <div class="icon-btn" title="Colonnes" onclick="toggleColumns()">📊</div>
-    </div>
-  </div>
-
-  <div style="overflow-x:auto; max-height:500px; overflow-y:auto" id="history-table-container">
-    <table class="tbl" id="historyTable">
-      <thead>
-        <tr>
-          <th class="col-employe">Employé</th>
-          <th class="col-badge">Badge</th>
-          <th class="col-zone">Zone</th>
-          <th class="col-methode">Méthode</th>
-          <th class="col-date">Date & Heure</th>
-          <th class="col-resultat">Résultat</th>
-          <th class="col-statut">Statut</th>
+    <div class="tbl-wrap" id="history-table-container">
+      <table class="tbl" id="historyTable">
+        <thead>
+          <tr>
+            <th>Employé</th>
+            <th>Badge</th>
+            <th>Zone</th>
+            <th>Méthode</th>
+            <th>Date & Heure</th>
+            <th>Résultat</th>
+            <th style="width:100px;">Statut</th>
+          </tr>
         </thead>
-      <tbody id="history-body">
-        {% for log in logs %}
-        <tr class="hist-row"
-            data-name="{{ log.nom_utilisateur|default:''|lower }}"
-            data-badge="{{ log.badge_id|default:''|lower }}"
-            data-zone="{{ log.bureau_nom|default:''|lower }}"
-            data-methode="{{ log.type_acces|default:'RFID'|lower }}"
-            data-result="{{ log.resultat|default:'' }}"
-            data-empstatus="{{ log.emp_statut|default:'actif' }}"
-            data-timestamp="{{ log.timestamp|date:'Y-m-d' }}"
-            data-datetime="{{ log.timestamp|date:'Y-m-d H:i:s' }}">
-          
-          <td class="col-employe">
-            <div style="display:flex;align-items:center;gap:9px">
-              <div class="emp-av" style="background:{% if log.resultat == 'AUTORISE' %}#1f6feb{% else %}#f85149{% endif %};width:32px;height:32px;font-size:12px">
-                {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+        <tbody id="history-body">
+          {% for log in logs %}
+          <tr class="hist-row"
+              data-name="{{ log.nom_utilisateur|default:''|lower }}"
+              data-badge="{{ log.badge_id|default:''|lower }}"
+              data-zone="{{ log.bureau_nom|default:''|lower }}"
+              data-methode="{{ log.type_acces|default:'RFID'|lower }}"
+              data-result="{{ log.resultat|default:'' }}"
+              data-timestamp="{{ log.timestamp|date:'Y-m-d' }}"
+              data-datetime="{{ log.timestamp|date:'Y-m-d H:i:s' }}">
+
+            <td>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div class="emp-av {% if log.resultat == 'AUTORISE' %}ok{% else %}nok{% endif %}">
+                  {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+                </div>
+                <div>
+                  <div style="font-weight:600; color:var(--text1);">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+                </div>
               </div>
-              <div>
-                <div style="font-weight:500">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
-                <div style="font-size:10px; color:var(--text3)">{{ log.email|default:"" }}</div>
+            </td>
+
+            <td><span style="font-family:var(--mono);font-size:11px;color:var(--text2);">{{ log.badge_id|default:"—" }}</span></td>
+            <td>{{ log.bureau_nom|default:"Zone inconnue" }}</td>
+
+            <td>
+              <span class="badge {% if log.type_acces == 'QR' %}badge-purple{% else %}badge-blue{% endif %}">
+                {% if log.type_acces == 'QR' %}📱 QR{% else %}🔖 RFID{% endif %}
+              </span>
+            </td>
+
+            <td style="font-family:var(--mono);font-size:11px;color:var(--text2);">
+              {{ log.timestamp|date:"d/m/Y H:i:s" }}
+            </td>
+
+            <td>
+              {% if log.resultat == 'AUTORISE' %}
+              <span class="feed-status ok">✓ AUTORISÉ</span>
+              {% else %}
+              <span class="feed-status nok">✗ REFUSÉ</span>
+              <div style="font-size:10px;color:var(--text3);margin-top:3px;">{{ log.motif_refus|default:"Non autorisé" }}</div>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if log.emp_statut == 'actif' %}
+              <span class="badge badge-green">● Actif</span>
+              {% else %}
+              <span class="badge badge-gray">● Archivé</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7">
+              <div style="text-align:center;padding:60px;color:var(--text3);">
+                <div style="font-size:48px;margin-bottom:12px;opacity:.4;">📭</div>
+                <div>Aucun accès enregistré pour le moment</div>
               </div>
-            </div>
-          </td>
-          
-          <td class="col-badge"><span style="font-family:var(--mono);font-size:11px">{{ log.badge_id|default:"—" }}</span></td>
-          <td class="col-zone">{{ log.bureau_nom|default:"Zone inconnue" }}</td>
-          
-          <td class="col-methode">
-            <span class="badge {% if log.type_acces == 'QR' %}b-purple{% else %}b-blue{% endif %}">
-              {% if log.type_acces == 'QR' %}📱 QR Code{% else %}🔖 RFID{% endif %}
-            </span>
-          </td>
-          
-          <td class="col-date" style="font-family:var(--mono);font-size:11.5px;color:var(--text2)">
-            {{ log.timestamp|date:"d/m/Y H:i:s" }}
-          </td>
-          
-          <td class="col-resultat">
-            {% if log.resultat == 'AUTORISE' %}
-              <div class="feed-status fs-ok">✓ AUTORISÉ</div>
-            {% else %}
-              <div class="feed-status fs-no">✗ REFUSÉ</div>
-              <div style="font-size:10px; color:var(--text3); margin-top:2px">{{ log.motif_refus|default:"Accès non autorisé" }}</div>
-            {% endif %}
-          </td>
-          
-          <td class="col-statut">
-            {% if log.emp_statut == 'actif' %}
-              <span class="badge b-green">● Actif</span>
-            {% else %}
-              <span class="badge b-gray">● Archivé</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7" style="text-align:center;padding:60px;color:var(--text3)">
-          Aucun accès enregistré pour le moment
-        </td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  
-  <!-- Pagination -->
-  <div class="card-body" style="border-top:1px solid var(--border); padding:12px 16px">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
-      <div>
-        <span style="font-size:12px; color:var(--text2)">Afficher</span>
-        <select id="rowsPerPage" class="form-select" style="width:70px; display:inline-block; margin:0 8px" onchange="changeRowsPerPage()">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div id="noResults" style="display:none; text-align:center; padding:40px; color:var(--text3);">
+      Aucun résultat ne correspond aux filtres
+    </div>
+
+    <!-- Pagination -->
+    <div style="padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:12px; color:var(--text2);">Afficher</span>
+        <select id="rowsPerPage" class="form-select" style="width:70px;" onchange="changeRowsPerPage()">
           <option value="20">20</option>
           <option value="50">50</option>
           <option value="100">100</option>
           <option value="200">200</option>
         </select>
-        <span style="font-size:12px; color:var(--text2)">lignes</span>
+        <span style="font-size:12px; color:var(--text2);">lignes</span>
       </div>
-      <div id="paginationControls" style="display:flex; gap:8px; align-items:center"></div>
+      <div id="paginationControls" style="display:flex; gap:6px; align-items:center;"></div>
     </div>
   </div>
-</div>
 
-<!-- Export Modal -->
-<div class="modal-overlay" id="exportModal" style="display:none" onclick="if(event.target===this)closeExportModal()">
-  <div class="modal" style="width:400px">
-    <div class="modal-title">📁 Exporter les logs</div>
-    <div class="modal-sub">Choisissez le format d'export</div>
-    <div style="display:flex; gap:12px; justify-content:center; margin:20px 0">
-      <button class="btn btn-primary" onclick="exportCSV()">📊 CSV</button>
-      <button class="btn btn-primary" onclick="exportExcel()">📈 Excel</button>
-      <button class="btn btn-primary" onclick="exportPDF()">📄 PDF</button>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeExportModal()">Fermer</button>
-    </div>
-  </div>
-</div>
+</div><!-- /dash-wrap -->
 
-{% endblock %}
-
-{% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
-// Variables globales
+/* ─── Variables globales ─── */
 let currentResultFilter = 'all';
-let currentEmpFilter = 'all';
 let currentPage = 1;
 let rowsPerPage = 20;
 let allRows = [];
 
-// Initialisation
+/* ─── Init ─── */
 document.addEventListener('DOMContentLoaded', function() {
   allRows = Array.from(document.querySelectorAll('.hist-row'));
   updateLogCount();
   setupPagination();
   initCharts();
-  
-  // Écouter changement de période personnalisée
-  document.getElementById('periodFilter').addEventListener('change', function() {
-    const customDiv = document.getElementById('customDateRange');
-    customDiv.style.display = this.value === 'custom' ? 'block' : 'none';
-    filterHistory();
-  });
 });
 
+/* ─── Filtrage ─── */
 function filterHistory() {
-  const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
-  const periodVal = document.getElementById('periodFilter').value;
+  const searchVal = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+  const periodVal = document.getElementById('periodFilter')?.value || 'all';
   const dateStart = document.getElementById('dateStart')?.value;
   const dateEnd = document.getElementById('dateEnd')?.value;
-  
+
   let visibleCount = 0;
-  
+
   allRows.forEach(row => {
-    const name = row.dataset.name || "";
-    const badge = row.dataset.badge || "";
-    const zone = row.dataset.zone || "";
-    const result = row.dataset.result || "";
-    const empStatus = row.dataset.empstatus || "";
-    const dateStr = row.dataset.timestamp || "";
-    
-    // Filtre recherche
-    const matchesSearch = !searchVal || 
-      name.includes(searchVal) || 
-      badge.includes(searchVal) || 
-      zone.includes(searchVal);
-    
-    // Filtre période
+    const name = row.dataset.name || '';
+    const badge = row.dataset.badge || '';
+    const zone = row.dataset.zone || '';
+    const result = row.dataset.result || '';
+    const dateStr = row.dataset.timestamp || '';
+
+    // Recherche
+    const matchesSearch = !searchVal || name.includes(searchVal) || badge.includes(searchVal) || zone.includes(searchVal);
+
+    // Période
     let matchesPeriod = true;
-    if (periodVal === "today") {
-      const today = new Date().toISOString().slice(0,10);
+    const now = new Date();
+    const rowDate = new Date(dateStr + 'T00:00:00');
+
+    if (periodVal === 'today') {
+      const today = now.toISOString().slice(0, 10);
       matchesPeriod = dateStr === today;
-    } else if (periodVal === "week") {
-      const weekAgo = new Date();
+    } else if (periodVal === 'week') {
+      const weekAgo = new Date(now);
       weekAgo.setDate(weekAgo.getDate() - 7);
-      const rowDate = new Date(dateStr);
       matchesPeriod = rowDate >= weekAgo;
-    } else if (periodVal === "month") {
-      const monthAgo = new Date();
+    } else if (periodVal === 'month') {
+      const monthAgo = new Date(now);
       monthAgo.setDate(monthAgo.getDate() - 30);
-      const rowDate = new Date(dateStr);
       matchesPeriod = rowDate >= monthAgo;
-    } else if (periodVal === "custom" && dateStart && dateEnd) {
-      const rowDate = new Date(dateStr);
-      const start = new Date(dateStart);
-      const end = new Date(dateEnd);
-      end.setHours(23,59,59);
+    } else if (periodVal === 'custom' && dateStart && dateEnd) {
+      const start = new Date(dateStart + 'T00:00:00');
+      const end = new Date(dateEnd + 'T23:59:59');
       matchesPeriod = rowDate >= start && rowDate <= end;
     }
-    
-    // Filtre résultat
+
+    // Résultat
     const matchesResult = currentResultFilter === 'all' || result === currentResultFilter;
-    
-    // Filtre statut employé
-    const matchesEmp = currentEmpFilter === 'all' || empStatus === currentEmpFilter;
-    
-    const visible = matchesSearch && matchesPeriod && matchesResult && matchesEmp;
+
+    const visible = matchesSearch && matchesPeriod && matchesResult;
     row.style.display = visible ? '' : 'none';
     if (visible) visibleCount++;
   });
-  
+
   updateLogCount(visibleCount);
   currentPage = 1;
   setupPagination();
+
+  // Afficher/cacher "aucun résultat"
+  const noResults = document.getElementById('noResults');
+  if (noResults) noResults.style.display = visibleCount === 0 ? 'block' : 'none';
 }
 
 function filterResult(val, el) {
   currentResultFilter = val;
-  document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
-  if (el) el.classList.add("active");
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
   filterHistory();
 }
 
-function filterEmpStatus(val, el) {
-  currentEmpFilter = val;
-  document.querySelectorAll(".filter-tab").forEach(b => b.classList.remove("active"));
-  if (el) el.classList.add("active");
+function handlePeriodChange() {
+  const periodVal = document.getElementById('periodFilter')?.value;
+  const customDiv = document.getElementById('customDateRange');
+  if (customDiv) customDiv.style.display = periodVal === 'custom' ? 'block' : 'none';
   filterHistory();
 }
 
-function updateLogCount(count = null) {
-  const visibleRows = count !== null ? count : document.querySelectorAll('.hist-row:not([style*="display: none"])').length;
-  document.getElementById('logCount').textContent = visibleRows + ' entrées';
+function resetFilters() {
+  const searchInput = document.getElementById('searchInput');
+  const periodFilter = document.getElementById('periodFilter');
+  const dateStart = document.getElementById('dateStart');
+  const dateEnd = document.getElementById('dateEnd');
+  const customDiv = document.getElementById('customDateRange');
+
+  if (searchInput) searchInput.value = '';
+  if (periodFilter) periodFilter.value = 'all';
+  if (dateStart) dateStart.value = '';
+  if (dateEnd) dateEnd.value = '';
+  if (customDiv) customDiv.style.display = 'none';
+
+  filterResult('all', document.querySelector('.filter-tab'));
 }
 
+/* ─── Pagination ─── */
 function setupPagination() {
-  const visibleRows = Array.from(document.querySelectorAll('.hist-row')).filter(row => row.style.display !== 'none');
-  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
+  const visibleRows = allRows.filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(visibleRows.length / rowsPerPage) || 1;
   const start = (currentPage - 1) * rowsPerPage;
   const end = start + rowsPerPage;
-  
-  // Cacher toutes les lignes d'abord
-  document.querySelectorAll('.hist-row').forEach(row => row.style.display = 'none');
-  
-  // Afficher les lignes de la page courante
+
+  // Cacher tout
+  allRows.forEach(row => row.style.display = 'none');
+  // Afficher page courante
   visibleRows.slice(start, end).forEach(row => row.style.display = '');
-  
-  // Générer les contrôles de pagination
+
+  // Générer contrôles
   const controls = document.getElementById('paginationControls');
-  controls.innerHTML = `
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
-    <span style="font-size:12px; color:var(--text2)">Page ${currentPage} / ${totalPages || 1}</span>
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>›</button>
-    <button class="btn btn-sm btn-ghost" onclick="goToPage(${totalPages})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>»</button>
+  if (!controls) return;
+
+  let html = `
+    <button class="pagination-btn" onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
+    <button class="pagination-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
   `;
+
+  for (let i = 1; i <= totalPages; i++) {
+    if (totalPages <= 7 || i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+      html += `<button class="pagination-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+    } else if (i === currentPage - 2 || i === currentPage + 2) {
+      html += `<span style="color:var(--text3);padding:0 4px;">…</span>`;
+    }
+  }
+
+  html += `
+    <button class="pagination-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>›</button>
+    <button class="pagination-btn" onclick="goToPage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>»</button>
+    <span style="font-size:11px;color:var(--text3);margin-left:8px;">${visibleRows.length} résultats</span>
+  `;
+
+  controls.innerHTML = html;
 }
 
 function goToPage(page) {
-  const visibleRows = Array.from(document.querySelectorAll('.hist-row')).filter(row => row.style.display !== 'none');
-  const totalPages = Math.ceil(visibleRows.length / rowsPerPage);
+  const visibleRows = allRows.filter(row => row.style.display !== 'none');
+  const totalPages = Math.ceil(visibleRows.length / rowsPerPage) || 1;
   if (page < 1 || page > totalPages) return;
   currentPage = page;
   setupPagination();
 }
 
 function changeRowsPerPage() {
-  rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
+  rowsPerPage = parseInt(document.getElementById('rowsPerPage')?.value || 20);
   currentPage = 1;
   setupPagination();
 }
 
+function updateLogCount(count) {
+  const cnt = count !== undefined ? count : allRows.filter(row => row.style.display !== 'none').length;
+  const filterCount = document.getElementById('filterCount');
+  if (filterCount) filterCount.textContent = cnt + ' entrée(s)';
+}
+
+/* ─── Graphiques ─── */
 function initCharts() {
-  // Graphique d'évolution
-  const ctx = document.getElementById('accessChart')?.getContext('2d');
-  if (ctx) {
+  // Évolution 30 jours
+  const chartCanvas = document.getElementById('accessChart');
+  if (chartCanvas) {
     const chartData = {{ chart_data|safe|default:'{"labels":[],"autorises":[],"refuses":[]}' }};
+    const ctx = chartCanvas.getContext('2d');
     new Chart(ctx, {
       type: 'line',
       data: {
-        labels: chartData.labels,
+        labels: chartData.labels || [],
         datasets: [
-          { label: 'Autorisés', data: chartData.autorises, borderColor: '#2dba6f', backgroundColor: 'rgba(45,186,111,0.1)', tension: 0.4, fill: true },
-          { label: 'Refusés', data: chartData.refuses, borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', tension: 0.4, fill: true }
+          {
+            label: 'Autorisés',
+            data: chartData.autorises || [],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16,185,129,0.08)',
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+          },
+          {
+            label: 'Refusés',
+            data: chartData.refuses || [],
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239,68,68,0.08)',
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+          }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#8fa3bc', font: { family: 'Space Grotesk', size: 11 }, padding: 16, usePointStyle: true }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#56708a', font: { size: 10 } }, grid: { color: 'rgba(99,140,185,.08)' } },
+          y: { ticks: { color: '#56708a', font: { size: 10 } }, grid: { color: 'rgba(99,140,185,.08)' }, beginAtZero: true }
+        }
+      }
     });
   }
-  
-  // Graphique par zone
-  const zoneCtx = document.getElementById('zoneChart')?.getContext('2d');
-  if (zoneCtx) {
+
+  // Répartition par zone
+  const zoneCanvas = document.getElementById('zoneChart');
+  if (zoneCanvas) {
     const zoneData = {{ zone_data|safe|default:'{"labels":[],"values":[]}' }};
-    new Chart(zoneCtx, {
+    const ctx = zoneCanvas.getContext('2d');
+    new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: zoneData.labels,
-        datasets: [{ data: zoneData.values, backgroundColor: ['#1f6feb', '#2dba6f', '#e3b341', '#a371f7', '#f85149', '#39d0f0'] }]
+        labels: zoneData.labels || [],
+        datasets: [{
+          data: zoneData.values || [],
+          backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'],
+          borderColor: '#111827',
+          borderWidth: 2,
+        }]
       },
-      options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: '#8fa3bc', font: { family: 'Space Grotesk', size: 10 }, padding: 12, usePointStyle: true }
+          }
+        }
+      }
     });
   }
 }
 
-function toggleColumns() {
-  const cols = ['col-employe', 'col-badge', 'col-zone', 'col-methode', 'col-date', 'col-resultat', 'col-statut'];
-  cols.forEach(col => {
-    const elements = document.querySelectorAll(`.${col}`);
-    const isHidden = elements[0]?.style.display === 'none';
-    elements.forEach(el => el.style.display = isHidden ? '' : 'none');
-  });
-}
-
-function exportCSV() {
+/* ─── Exports ─── */
+function exportHistoryCSV() {
+  const visibleRows = allRows.filter(row => row.style.display !== 'none');
   const rows = [["Employé","Badge","Zone","Méthode","Date & Heure","Résultat","Statut Employé"]];
-  document.querySelectorAll(".hist-row").forEach(tr => {
-    if (tr.style.display !== "none") {
-      const cells = tr.querySelectorAll("td");
-      rows.push([
-        cells[0]?.textContent.trim() || '',
-        cells[1]?.textContent.trim() || '',
-        cells[2]?.textContent.trim() || '',
-        cells[3]?.textContent.trim() || '',
-        cells[4]?.textContent.trim() || '',
-        cells[5]?.textContent.trim() || '',
-        cells[6]?.textContent.trim() || ''
-      ]);
-    }
+
+  visibleRows.forEach(tr => {
+    const cells = tr.querySelectorAll('td');
+    rows.push([
+      (cells[0]?.querySelector('div > div > div')?.textContent || cells[0]?.textContent || '').trim(),
+      cells[1]?.textContent.trim() || '',
+      cells[2]?.textContent.trim() || '',
+      cells[3]?.textContent.trim() || '',
+      cells[4]?.textContent.trim() || '',
+      cells[5]?.querySelector('.feed-status')?.textContent.trim() || cells[5]?.textContent.trim() || '',
+      cells[6]?.textContent.trim() || ''
+    ]);
   });
-  const csvContent = rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement("a");
+
+  const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `historique_acces_${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
-  closeExportModal();
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
 }
 
-function exportExcel() {
-  // Export au format XLSX simplifié (CSV avec extension .xls)
-  exportCSV();
-  // Note: Pour un vrai export Excel, utiliser SheetJS
-}
-
-function exportPDF() {
+function exportHistoryPDF() {
   window.print();
 }
 
 function refreshHistory() {
-  location.reload();
+  document.querySelectorAll('.kpi-val').forEach(el => {
+    el.style.transition = 'opacity .2s'; el.style.opacity = '0.3';
+  });
+  setTimeout(() => location.reload(), 200);
 }
 
-function openExportModal() {
-  document.getElementById('exportModal').style.display = 'flex';
-}
+/* ─── KPI counter ─── */
+document.querySelectorAll('.kpi-val').forEach(function(el) {
+  var text = el.textContent.replace(/\s/g, ' ');
+  var num = parseInt(text.replace(/[^0-9]/g, ''), 10);
+  if (isNaN(num) || num === 0) return;
+  var duration = 900, step = num / duration * 16, current = 0;
+  var timer = setInterval(function() {
+    current = Math.min(current + step, num);
+    el.textContent = Math.round(current) + (text.includes('%') ? '%' : '');
+    if (current >= num) clearInterval(timer);
+  }, 16);
+});
 
-function closeExportModal() {
-  document.getElementById('exportModal').style.display = 'none';
-}
-
-// Touche Entrée dans la recherche
+/* ─── Touche Entrée ─── */
 document.addEventListener('keydown', function(e) {
-  if (e.key === "Enter" && document.getElementById('searchInput') === document.activeElement) {
+  if (e.key === 'Enter' && document.getElementById('searchInput') === document.activeElement) {
     filterHistory();
   }
 });
 </script>
 
-<style>
-.btn-print {
-  background: var(--bg3);
-  color: var(--text2);
-  border-color: var(--border);
-}
-.btn-print:hover {
-  background: var(--bg4);
-  color: var(--text);
-}
-@media print {
-  .sidebar, .topbar, .btn, .filter-tab, .kpi, .modal-overlay, .card-head button, #paginationControls {
-    display: none !important;
-  }
-  .card {
-    break-inside: avoid;
-  }
-  body {
-    background: white;
-    color: black;
-  }
-  .tbl {
-    width: 100%;
-  }
-}
-</style>
 {% endblock %}

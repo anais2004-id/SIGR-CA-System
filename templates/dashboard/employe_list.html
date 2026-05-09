@@ -1,252 +1,701 @@
 {% extends "base.html" %}
-{% block title %}Gestion des employés - SIGR-CA{% endblock %}
+{% block title %}Gestion des employés · SIGR-CA{% endblock %}
 {% block nav_employes %}active{% endblock %}
 {% block page_title %}Gestion des employés{% endblock %}
-{% block page_sub %}Base de données des accès et historique{% endblock %}
+{% block page_sub %}Base de données des accès et gestion des profils{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:12px; align-items:center;">
-<a href="/employes/ajouter/" class="btn btn-primary btn-sm" style="text-decoration:none;">+ Nouvel employé</a>  <button class="btn btn-ghost btn-sm" onclick="exportEmployeesCSV()">⬇️ Exporter CSV</button>
-  <button class="btn btn-ghost btn-sm" onclick="showStatsModal()">📊 Statistiques globales</button>
+<div style="display:flex; gap:10px; align-items:center;">
+  <button class="btn btn-primary btn-sm" onclick="openAddModal()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:var(--blue); color:#fff; border:none; border-radius:8px; cursor:pointer; transition:all .18s;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Nouvel employé
+  </button>
+  <button class="btn btn-ghost btn-sm" onclick="exportEmployeesCSV()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:8px; cursor:pointer; transition:all .18s;" onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Exporter CSV
+  </button>
+  <button class="btn btn-ghost btn-sm" onclick="exportEmployeesPDF()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:8px; cursor:pointer; transition:all .18s;" onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    Rapport PDF
+  </button>
+  <div class="live-pill" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple);">
+    <span class="live-dot" style="background:var(--purple);"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">{{ total_employes }} PROFILS</span>
+  </div>
 </div>
 {% endblock %}
 
 {% block content %}
-
-<!-- ══ KPIs 6 colonnes ══ -->
-<div style="display:grid; grid-template-columns:repeat(6,1fr); gap:14px;">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total employés</div><div class="kpi-icon">👥</div></div>
-    <div class="kpi-value">{{ total_employes }}</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Actifs</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ actifs }}</div>
-    <div class="kpi-delta">En service</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Archivés</div><div class="kpi-icon">📁</div></div>
-    <div class="kpi-value">{{ inactifs }}</div>
-    <div class="kpi-delta neg">Historique conservé</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Départements</div><div class="kpi-icon">🏢</div></div>
-    <div class="kpi-value">{{ total_departements }}</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Accès aujourd'hui</div><div class="kpi-icon">🔑</div></div>
-    <div class="kpi-value">{{ acces_aujourdhui|default:0 }}</div>
-  </div>
-  <div class="kpi k-cyan">
-    <div class="kpi-header"><div class="kpi-label">Taux global</div><div class="kpi-icon">📈</div></div>
-    <div class="kpi-value">{{ taux_global|default:0 }}%</div>
-    <div class="kpi-delta">Succès accès</div>
-  </div>
-</div>
-
-<!-- ══ Filtres avancés ══ -->
-<div style="background:var(--bg2); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.2);">
-  <div class="card-head">
-    <span>🔍</span>
-    <span class="card-title">Filtres avancés</span>
-  </div>
-  <div style="padding:16px 18px;">
-    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-      <div style="flex:1; min-width:200px;">
-        <label class="form-label">Recherche</label>
-        <input class="form-input" id="empSearch" placeholder="Nom, badge, email, téléphone...">
-      </div>
-      <div style="width:180px;">
-        <label class="form-label">Département</label>
-        <select class="form-select" id="empDept">
-          <option value="">Tous les départements</option>
-          {% for dept in departements %}
-          <option value="{{ dept|lower }}">{{ dept }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div style="width:150px;">
-        <label class="form-label">Niveau d'accès</label>
-        <select class="form-select" id="empNiveau">
-          <option value="">Tous</option>
-          <option value="staff">Staff</option>
-          <option value="admin">Admin</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="visiteur">Visiteur</option>
-        </select>
-      </div>
-      <div>
-        <label class="form-label">Statut</label>
-        <div style="display:flex; gap:8px;">
-          <button class="filter-tab active" id="ftab-all" onclick="empSetStatus('all',this)">Tous</button>
-          <button class="filter-tab" id="ftab-actif" onclick="empSetStatus('actif',this)">Actifs</button>
-          <button class="filter-tab" id="ftab-inactif" onclick="empSetStatus('inactif',this)">Archivés</button>
-        </div>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="resetFilters()">Reset</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ Tableau des employés ══ -->
-<div style="background:var(--bg2); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.2);">
-  <div class="card-head">
-    <span>👥</span>
-    <span class="card-title">Liste des employés</span>
-    <span class="card-sub" id="empCount">{{ total_employes }} employé(s)</span>
-  </div>
-  <div style="overflow-x:auto;">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Employé</th>
-          <th>Badge RFID</th>
-          <th>Département</th>
-          <th>Poste</th>
-          <th>Niveau</th>
-          <th>Nb accès</th>
-          <th>Succès</th>
-          <th>Dernier accès</th>
-          <th>Statut</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="empTableBody">
-        {% for emp in employes %}
-        <tr class="emp-row"
-            data-name="{{ emp.nom|lower }} {{ emp.prenom|lower }}"
-            data-badge="{{ emp.badge_id|lower }}"
-            data-email="{{ emp.email|lower }}"
-            data-dept="{{ emp.departement|lower }}"
-            data-niveau="{{ emp.niveau|lower }}"
-            data-statut="{{ emp.statut|lower }}">
-          <td>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <div class="emp-av" style="background:{% if emp.statut == 'actif' %}#1f6feb{% else %}#484f58{% endif %}; overflow:hidden;">
-  {% if emp.photo_url %}
-    <img src="{{ emp.photo_url }}" alt="{{ emp.nom }}" style="width:100%; height:100%; object-fit:cover;">
-  {% else %}
-    {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
-  {% endif %}
-         </div>
-              <div>
-                <div style="font-weight:500;">{{ emp.nom }} {{ emp.prenom }}</div>
-                <div style="font-size:11px; color:var(--text3);">{{ emp.email|default:"—" }}</div>
-                <div style="font-size:10px; color:var(--text3);">📞 {{ emp.telephone|default:"—" }}</div>
-              </div>
-            </div>
-          </td>
-          <td><span style="font-family:var(--mono); font-size:11.5px;">{{ emp.badge_id|default:"—" }}</span></td>
-          <td>{{ emp.departement|default:"—" }}</td>
-          <td>{{ emp.poste|default:"—" }}</td>
-          <td><span class="badge b-blue">{{ emp.niveau|default:"Staff" }}</span></td>
-          <td style="font-family:var(--mono); text-align:center; font-weight:600;">{{ emp.nb_acces|default:"0" }}</td>
-          <td>
-            <div style="min-width:60px;">
-              <div style="font-size:11px; font-weight:600; color:{% if emp.taux_succes|default:0 >= 80 %}#2dba6f{% elif emp.taux_succes|default:0 >= 50 %}#e3b341{% else %}#f85149{% endif %};">
-                {{ emp.taux_succes|default:0 }}%
-              </div>
-              <div class="progress-bar" style="height:3px; margin-top:2px;">
-                <div class="progress-fill" style="width:{{ emp.taux_succes|default:0 }}%; background:{% if emp.taux_succes|default:0 >= 80 %}#2dba6f{% elif emp.taux_succes|default:0 >= 50 %}#e3b341{% else %}#f85149{% endif %};"></div>
-              </div>
-            </div>
-          </td>
-          <td style="font-size:11px; color:var(--text2); font-family:var(--mono);">
-            {% if emp.dernier_acces %}{{ emp.dernier_acces|date:"d/m/Y H:i" }}{% else %}<span style="color:var(--text3);">Jamais</span>{% endif %}
-          </td>
-          <td>
-            {% if emp.statut == 'actif' %}<span class="badge b-green">● Actif</span>
-            {% else %}<span class="badge b-gray">● Archivé</span>{% endif %}
-          </td>
-          <td>
-            <div style="display:flex; gap:4px;">
-              <a href="/employes/{{ emp.id }}/" class="btn btn-edit btn-sm" title="Voir détails">👁️</a>
-              <a href="/employes/{{ emp.id }}/modifier/" class="btn btn-ghost btn-sm" title="Modifier">✏️</a>
-              <button class="btn btn-sm" onclick="showHistoryModal('{{ emp.id }}','{{ emp.nom }} {{ emp.prenom }}')"
-                      style="background:var(--blue3);color:var(--blue2);border:1px solid rgba(31,111,235,.25);" title="Historique">📋</button>
-              {% if emp.statut == 'actif' %}
-              <form method="post" action="/employes/{{ emp.id }}/supprimer/" style="display:inline;"
-                    onsubmit="return confirm('Archiver cet employé ? Son historique sera conservé.')">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-del btn-sm" title="Archiver">📁</button>
-              </form>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% empty %}
-          <tr><td colspan="10" style="text-align:center; padding:60px; color:var(--text3);">Aucun employé enregistré</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div id="empNoResults" style="display:none; text-align:center; padding:40px; color:var(--text3);">
-      Aucun employé ne correspond aux filtres sélectionnés
-    </div>
-  </div>
-</div>
-
-<!-- ══ Stats par département ══ -->
-<div style="background:var(--bg2); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.2);">
-  <div class="card-head">
-    <span>📊</span>
-    <span class="card-title">Statistiques par département</span>
-  </div>
-  <div style="padding:16px 18px;">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:20px;">
-      {% for dept in dept_stats %}
-      <div style="background:var(--bg3); border-radius:10px; padding:15px;">
-        <div style="font-weight:600; margin-bottom:10px;">🏢 {{ dept.nom }}</div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>👥 Effectif</span><strong>{{ dept.total }}</strong></div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>🔑 Accès total</span><strong>{{ dept.total_acces }}</strong></div>
-        <div style="display:flex; justify-content:space-between;">
-          <span>📈 Taux succès</span>
-          <strong style="color:{% if dept.taux >= 80 %}#2dba6f{% elif dept.taux >= 50 %}#e3b341{% else %}#f85149{% endif %};">{{ dept.taux }}%</strong>
-        </div>
-        <div class="progress-bar" style="margin-top:8px; height:4px;">
-          <div class="progress-fill" style="width:{{ dept.taux }}%; background:{% if dept.taux >= 80 %}#2dba6f{% elif dept.taux >= 50 %}#e3b341{% else %}#f85149{% endif %};"></div>
-        </div>
-      </div>
-      {% empty %}
-      <div style="color:var(--text3); padding:20px;">Aucun département enregistré</div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
-
 <style>
-.kpi.k-cyan::after { background: linear-gradient(90deg, #39d0f0, #6c5ce7); }
-.filter-tab { padding:5px 12px; border-radius:20px; background:var(--bg3); border:1px solid var(--border); cursor:pointer; font-size:11px; transition:all .15s; font-family:var(--font); }
-.filter-tab.active { background:var(--blue); color:white; border-color:var(--blue); }
-.filter-tab:hover:not(.active) { background:var(--bg4); }
+/* ═══════════════════════════════════════
+   FONTS & TOKENS (hérités du dashboard)
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+
+  --bg0: #080d17;
+  --bg1: #0d1320;
+  --bg2: #111827;
+  --bg3: #162032;
+  --bg4: #1c2b40;
+  --bg5: #243347;
+
+  --border:  rgba(99,140,185,.12);
+  --border2: rgba(99,140,185,.18);
+  --border3: rgba(99,140,185,.28);
+
+  --text1: #e8edf5;
+  --text2: #8fa3bc;
+  --text3: #56708a;
+
+  --blue:   #3b82f6;
+  --blue2:  #60a5fa;
+  --cyan:   #06b6d4;
+  --green:  #10b981;
+  --amber:  #f59e0b;
+  --red:    #ef4444;
+  --purple: #8b5cf6;
+  --pink:   #ec4899;
+
+  --glow-blue:   0 0 20px rgba(59,130,246,.25);
+  --glow-green:  0 0 20px rgba(16,185,129,.25);
+  --glow-red:    0 0 20px rgba(239,68,68,.25);
+  --glow-amber:  0 0 20px rgba(245,158,11,.25);
+  --glow-purple: 0 0 20px rgba(139,92,246,.25);
+  --glow-cyan:   0 0 20px rgba(6,182,212,.25);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+
+/* ═══════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════ */
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+}
+@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media (max-width:768px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 18px 16px;
+  position: relative; overflow: hidden;
+  transition: transform .25s, box-shadow .25s;
+  cursor: default;
+}
+.kpi::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%);
+  pointer-events: none;
+}
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+
+.kpi-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--kpi-grad);
+  box-shadow: 0 0 12px var(--kpi-color);
+}
+
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.kpi-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); }
+.kpi-icon-wrap {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--kpi-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent);
+  font-size: 18px; flex-shrink: 0;
+}
+.kpi-val {
+  font-family: var(--mono); font-size: 38px; font-weight: 700;
+  color: var(--kpi-color); line-height: 1;
+  margin-bottom: 8px;
+  text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent);
+}
+.kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
+.kpi-sub.up   { color: var(--green); }
+.kpi-sub.down { color: var(--red); }
+
+.kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+.kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+.kpi.cyan   { --kpi-color:var(--cyan);   --kpi-grad:linear-gradient(90deg,#0891b2,#06b6d4); --kpi-glow:rgba(6,182,212,.06);  --kpi-shadow:var(--glow-cyan); }
+
+/* ═══════════════════════════════════════
+   CARD
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-head-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+
+/* ═══════════════════════════════════════
+   FILTER TABS
+═══════════════════════════════════════ */
+.filter-tab {
+  padding: 6px 14px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  cursor: pointer; font-size: 11px; font-weight: 600;
+  color: var(--text2); font-family: var(--font);
+  transition: all .18s;
+}
+.filter-tab.active {
+  background: var(--blue); color: #fff; border-color: var(--blue);
+  box-shadow: 0 0 12px rgba(59,130,246,.3);
+}
+.filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
+
+/* ═══════════════════════════════════════
+   TABLE
+═══════════════════════════════════════ */
+.tbl-wrap { overflow-x: auto; }
+.tbl {
+  width: 100%; border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tbl thead th {
+  padding: 12px 14px; text-align: left;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  position: sticky; top: 0; z-index: 2;
+}
+.tbl tbody td {
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+  vertical-align: middle;
+}
+.tbl tbody tr { transition: background .15s; }
+.tbl tbody tr:hover { background: var(--bg3); }
+.tbl tbody tr.new-row { animation: slide-in .35s cubic-bezier(.22,1,.36,1); }
+
+@keyframes slide-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+/* ═══════════════════════════════════════
+   AVATAR
+═══════════════════════════════════════ */
+.emp-av {
+  width: 42px; height: 42px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 800; color: #fff;
+  font-family: var(--mono); flex-shrink: 0;
+  background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  box-shadow: 0 3px 10px rgba(59,130,246,.3);
+  overflow: hidden;
+}
+.emp-av.inactive {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
+  box-shadow: 0 3px 10px rgba(107,114,128,.2);
+}
+
+/* ═══════════════════════════════════════
+   BADGES
+═══════════════════════════════════════ */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  letter-spacing: .5px;
+}
+.badge-green  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.badge-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+.badge-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.2); }
+.badge-purple { background: rgba(139,92,246,.12); color: var(--purple); border: 1px solid rgba(139,92,246,.2); }
+.badge-gray   { background: rgba(107,114,128,.12); color: #9ca3af; border: 1px solid rgba(107,114,128,.2); }
+
+/* ═══════════════════════════════════════
+   PROGRESS BAR
+═══════════════════════════════════════ */
+.progress-bar { height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width .6s ease; }
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn {
+  padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
+  font-weight: 600; font-size: 12px; font-family: var(--font);
+  transition: all .18s; display: inline-flex; align-items: center; gap: 5px;
+  text-decoration: none;
+}
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-ghost {
+  background: transparent; color: var(--text2);
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+.btn-icon {
+  width: 34px; height: 34px; border-radius: 8px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text2); cursor: pointer; transition: all .15s;
+}
+.btn-icon:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+.btn-icon.danger:hover { background: rgba(239,68,68,.1); color: var(--red); border-color: rgba(239,68,68,.3); }
+
+/* ═══════════════════════════════════════
+   INPUTS
+═══════════════════════════════════════ */
+.form-input, .form-select {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 8px; font-size: 13px; color: var(--text1);
+  font-family: var(--font); outline: none; transition: all .15s;
+}
+.form-input:focus, .form-select:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+}
+.form-input::placeholder { color: var(--text3); }
+.form-select { cursor: pointer; }
+
+.form-label {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text3); margin-bottom: 6px;
+  display: block;
+}
+
+/* ═══════════════════════════════════════
+   DEPT STATS CARDS
+═══════════════════════════════════════ */
+.dept-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px; transition: all .2s;
+}
+.dept-card:hover { border-color: var(--border3); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+
+/* ═══════════════════════════════════════
+   MODAL
+═══════════════════════════════════════ */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999;
+  background: rgba(8,13,23,.85); backdrop-filter: blur(6px);
+  align-items: center; justify-content: center;
+}
+.modal {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); width: 680px; max-width: 95vw;
+  max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  animation: modal-in .25s cubic-bezier(.22,1,.36,1);
+}
+@keyframes modal-in { from { opacity:0; transform:translateY(20px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+.modal-head {
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title { font-weight: 700; font-size: 16px; color: var(--text1); }
+.modal-close {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border2);
+  background: var(--bg3); color: var(--text2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; transition: all .15s;
+}
+.modal-close:hover { background: var(--bg4); color: var(--text1); }
+.modal-body { padding: 24px; }
+.modal-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  padding-top: 20px; border-top: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════ */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: var(--text3);
+}
+.empty-state-icon { font-size: 52px; margin-bottom: 12px; opacity: .4; }
+.empty-state-text { font-size: 14px; }
+
+/* ═══════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════ */
+[data-tooltip] { position: relative; }
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+  background: var(--bg5); color: var(--text1); font-size: 10px;
+  padding: 4px 10px; border-radius: 6px; white-space: nowrap;
+  pointer-events: none; opacity: 0; transition: opacity .15s;
+  font-family: var(--font); z-index: 10;
+}
+[data-tooltip]:hover::after { opacity: 1; }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
 
+<div class="dash-wrap">
+
+  <!-- ══════════════════════════════════════════
+       KPI STRIP
+  ══════════════════════════════════════════ -->
+  <div class="kpi-grid">
+
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Total employés</span>
+        <div class="kpi-icon-wrap">👥</div>
+      </div>
+      <div class="kpi-val" id="kpi-total">{{ total_employes }}</div>
+      <div class="kpi-sub">Base de données</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Actifs</span>
+        <div class="kpi-icon-wrap">✅</div>
+      </div>
+      <div class="kpi-val" id="kpi-actifs">{{ actifs }}</div>
+      <div class="kpi-sub up">En service</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_employes %}{% widthratio actifs total_employes 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi red">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Archivés</span>
+        <div class="kpi-icon-wrap">📁</div>
+      </div>
+      <div class="kpi-val" id="kpi-inactifs">{{ inactifs }}</div>
+      <div class="kpi-sub">Historique conservé</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_employes %}{% widthratio inactifs total_employes 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Départements</span>
+        <div class="kpi-icon-wrap">🏢</div>
+      </div>
+      <div class="kpi-val">{{ total_departements }}</div>
+      <div class="kpi-sub">Unités actives</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%"></div></div>
+    </div>
+
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Accès aujourd'hui</span>
+        <div class="kpi-icon-wrap">🔑</div>
+      </div>
+      <div class="kpi-val">{{ acces_aujourdhui|default:"0" }}</div>
+      <div class="kpi-sub">Tentatives</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:65%"></div></div>
+    </div>
+
+    <div class="kpi cyan">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Taux de succès</span>
+        <div class="kpi-icon-wrap">📈</div>
+      </div>
+      <div class="kpi-val">{{ taux_global|default:"0" }}<span style="font-size:18px;color:var(--text3);">%</span></div>
+      <div class="kpi-sub up">Global</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_global|default:0 }}%"></div></div>
+    </div>
+
+  </div><!-- /kpi-grid -->
+
+  <!-- ══════════════════════════════════════════
+       FILTRES AVANCÉS
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">🔍</div>
+      <span class="card-title">Filtres avancés</span>
+      <span class="card-badge badge-purple" id="filterCount">{{ total_employes }} résultat(s)</span>
+    </div>
+    <div style="padding:18px 20px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:200px;">
+          <label class="form-label">Recherche</label>
+          <input class="form-input" id="empSearch" placeholder="Nom, badge, email, téléphone..." oninput="empFilter()">
+        </div>
+        <div style="width:180px;">
+          <label class="form-label">Département</label>
+          <select class="form-select" id="empDept" onchange="empFilter()">
+            <option value="">Tous</option>
+            {% for dept in departements %}
+            <option value="{{ dept|lower }}">{{ dept }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="width:150px;">
+          <label class="form-label">Niveau</label>
+          <select class="form-select" id="empNiveau" onchange="empFilter()">
+            <option value="">Tous</option>
+            <option value="staff">Staff</option>
+            <option value="admin">Admin</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="visiteur">Visiteur</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Statut</label>
+          <div style="display:flex; gap:6px;">
+            <button class="filter-tab active" onclick="empSetStatus('all', this)">Tous</button>
+            <button class="filter-tab" onclick="empSetStatus('actif', this)">Actifs</button>
+            <button class="filter-tab" onclick="empSetStatus('inactif', this)">Archivés</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost" onclick="resetFilters()" style="height:38px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Reset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       TABLEAU DES EMPLOYÉS
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">👥</div>
+      <span class="card-title">Liste des employés</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Employé</th>
+            <th>Badge RFID</th>
+            <th>Département</th>
+            <th>Poste</th>
+            <th>Niveau</th>
+            <th>Accès</th>
+            <th>Taux succès</th>
+            <th>Dernier accès</th>
+            <th>Statut</th>
+            <th style="width:140px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="empTableBody">
+          {% for emp in employes %}
+          <tr class="emp-row"
+              data-name="{{ emp.nom|lower }} {{ emp.prenom|lower }}"
+              data-badge="{{ emp.badge_id|lower }}"
+              data-email="{{ emp.email|lower }}"
+              data-dept="{{ emp.departement|lower }}"
+              data-niveau="{{ emp.niveau|lower }}"
+              data-statut="{{ emp.statut|lower }}"
+              data-id="{{ emp.id }}">
+            <td>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div class="emp-av {% if emp.statut != 'actif' %}inactive{% endif %}">
+                  {% if emp.photo_url %}
+                  <img src="{{ emp.photo_url }}" alt="{{ emp.nom }}" style="width:100%;height:100%;object-fit:cover;">
+                  {% else %}
+                  {{ emp.nom|slice:":1"|upper }}{{ emp.prenom|slice:":1"|upper }}
+                  {% endif %}
+                </div>
+                <div>
+                  <div style="font-weight:600; color:var(--text1);">{{ emp.nom }} {{ emp.prenom }}</div>
+                  <div style="font-size:11px; color:var(--text3);">{{ emp.email|default:"—" }}</div>
+                </div>
+              </div>
+            </td>
+            <td><span style="font-family:var(--mono);font-size:11px;color:var(--text2);">{{ emp.badge_id|default:"—" }}</span></td>
+            <td>{{ emp.departement|default:"—" }}</td>
+            <td>{{ emp.poste|default:"—" }}</td>
+            <td><span class="badge badge-blue">{{ emp.niveau|default:"Staff" }}</span></td>
+            <td style="font-family:var(--mono);font-weight:600;text-align:center;">{{ emp.nb_acces|default:"0" }}</td>
+            <td>
+              <div style="min-width:70px;">
+                <div style="font-size:11px;font-weight:700;{% if emp.taux_succes >= 80 %}color:var(--green);{% elif emp.taux_succes >= 50 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">
+                  {{ emp.taux_succes }}%
+                </div>
+                <div class="progress-bar" style="margin-top:4px;">
+                  <div class="progress-fill" style="width:{{ emp.taux_succes }}%;{% if emp.taux_succes >= 80 %}background:var(--green);{% elif emp.taux_succes >= 50 %}background:var(--amber);{% else %}background:var(--red);{% endif %}"></div>
+                </div>
+              </div>
+            </td>
+            <td style="font-size:11px;font-family:var(--mono);color:var(--text2);">
+              {% if emp.dernier_acces %}{{ emp.dernier_acces|date:"d/m/Y H:i" }}{% else %}<span style="color:var(--text3);">Jamais</span>{% endif %}
+            </td>
+            <td>
+              {% if emp.statut == 'actif' %}
+              <span class="badge badge-green">● Actif</span>
+              {% else %}
+              <span class="badge badge-gray">● Archivé</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="display:flex; gap:6px;">
+                <button class="btn-icon" data-tooltip="Détails" onclick="window.location.href='/employes/{{ emp.id }}/'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button class="btn-icon" data-tooltip="Modifier" onclick="window.location.href='/employes/{{ emp.id }}/modifier/'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn-icon" data-tooltip="Historique" onclick="showHistoryModal('{{ emp.id }}','{{ emp.nom }} {{ emp.prenom }}')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </button>
+                {% if emp.statut == 'actif' %}
+                <form method="post" action="/employes/{{ emp.id }}/supprimer/" style="display:inline;" onsubmit="return confirm('Archiver {{ emp.nom }} {{ emp.prenom }} ?')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn-icon danger" data-tooltip="Archiver">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="10">
+              <div class="empty-state">
+                <div class="empty-state-icon">👻</div>
+                <div class="empty-state-text">Aucun employé enregistré</div>
+                <button class="btn btn-primary" onclick="openAddModal()" style="margin-top:16px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Créer le premier employé
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div id="empNoResults" style="display:none; text-align:center; padding:40px; color:var(--text3);">
+      Aucun employé ne correspond aux filtres
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       STATISTIQUES PAR DÉPARTEMENT
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">📊</div>
+      <span class="card-title">Statistiques par département</span>
+      <span class="card-badge" style="background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2);">{{ total_departements }} unités</span>
+    </div>
+    <div style="padding:18px 20px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
+        {% for dept in dept_stats %}
+        <div class="dept-card">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.2);display:flex;align-items:center;justify-content:center;font-size:16px;">🏢</div>
+            <div style="font-weight:700;font-size:13px;color:var(--text1);">{{ dept.nom }}</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;">
+            <span style="color:var(--text3);">👥 Effectif</span>
+            <span style="font-family:var(--mono);font-weight:600;color:var(--text1);">{{ dept.total }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;">
+            <span style="color:var(--text3);">🔑 Accès total</span>
+            <span style="font-family:var(--mono);font-weight:600;color:var(--text1);">{{ dept.total_acces }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:12px;">
+            <span style="color:var(--text3);">📈 Taux succès</span>
+            <span style="font-family:var(--mono);font-weight:700;{% if dept.taux >= 80 %}color:var(--green);{% elif dept.taux >= 50 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ dept.taux }}%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:{{ dept.taux }}%;{% if dept.taux >= 80 %}background:var(--green);{% elif dept.taux >= 50 %}background:var(--amber);{% else %}background:var(--red);{% endif %}"></div>
+          </div>
+        </div>
+        {% empty %}
+        <div style="color:var(--text3);padding:20px;grid-column:1/-1;text-align:center;">Aucun département enregistré</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div><!-- /dash-wrap -->
+
+<!-- ══════════════════════════════════════════
+     MODAL OVERLAY
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════ -->
 <script>
-// Variables globales
+/* ─── Utilities ─── */
+function getCookie(n){var v=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)');return v?v.pop():'';}
+window.escapeHtml=function(t){if(t==null)return'';var d=document.createElement('div');d.textContent=String(t);return d.innerHTML;};
+
+/* ─── Variables globales ─── */
 let empStatus = 'all';
 
-// Fonction de filtrage
+/* ─── Filtrage ─── */
 function empFilter() {
   const search = (document.getElementById('empSearch')?.value || '').toLowerCase().trim();
   const dept = (document.getElementById('empDept')?.value || '').toLowerCase().trim();
   const niveau = (document.getElementById('empNiveau')?.value || '').toLowerCase().trim();
   const rows = document.querySelectorAll('#empTableBody .emp-row');
   let count = 0;
-  
+
   rows.forEach(row => {
-    const okS = !search || (row.dataset.name || '').includes(search) || (row.dataset.badge || '').includes(search) || (row.dataset.email || '').includes(search);
-    const okD = !dept || (row.dataset.dept || '') === dept;
-    const okN = !niveau || (row.dataset.niveau || '') === niveau;
-    const okT = empStatus === 'all' ||
-                (empStatus === 'actif' && row.dataset.statut === 'actif') ||
-                (empStatus === 'inactif' && row.dataset.statut !== 'actif');
-    const visible = okS && okD && okN && okT;
-    row.style.display = visible ? '' : 'none';
-    if (visible) count++;
+    const name = row.dataset.name || '';
+    const badge = row.dataset.badge || '';
+    const email = row.dataset.email || '';
+    const rowDept = row.dataset.dept || '';
+    const rowNiveau = row.dataset.niveau || '';
+    const rowStatut = row.dataset.statut || '';
+
+    const matchSearch = !search || name.includes(search) || badge.includes(search) || email.includes(search);
+    const matchDept = !dept || rowDept === dept;
+    const matchNiveau = !niveau || rowNiveau === niveau;
+    const matchStatut = empStatus === 'all' || rowStatut === empStatus;
+
+    row.style.display = (matchSearch && matchDept && matchNiveau && matchStatut) ? '' : 'none';
+    if (matchSearch && matchDept && matchNiveau && matchStatut) count++;
   });
-  
-  const countSpan = document.getElementById('empCount');
-  if (countSpan) countSpan.textContent = count + ' employé(s)';
-  
+
+  const filterCount = document.getElementById('filterCount');
+  if (filterCount) filterCount.textContent = count + ' résultat(s)';
+
   const noResults = document.getElementById('empNoResults');
   if (noResults) noResults.style.display = count === 0 ? 'block' : 'none';
 }
@@ -255,12 +704,12 @@ function resetFilters() {
   const searchInput = document.getElementById('empSearch');
   const deptSelect = document.getElementById('empDept');
   const niveauSelect = document.getElementById('empNiveau');
-  
+
   if (searchInput) searchInput.value = '';
   if (deptSelect) deptSelect.value = '';
   if (niveauSelect) niveauSelect.value = '';
-  
-  empSetStatus('all', document.getElementById('ftab-all'));
+
+  empSetStatus('all', document.querySelector('.filter-tab'));
 }
 
 function empSetStatus(val, el) {
@@ -270,240 +719,216 @@ function empSetStatus(val, el) {
   empFilter();
 }
 
+/* ─── Export CSV ─── */
 function exportEmployeesCSV() {
   let csv = "Nom,Prénom,Email,Téléphone,Badge,Département,Poste,Niveau,Nb Accès,Taux Succès,Dernier Accès,Statut\n";
-  
+
   document.querySelectorAll('#empTableBody .emp-row').forEach(row => {
     if (row.style.display === 'none') return;
-    
-    const cells = row.querySelectorAll('td');
-    const nameDiv = cells[0]?.querySelector('div > div > div:first-child');
-    const parts = (nameDiv?.textContent.trim() || '').split(' ');
+
+    const nameCell = row.querySelector('td:first-child');
+    const fullName = nameCell?.querySelector('div > div:first-child')?.textContent.trim() || '';
+    const parts = fullName.split(' ');
     const nom = parts[0] || '';
     const prenom = parts.slice(1).join(' ') || '';
-    const email = cells[0]?.querySelector('div>div>div:nth-child(2)')?.textContent.trim() || '';
-    const phone = (cells[0]?.querySelector('div>div>div:nth-child(3)')?.textContent.replace('📞 ', '').trim() || '');
-    const badge = cells[1]?.textContent.trim() || '';
-    const dept = cells[2]?.textContent.trim() || '';
-    const poste = cells[3]?.textContent.trim() || '';
-    const niveau = cells[4]?.textContent.trim() || '';
-    const nbAcces = cells[5]?.textContent.trim() || '';
-    const tauxElem = cells[6]?.querySelector('div>div:first-child');
-    const taux = (tauxElem?.textContent.replace('%', '').trim() || '0');
-    const dernierAcces = cells[7]?.textContent.trim() || '';
-    const statut = cells[8]?.textContent.trim() || '';
-    
-    csv += `"${nom}","${prenom}","${email}","${phone}","${badge}","${dept}","${poste}","${niveau}","${nbAcces}","${taux}","${dernierAcces}","${statut}"\n`;
+    const email = nameCell?.querySelector('div > div:nth-child(2)')?.textContent.trim() || '';
+
+    const tds = row.querySelectorAll('td');
+    const badge = tds[1]?.textContent.trim() || '';
+    const dept = tds[2]?.textContent.trim() || '';
+    const poste = tds[3]?.textContent.trim() || '';
+    const niveau = tds[4]?.textContent.trim() || '';
+    const nbAcces = tds[5]?.textContent.trim() || '0';
+    const taux = tds[6]?.querySelector('div div:first-child')?.textContent.replace('%','').trim() || '0';
+    const dernierAcces = tds[7]?.textContent.trim() || '';
+    const statut = tds[8]?.textContent.replace('●','').trim() || '';
+
+    csv += `"${nom}","${prenom}","${email}","","${badge}","${dept}","${poste}","${niveau}","${nbAcces}","${taux}","${dernierAcces}","${statut}"\n`;
   });
-  
+
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
   const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.href = url;
-  link.download = `employes_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  link.href = URL.createObjectURL(blob);
+  link.download = `employes_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
 }
 
+/* ─── Export PDF ─── */
+function exportEmployeesPDF() {
+  // Récupérer les IDs des employés visibles
+  const ids = [];
+  document.querySelectorAll('#empTableBody .emp-row').forEach(row => {
+    if (row.style.display !== 'none' && row.dataset.id) {
+      ids.push(row.dataset.id);
+    }
+  });
+
+  if (ids.length === 0) {
+    alert('Aucun employé à exporter.');
+    return;
+  }
+
+  // Construire l'URL avec les IDs
+  const url = '/api/employes/export-pdf/?ids=' + ids.join(',');
+  window.open(url, '_blank');
+}
+
+/* ─── Modal Historique ─── */
 function showHistoryModal(empId, empName) {
-  console.log('Fetching history for:', empId, empName);
-  
+  const modalContent = document.getElementById('modal-content');
+  modalContent.innerHTML = `
+    <div class="modal-head">
+      <span class="modal-title">📋 Historique — ${window.escapeHtml(empName)}</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="text-align:center;padding:40px;color:var(--text3);">
+        <div style="animation:spin 1s linear infinite;display:inline-block;font-size:28px;margin-bottom:12px;">⚙️</div>
+        <div>Chargement de l'historique...</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-overlay').style.display = 'flex';
+
   fetch(`/api/employee/${empId}/history/`)
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return response.json();
-    })
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
     .then(data => {
-      console.log('History data:', data);
-      
-      const logsHtml = (data.logs || []).map(log => `
-        <tr>
-          <td style="font-family:monospace;font-size:11px;">${log.date || ''}</td>
-          <td>${log.zone || ''}</td>
-          <td><span class="badge ${log.resultat === 'AUTORISE' ? 'b-green' : 'b-red'}">${log.resultat || ''}</span></td>
-        </tr>
-      `).join('');
-      
-      const modalContent = `
-        <div class="modal-title">📋 Historique des accès</div>
-        <div class="modal-sub">${empName} · ${data.total_acces || 0} accès au total</div>
-        <div style="max-height:400px; overflow-y:auto;">
-          <table class="tbl" style="width:100%;">
-            <thead><tr><th>Date</th><th>Zone</th><th>Résultat</th></tr></thead>
-            <tbody>${logsHtml || '<tr><td colspan="3" style="text-align:center;">Aucun accès enregistré</td></tr>'}</tbody>
-          </table>
+      const logsHtml = (data.logs || []).length
+        ? (data.logs || []).map(log => `
+            <tr>
+              <td style="font-family:var(--mono);font-size:11px;">${log.date || ''}</td>
+              <td>${window.escapeHtml(log.zone || '')}</td>
+              <td><span class="badge ${log.resultat === 'AUTORISE' ? 'badge-green' : 'badge-red'}">${log.resultat || ''}</span></td>
+            </tr>`).join('')
+        : '<tr><td colspan="3" style="text-align:center;padding:30px;">Aucun accès enregistré</td></tr>';
+
+      modalContent.innerHTML = `
+        <div class="modal-head">
+          <span class="modal-title">📋 Historique — ${window.escapeHtml(empName)}</span>
+          <button class="modal-close" onclick="closeModal()">✕</button>
         </div>
-        <div class="modal-actions"><button class="btn btn-primary btn-sm" onclick="closeModal()">Fermer</button></div>
+        <div class="modal-body">
+          <div style="margin-bottom:16px;font-size:13px;color:var(--text2);">
+            <strong>${data.total_acces || 0}</strong> accès au total
+          </div>
+          <div style="max-height:400px;overflow-y:auto;">
+            <table class="tbl">
+              <thead><tr><th>Date</th><th>Zone</th><th>Résultat</th></tr></thead>
+              <tbody>${logsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-actions" style="padding:0 24px 20px;">
+          <button class="btn btn-ghost" onclick="closeModal()">Fermer</button>
+        </div>
       `;
-      document.getElementById('modal-content').innerHTML = modalContent;
-      document.getElementById('modal-overlay').style.display = 'flex';
     })
-    .catch(error => {
-      console.error('Erreur détaillée:', error);
-      document.getElementById('modal-content').innerHTML = `
-        <div class="modal-title">⚠️ Erreur</div>
-        <div class="modal-sub">Impossible de charger l'historique: ${error.message}</div>
-        <div class="modal-actions"><button class="btn btn-primary btn-sm" onclick="closeModal()">Fermer</button></div>
+    .catch(err => {
+      modalContent.innerHTML = `
+        <div class="modal-head">
+          <span class="modal-title">⚠️ Erreur</span>
+          <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="color:var(--red);">${window.escapeHtml(err.message)}</div>
+        </div>
+        <div class="modal-actions" style="padding:0 24px 20px;">
+          <button class="btn btn-ghost" onclick="closeModal()">Fermer</button>
+        </div>
       `;
-      document.getElementById('modal-overlay').style.display = 'flex';
     });
 }
-     
+
+/* ─── Modal Ajout Employé ─── */
 function openAddModal() {
-  const modalContent = `
-    <div class="modal-title" style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-      <i class="fas fa-user-plus" style="color: var(--blue2); font-size: 22px;"></i>
-      <span>➕ Nouvel employé</span>
+  const modalContent = document.getElementById('modal-content');
+  modalContent.innerHTML = `
+    <div class="modal-head">
+      <span class="modal-title">➕ Nouvel employé</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-sub" style="color: var(--text2); font-size: 13px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
-      Créer un nouveau profil d'accès
-    </div>
-    
-    
-<form method="post" action="/employes/ajouter/" id="addEmployeeForm" enctype="multipart/form-data">      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-      
-      <!-- Section Identité -->
-      <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-        <i class="fas fa-user-circle" style="color: var(--blue2); font-size: 14px;"></i>
-        <span>Informations personnelles</span>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-user" style="font-size: 11px;"></i> Nom <span style="color: var(--red);">*</span>
-          </label>
-          <div class="input-group">
-            <i class="fas fa-user input-icon"></i>
-            <input class="form-input" type="text" name="nom" placeholder="Nom de famille" required style="padding-left: 38px;">
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-user" style="font-size: 11px;"></i> Prénom
-          </label>
-          <div class="input-group">
-            <i class="fas fa-user input-icon"></i>
-            <input class="form-input" type="text" name="prenom" placeholder="Prénom" style="padding-left: 38px;">
-          </div>
-        </div>
-      </div>
-      
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-envelope" style="font-size: 11px;"></i> Email
-          </label>
-          <div class="input-group">
-            <i class="fas fa-envelope input-icon"></i>
-            <input class="form-input" type="email" name="email" placeholder="prenom.nom@ge.dz" style="padding-left: 38px;">
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-phone" style="font-size: 11px;"></i> Téléphone
-          </label>
-          <div class="input-group">
-            <i class="fas fa-phone input-icon"></i>
-            <input class="form-input" type="tel" name="telephone" placeholder="+213 XX XX XX XX" style="padding-left: 38px;">
-          </div>
-        </div>
-      </div>
-      <!-- Section Photo -->
-<div class="form-row" style="margin-bottom: 20px;">
-  <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-    <i class="fas fa-camera" style="font-size: 11px;"></i> Photo de profil
-  </label>
+    <div class="modal-body">
+      <form method="post" action="/employes/ajouter/" enctype="multipart/form-data" id="addEmployeeForm">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
-  <div style="display:flex; align-items:center; gap:14px;">
-    <div id="photoPreview" style="width:64px; height:64px; border-radius:50%; background:var(--bg3); border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
-      <i class="fas fa-user" style="color:var(--text3); font-size:22px;"></i>
-    </div>
-
-    <label for="photoInput" style="cursor:pointer; padding:10px 16px; background:var(--bg3); border:1px solid var(--border); border-radius:10px; color:var(--text2); font-size:12px; display:inline-flex; align-items:center; gap:8px;">
-      <i class="fas fa-upload"></i> Choisir une photo
-    </label>
-    <input id="photoInput" type="file" name="photo" accept="image/*"
-           style="display:none;"
-           onchange="previewPhoto(event)">
-
-    <button type="button" id="removePhotoBtn" onclick="removePhoto()" style="display:none; background:transparent; border:1px solid var(--red); color:var(--red); padding:8px 12px; border-radius:8px; cursor:pointer; font-size:11px;">
-      <i class="fas fa-times"></i> Retirer
-    </button>
-  </div>
-  <small style="color:var(--text3); font-size:11px; margin-top:6px; display:block;">JPG ou PNG · Max 5 Mo</small>
-</div>
-      
-      <!-- Section Badge -->
-      <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin: 20px 0 16px;">
-        <i class="fas fa-id-card" style="color: var(--blue2); font-size: 14px;"></i>
-        <span>Badge d'accès</span>
-      </div>
-      <div class="form-row" style="margin-bottom: 20px;">
-        <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-          <i class="fas fa-microchip" style="font-size: 11px;"></i> Badge RFID <span style="color: var(--red);">*</span>
-        </label>
-        <div class="input-group">
-          <i class="fas fa-microchip input-icon"></i>
-          <input class="form-input" type="text" name="badge_id" placeholder="RFID-XXXX" required style="padding-left: 38px; font-family: var(--mono);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+          <span style="width:24px;height:2px;background:var(--border);"></span> Identité
         </div>
-      </div>
-      
-      <!-- Section Professionnelle -->
-      <div class="section-title" style="display: flex; align-items: center; gap: 8px; margin: 20px 0 16px;">
-        <i class="fas fa-briefcase" style="color: var(--blue2); font-size: 14px;"></i>
-        <span>Informations professionnelles</span>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-building" style="font-size: 11px;"></i> Département
-          </label>
-          <div class="input-group">
-            <i class="fas fa-building input-icon"></i>
-            <select class="form-select" name="departement" style="padding-left: 38px; appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%239ca3af\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>'); background-repeat: no-repeat; background-position: right 12px center;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+          <div>
+            <label class="form-label">Nom <span style="color:var(--red);">*</span></label>
+            <input class="form-input" type="text" name="nom" placeholder="Nom de famille" required>
+          </div>
+          <div>
+            <label class="form-label">Prénom</label>
+            <input class="form-input" type="text" name="prenom" placeholder="Prénom">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+          <div>
+            <label class="form-label">Email</label>
+            <input class="form-input" type="email" name="email" placeholder="prenom.nom@ge.dz">
+          </div>
+          <div>
+            <label class="form-label">Téléphone</label>
+            <input class="form-input" type="tel" name="telephone" placeholder="+213 XX XX XX XX">
+          </div>
+        </div>
+
+        <div style="margin-bottom:18px;">
+          <label class="form-label">Photo de profil</label>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div id="photoPreview" style="width:56px;height:56px;border-radius:12px;background:var(--bg3);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;font-size:22px;color:var(--text3);">
+              👤
+            </div>
+            <label for="photoInput" style="cursor:pointer;padding:8px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:12px;display:inline-flex;align-items:center;gap:6px;transition:all .15s;" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Choisir
+            </label>
+            <input id="photoInput" type="file" name="photo" accept="image/*" style="display:none;" onchange="previewPhoto(event)">
+            <button type="button" id="removePhotoBtn" onclick="removePhoto()" style="display:none;background:transparent;border:1px solid var(--red);color:var(--red);padding:6px 12px;border-radius:8px;cursor:pointer;font-size:11px;">✕ Retirer</button>
+          </div>
+        </div>
+
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+          <span style="width:24px;height:2px;background:var(--border);"></span> Badge
+        </div>
+        <div style="margin-bottom:18px;">
+          <label class="form-label">Badge RFID <span style="color:var(--red);">*</span></label>
+          <input class="form-input" type="text" name="badge_id" placeholder="RFID-XXXX" required style="font-family:var(--mono);">
+        </div>
+
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+          <span style="width:24px;height:2px;background:var(--border);"></span> Professionnel
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+          <div>
+            <label class="form-label">Département</label>
+            <select class="form-select" name="departement">
               <option value="">Sélectionner</option>
-              <option value="Informatique">Informatique</option>
-              <option value="Ressources Humaines">Ressources Humaines</option>
-              <option value="Finance">Finance</option>
-              <option value="Production">Production</option>
-              <option value="Commercial">Commercial</option>
-              <option value="Maintenance">Maintenance</option>
-              <option value="Direction">Direction</option>
+              <option>Informatique</option>
+              <option>Ressources Humaines</option>
+              <option>Finance</option>
+              <option>Production</option>
+              <option>Commercial</option>
+              <option>Maintenance</option>
+              <option>Direction</option>
             </select>
           </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-briefcase" style="font-size: 11px;"></i> Poste
-          </label>
-          <div class="input-group">
-            <i class="fas fa-briefcase input-icon"></i>
-            <input class="form-input" type="text" name="poste" placeholder="Ex: Développeur" style="padding-left: 38px;">
+          <div>
+            <label class="form-label">Poste</label>
+            <input class="form-input" type="text" name="poste" placeholder="Ex: Développeur">
           </div>
         </div>
-      </div>
-      
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-calendar" style="font-size: 11px;"></i> Date d'embauche
-          </label>
-          <div class="input-group">
-            <i class="fas fa-calendar input-icon"></i>
-            <input class="form-input" type="date" name="date_embauche" style="padding-left: 38px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+          <div>
+            <label class="form-label">Date d'embauche</label>
+            <input class="form-input" type="date" name="date_embauche">
           </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
-            <i class="fas fa-shield-alt" style="font-size: 11px;"></i> Niveau d'accès
-          </label>
-          <div class="input-group">
-            <i class="fas fa-shield-alt input-icon"></i>
-            <select class="form-select" name="niveau" style="padding-left: 38px; appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%239ca3af\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>'); background-repeat: no-repeat; background-position: right 12px center;">
+          <div>
+            <label class="form-label">Niveau d'accès</label>
+            <select class="form-select" name="niveau">
               <option value="Staff">👤 Staff</option>
               <option value="Admin">👑 Admin</option>
               <option value="Maintenance">🔧 Maintenance</option>
@@ -511,138 +936,17 @@ function openAddModal() {
             </select>
           </div>
         </div>
-      </div>
-      
-      <!-- Actions du modal -->
-      <div class="modal-actions" style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border);">
-        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="display: flex; align-items: center; gap: 6px; padding: 10px 20px;">
-          <i class="fas fa-times"></i> Annuler
-        </button>
-        <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; padding: 10px 24px; background: linear-gradient(135deg, var(--blue), var(--cyan));">
-          <i class="fas fa-save"></i> Créer l'employé
-        </button>
-      </div>
-    </form>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+          <button type="submit" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Créer l'employé
+          </button>
+        </div>
+      </form>
+    </div>
   `;
-  
-  const modal = document.getElementById('modal-content');
-  modal.innerHTML = modalContent;
-  
-  // Ajouter les styles spécifiques pour le modal
-  const style = document.createElement('style');
-  style.textContent = `
-    .input-group {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-    .input-icon {
-      position: absolute;
-      left: 12px;
-      color: var(--text3);
-      font-size: 14px;
-      z-index: 1;
-    }
-    .form-select {
-      width: 100%;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px 12px 11px 38px;
-      font-size: 13px;
-      color: var(--text);
-      font-family: var(--font);
-      outline: none;
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-    .form-select:hover {
-      background: var(--bg4);
-    }
-    .form-select:focus {
-      border-color: var(--blue2);
-      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
-    }
-    .form-input {
-      width: 100%;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px 12px 11px 38px;
-      font-size: 13px;
-      color: var(--text);
-      font-family: var(--font);
-      outline: none;
-      transition: all 0.2s ease;
-    }
-    .form-input:focus {
-      border-color: var(--blue2);
-      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
-      background: var(--bg4);
-    }
-    .form-input::placeholder {
-      color: var(--text3);
-    }
-    .section-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text2);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .form-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text2);
-      margin-bottom: 6px;
-      display: block;
-    }
-    .btn-ghost {
-      background: var(--bg3);
-      color: var(--text2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: var(--font);
-      font-weight: 500;
-    }
-    .btn-ghost:hover {
-      background: var(--bg4);
-      color: var(--text);
-      border-color: var(--blue2);
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--blue), var(--cyan));
-      color: white;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: var(--font);
-      font-weight: 600;
-    }
-    .btn-primary:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(31,111,235,0.4);
-    }
-    .modal-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .modal-sub {
-      font-size: 13px;
-      color: var(--text2);
-    }
-  `;
-  
-  // Ajouter le style s'il n'existe pas déjà
-  if (!document.querySelector('#modal-styles')) {
-    style.id = 'modal-styles';
-    document.head.appendChild(style);
-  }
-  
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 
@@ -650,33 +954,15 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
 }
 
-// Attacher les événements au chargement
-document.addEventListener('DOMContentLoaded', function() {
-  const searchInput = document.getElementById('empSearch');
-  const deptSelect = document.getElementById('empDept');
-  const niveauSelect = document.getElementById('empNiveau');
-  
-  if (searchInput) searchInput.addEventListener('input', empFilter);
-  if (deptSelect) deptSelect.addEventListener('change', empFilter);
-  if (niveauSelect) niveauSelect.addEventListener('change', empFilter);
-  
-  empFilter();
-});
 function previewPhoto(event) {
   const file = event.target.files[0];
   if (!file) return;
-
-  if (file.size > 5 * 1024 * 1024) {
-    alert("L'image ne doit pas dépasser 5 Mo.");
-    event.target.value = '';
-    return;
-  }
-
+  if (file.size > 5 * 1024 * 1024) { alert("Max 5 Mo"); event.target.value = ''; return; }
   const reader = new FileReader();
   reader.onload = e => {
     const preview = document.getElementById('photoPreview');
     if (preview) {
-      preview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+      preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
       preview.style.border = '2px solid var(--blue2)';
     }
     const removeBtn = document.getElementById('removePhotoBtn');
@@ -690,49 +976,38 @@ function removePhoto() {
   if (input) input.value = '';
   const preview = document.getElementById('photoPreview');
   if (preview) {
-    preview.innerHTML = '<i class="fas fa-user" style="color:var(--text3); font-size:22px;"></i>';
-    preview.style.border = '2px dashed var(--border)';
+    preview.innerHTML = '👤';
+    preview.style.border = '2px dashed var(--border2)';
   }
   const removeBtn = document.getElementById('removePhotoBtn');
   if (removeBtn) removeBtn.style.display = 'none';
 }
-async function fullChatbotTest() {
-    console.log('=== TEST COMPLET CHATBOT ===');
-    
-    // Test 1: UI visible ?
-    const widget = document.getElementById('chatbotWidget');
-    const fab = document.querySelector('.chatbot-fab');
-    console.log('Widget présent:', !!widget);
-    console.log('FAB présent:', !!fab);
-    
-    // Test 2: Ouverture/Fermeture
-    if (typeof toggleChatbot === 'function') {
-        toggleChatbot();
-        await new Promise(r => setTimeout(r, 100));
-        console.log('Ouverture:', widget.style.display === 'flex');
-        toggleChatbot();
-        console.log('Fermeture:', widget.style.display === 'none');
-    }
-    
-    // Test 3: Envoi message
-    const input = document.getElementById('chatbotInput');
-    if (input) {
-        input.value = "Bonjour, test automatique";
-        await sendChatbotMessage();
-        await new Promise(r => setTimeout(r, 1000));
-        const messages = document.querySelectorAll('.chatbot-message');
-        console.log('Messages après envoi:', messages.length);
-    }
-    
-    // Test 4: Suggestions
-    const suggestions = document.querySelectorAll('.suggestion-chip');
-    console.log('Suggestions présentes:', suggestions.length);
-    
-    console.log('=== FIN DES TESTS ===');
-}
 
-// Lancez les tests
-fullChatbotTest();
+/* ─── Spin animation ─── */
+var styleEl = document.createElement('style');
+styleEl.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(styleEl);
+
+/* ─── KPI counter animation ─── */
+document.querySelectorAll('.kpi-val').forEach(function(el){
+  var text = el.textContent.replace(/\s/g,' ');
+  var num = parseInt(text.replace(/[^0-9]/g,''),10);
+  if(isNaN(num)||num===0)return;
+  var duration=900, step=num/duration*16, current=0;
+  var timer=setInterval(function(){
+    current=Math.min(current+step,num);
+    el.textContent=Math.round(current)+(text.includes('%')?'%':'');
+    if(current>=num)clearInterval(timer);
+  },16);
+});
+
+/* ─── Init filters ─── */
+document.addEventListener('DOMContentLoaded', function() {
+  empFilter();
+  document.getElementById('empSearch')?.addEventListener('input', empFilter);
+  document.getElementById('empDept')?.addEventListener('change', empFilter);
+  document.getElementById('empNiveau')?.addEventListener('change', empFilter);
+});
 </script>
 
 {% endblock %}

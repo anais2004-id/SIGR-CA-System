@@ -1,351 +1,497 @@
 {% extends "base.html" %}
 
-{% block title %}Surveillance Live - SIGR-CA{% endblock %}
+{% block title %}Surveillance Live · SIGR-CA{% endblock %}
 {% block nav_live %}active{% endblock %}
 {% block page_title %}Surveillance Live IoT{% endblock %}
 {% block page_sub %}Contrôle d'accès en temps réel — Mises à jour automatiques{% endblock %}
 
 {% block topbar_actions %}
-<div class="pill pill-live" id="live-pill" onclick="toggleLive()" style="cursor:pointer">
-    <div class="live-dot" id="live-dot"></div>
+<div style="display:flex; gap:10px; align-items:center;">
+  
+  <!-- Toggle LIVE/PAUSE -->
+  <div id="live-pill" onclick="toggleLive()" 
+       style="display:inline-flex; align-items:center; gap:7px; padding:7px 16px; border-radius:20px; cursor:pointer; background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3); font-family:var(--mono); font-size:11px; font-weight:700; color:var(--green); transition:all .2s;"
+       onmouseover="this.style.background='rgba(16,185,129,.18)'" onmouseout="this.style.background='rgba(16,185,129,.1)'">
+    <span class="live-dot" id="live-dot" style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse-dot 1.8s ease-in-out infinite;"></span>
     <span id="live-status">LIVE (10s)</span>
+  </div>
+  
+  <!-- Bouton Actualiser -->
+  <button onclick="manualRefresh()" title="Actualiser"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  </button>
+  
+  <!-- Bouton Export -->
+  <button onclick="exportLiveData()" title="Exporter CSV"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  </button>
+  
+  <!-- Badge -->
+  <div class="live-pill" style="background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green);">
+    <span class="live-dot"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">LIVE</span>
+  </div>
+  
 </div>
-<div class="icon-btn" onclick="manualRefresh()" title="Actualiser maintenant">↻</div>
-<button class="btn btn-ghost btn-sm" onclick="exportLiveData()">⬇️ Exporter</button>
 {% endblock %}
 
 {% block content %}
-
-<!-- KPIs -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Accès autorisés</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value" id="kpi-ok">{{ acces_ok|default:"0" }}</div>
-    <div class="kpi-delta" id="kpi-ok-delta">{% if delta_ok > 0 %}+{{ delta_ok }}{% else %}{{ delta_ok }}{% endif %}%</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header"><div class="kpi-label">Accès refusés</div><div class="kpi-icon">🚫</div></div>
-    <div class="kpi-value" id="kpi-no">{{ acces_no|default:"0" }}</div>
-    <div class="kpi-delta neg" id="kpi-no-delta">Aujourd'hui</div>
-  </div>
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Zones actives</div><div class="kpi-icon">🚪</div></div>
-    <div class="kpi-value">{{ total_bureaux|default:"0" }}</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">Alertes actives</div><div class="kpi-icon">⚠️</div></div>
-    <div class="kpi-value" id="kpi-alertes">{{ alertes|default:"0" }}</div>
-    <div class="kpi-delta neg" id="alert-tendance">Non traitées</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">Total employés</div><div class="kpi-icon">👥</div></div>
-    <div class="kpi-value">{{ total_employes|default:"0" }}</div>
-  </div>
-  <div class="kpi k-cyan" style="--cyan:#39d0f0">
-    <div class="kpi-header"><div class="kpi-label">Taux succès</div><div class="kpi-icon">📈</div></div>
-    <div class="kpi-value" id="kpi-taux">{{ taux_succes|default:0 }}%</div>
-    <div class="kpi-delta">Dernière heure</div>
-  </div>
-</div>
-
-<div class="g2">
-  <!-- Flux temps réel -->
-  <div class="card">
-    <div class="card-head">
-      <span>📡</span>
-      <span class="card-title">Flux accès — temps réel</span>
-      <span class="card-sub"><span class="live-dot" style="display:inline-block"></span> Mise à jour automatique</span>
-      <div style="margin-left:auto; display:flex; gap:4px">
-        <button class="btn btn-sm btn-ghost filter-btn" onclick="filterFeed('all')" id="filter-all">Tous</button>
-        <button class="btn btn-sm btn-ghost filter-btn" onclick="filterFeed('autorise')" id="filter-ok">Autorisés</button>
-        <button class="btn btn-sm btn-ghost filter-btn" onclick="filterFeed('refuse')" id="filter-no">Refusés</button>
-      </div>
-    </div>
-    <div style="padding:12px 14px; max-height:500px; overflow-y:auto" id="live-feed">
-      {% for log in derniers_logs %}
-      <div class="feed-item {% if forloop.first %}new{% endif %}" data-resultat="{{ log.resultat|lower }}" data-log-id="{{ forloop.counter }}">
-        <div class="feed-av" style="background:{% if log.resultat == 'AUTORISE' %}#2dba6f{% else %}#f85149{% endif %}">
-          {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
-        </div>
-        <div class="feed-info">
-          <div class="feed-name">
-            {{ log.nom_utilisateur|default:"Inconnu" }}
-            <span style="font-size:10px; color:var(--text3); margin-left:6px">#{{ log.badge_id|default:"?" }}</span>
-          </div>
-          <div class="feed-door">
-            🚪 {{ log.bureau_nom|default:"Zone inconnue" }} · 
-            {% if log.type_acces == 'QR' %}📱 QR Code{% else %}🔖 RFID{% endif %}
-          </div>
-        </div>
-        <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
-        {% if log.resultat == 'AUTORISE' %}
-          <div class="feed-status fs-ok">✓ AUTORISÉ</div>
-        {% else %}
-          <div class="feed-status fs-no">✗ REFUSÉ</div>
-        {% endif %}
-      </div>
-      {% empty %}
-      <div style="text-align:center;padding:60px;color:var(--text3);font-size:13px" id="no-logs">
-        Aucun accès enregistré pour le moment
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <!-- Alertes & État des zones -->
-  <div class="card">
-    <div class="card-head">
-      <span>⚠️</span>
-      <span class="card-title">Alertes & État des zones</span>
-      <span class="card-sub" id="alert-count">{{ alertes }} active{{ alertes|pluralize }}</span>
-    </div>
-    <div class="card-body">
-
-      {% if alertes > 0 %}
-      <div class="alert-box danger" id="alert-box">
-        <div class="alert-ico">🔴</div>
-        <div>
-          <div class="alert-text">{{ alertes }} alerte{{ alertes|pluralize }} non traitée{{ alertes|pluralize }}</div>
-          <div class="alert-meta">Vérification immédiate requise</div>
-        </div>
-        <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="viewAlerts()">Voir détails</button>
-      </div>
-      {% else %}
-      <div class="alert-box info">
-        <div class="alert-ico">✅</div>
-        <div><div class="alert-text">Aucune alerte active — Système nominal</div></div>
-      </div>
-      {% endif %}
-
-      <!-- Occupation des zones -->
-      <div style="margin-top:20px">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:12px">
-          📊 OCCUPATION DES ZONES — TEMPS RÉEL
-        </div>
-        <div id="zone-occupation">
-          {% for bureau in bureaux %}
-          <div class="zone-occupation-item" style="margin-bottom:12px" data-zone-id="{{ bureau.id }}">
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px">
-              <span style="font-weight:500">{{ bureau.nom }}</span>
-              <span id="occ-{{ bureau.id }}" style="font-family:var(--mono); font-size:11px">{{ bureau.occupation|default:0 }}/{{ bureau.capacite_max|default:"?" }}</span>
-            </div>
-            <div class="progress-bar" style="height:6px">
-              <div class="progress-fill" id="bar-{{ bureau.id }}" style="width:{{ bureau.taux|default:0 }}%; background:{% if bureau.taux >= 80 %}var(--red){% elif bureau.taux >= 60 %}var(--amber){% else %}var(--green){% endif %}"></div>
-            </div>
-            <div style="font-size:10px; color:var(--text3); margin-top:4px" id="status-{{ bureau.id }}">
-              {% if bureau.taux >= 80 %}🔴 Très fréquenté
-              {% elif bureau.taux >= 60 %}🟡 Affluence modérée
-              {% elif bureau.taux >= 30 %}🟢 Normal
-              {% else %}⚪ Peu fréquenté{% endif %}
-            </div>
-          </div>
-          {% empty %}
-          <div style="color:var(--text3);text-align:center;padding:20px">Aucune zone configurée</div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <!-- Équipements connectés -->
-      <div style="margin-top:20px">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:12px">
-          🔌 ÉQUIPEMENTS CONNECTÉS
-        </div>
-        <div id="equipments-status">
-          {% for eq in equipements %}
-          <div class="equip-status" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg3); border-radius:6px; margin-bottom:6px">
-            <div>
-              <span style="font-weight:500">{{ eq.nom }}</span>
-              <span style="font-size:10px; color:var(--text3); margin-left:8px">{{ eq.type }}</span>
-            </div>
-            <div>
-              {% if eq.statut == 'actif' %}
-                <span class="badge b-green" id="eq-status-{{ eq.id }}">🟢 EN LIGNE</span>
-              {% else %}
-                <span class="badge b-gray" id="eq-status-{{ eq.id }}">⚫ HORS LIGNE</span>
-              {% endif %}
-            </div>
-          </div>
-          {% empty %}
-          <div style="color:var(--text3);text-align:center;padding:20px">Aucun équipement configuré</div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Historique des alertes -->
-<div class="card">
-  <div class="card-head">
-    <span>📋</span>
-    <span class="card-title">Historique des alertes récentes</span>
-    <span class="card-sub">Dernières 24h</span>
-  </div>
-  <div class="card-body" id="alert-history">
-    {% if alertes_list %}
-      {% for alerte in alertes_list %}
-      <div class="alert-box warn" style="margin-bottom:8px">
-        <div class="alert-ico">⚠️</div>
-        <div>
-          <div class="alert-text">{{ alerte.message }}</div>
-          <div class="alert-meta">{{ alerte.timestamp|date:"d/m/Y H:i:s" }} · {{ alerte.zone|default:"Système" }}</div>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div style="text-align:center;padding:30px;color:var(--text3)">Aucune alerte récente</div>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Mode secours -->
-<div class="card" style="border-color: var(--amber)">
-  <div class="card-head">
-    <span>🛡️</span>
-    <span class="card-title">Mode de secours - Déverrouillage d'urgence</span>
-    <span class="card-sub">Action journalisée</span>
-  </div>
-  <div class="card-body">
-    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
-      <div style="flex:1">
-        <div style="font-size:13px; margin-bottom:8px">⚠️ En situation d'urgence (incendie, panne, sécurité), vous pouvez déverrouiller manuellement tous les accès</div>
-        <div class="progress-bar" style="height:3px"><div class="progress-fill" style="width:100%; background:var(--amber)"></div></div>
-        <div style="font-size:11px; color:var(--text2); margin-top:8px">Cette action est journalisée dans le système d'audit</div>
-      </div>
-      <button class="btn btn-amber btn-sm" onclick="emergencyUnlock()" style="background:var(--amber2); color:var(--amber); border-color:var(--amber)">🔓 Déverrouillage d'urgence</button>
-    </div>
-  </div>
-</div>
-
 <style>
-.btn-amber {
-  background: var(--amber2);
-  color: var(--amber);
-  border-color: var(--amber);
-  padding: 8px 16px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all 0.2s;
+/* ═══════════════════════════════════════
+   FONTS & TOKENS
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
+  --border: rgba(99,140,185,.12); --border2: rgba(99,140,185,.18); --border3: rgba(99,140,185,.28);
+  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
+  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6;
+  --glow-blue: 0 0 20px rgba(59,130,246,.25); --glow-green: 0 0 20px rgba(16,185,129,.25);
+  --glow-red: 0 0 20px rgba(239,68,68,.25); --glow-amber: 0 0 20px rgba(245,158,11,.25);
+  --glow-purple: 0 0 20px rgba(139,92,246,.25); --glow-cyan: 0 0 20px rgba(6,182,212,.25);
+  --radius: 14px; --radius-sm: 8px;
 }
-.btn-amber:hover {
-  background: rgba(227,179,65,0.3);
-  transform: translateY(-1px);
+
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* Animations */
+.live-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,.5)} 50%{opacity:.7;box-shadow:0 0 0 5px rgba(16,185,129,0)} }
+
+/* ═══════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════ */
+.kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media (max-width:768px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+.kpi {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 18px 16px;
+  position: relative; overflow: hidden; transition: transform .25s, box-shadow .25s; cursor: default;
 }
-.kpi.k-cyan::after {
-  background: linear-gradient(90deg, var(--cyan), #6c5ce7);
+.kpi::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%); pointer-events: none; }
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+.kpi-accent { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--kpi-grad); box-shadow: 0 0 12px var(--kpi-color); }
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.kpi-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); }
+.kpi-icon-wrap { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--kpi-color) 12%, transparent); border: 1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent); font-size: 18px; flex-shrink: 0; }
+.kpi-val { font-family: var(--mono); font-size: 38px; font-weight: 700; color: var(--kpi-color); line-height: 1; margin-bottom: 8px; text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent); }
+.kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
+.kpi-sub.up { color: var(--green); }
+.kpi-sub.down { color: var(--red); }
+.kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+.kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+.kpi.cyan   { --kpi-color:var(--cyan);   --kpi-grad:linear-gradient(90deg,#0891b2,#06b6d4); --kpi-glow:rgba(6,182,212,.06);  --kpi-shadow:var(--glow-cyan); }
+
+/* ═══════════════════════════════════════
+   CARD
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
 }
-.zone-occupation-item {
-  transition: all 0.2s;
+.card-head {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
 }
-.zone-occupation-item:hover {
-  transform: translateX(4px);
+.card-head-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge { font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; font-family: var(--mono); letter-spacing: .5px; }
+
+/* ═══════════════════════════════════════
+   GRID 2 COL
+═══════════════════════════════════════ */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width:900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════
+   LIVE FEED
+═══════════════════════════════════════ */
+.feed-scroll { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+.feed-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: 10px;
+  background: var(--bg3); border: 1px solid var(--border);
+  transition: all .18s;
 }
-.filter-active {
-  background: var(--blue);
-  color: white !important;
-  border-color: var(--blue);
+.feed-row:hover { border-color: var(--border3); background: var(--bg4); transform: translateX(3px); }
+.feed-row.new { animation: slide-in .35s cubic-bezier(.22,1,.36,1); }
+@keyframes slide-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+.feed-av {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0;
+  font-family: var(--mono);
 }
-.live-dot {
-  width: 8px;
-  height: 8px;
-  background: #22c55e;
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-  display: inline-block;
-  margin-right: 6px;
+.feed-av.ok  { background: linear-gradient(135deg,#059669,#10b981); box-shadow: 0 3px 10px rgba(16,185,129,.3); }
+.feed-av.nok { background: linear-gradient(135deg,#dc2626,#ef4444); box-shadow: 0 3px 10px rgba(239,68,68,.3); }
+
+.feed-info { flex: 1; min-width: 0; }
+.feed-name { font-size: 12.5px; font-weight: 600; color: var(--text1); margin-bottom: 2px; }
+.feed-meta { font-size: 10.5px; color: var(--text3); display: flex; gap: 8px; flex-wrap: wrap; }
+.feed-time { font-family: var(--mono); font-size: 11px; color: var(--text3); flex-shrink: 0; }
+.feed-status {
+  padding: 3px 10px; border-radius: 20px; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .5px; font-family: var(--mono); flex-shrink: 0;
 }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+.feed-status.ok  { background: rgba(16,185,129,.1); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.feed-status.nok { background: rgba(239,68,68,.1);  color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+
+/* ═══════════════════════════════════════
+   FILTER TABS
+═══════════════════════════════════════ */
+.filter-tab {
+  padding: 5px 12px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  cursor: pointer; font-size: 11px; font-weight: 600;
+  color: var(--text2); font-family: var(--font); transition: all .15s;
 }
+.filter-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
+
+/* ═══════════════════════════════════════
+   ZONE OCCUPATION
+═══════════════════════════════════════ */
+.zone-occ-row {
+  margin-bottom: 12px; padding: 10px 14px;
+  background: var(--bg3); border-radius: var(--radius-sm);
+  border: 1px solid var(--border); transition: all .15s;
+}
+.zone-occ-row:hover { border-color: var(--border3); transform: translateX(3px); }
+
+/* ═══════════════════════════════════════
+   EQUIPMENT STATUS
+═══════════════════════════════════════ */
+.equip-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: var(--bg3); border-radius: 6px;
+  margin-bottom: 6px; border: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════
+   ALERT BOX
+═══════════════════════════════════════ */
+.alert-box {
+  padding: 14px 16px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.alert-box.danger { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); color: var(--red); }
+.alert-box.info  { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); color: var(--green); }
+.alert-box.warn  { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); color: var(--amber); }
+
+/* ═══════════════════════════════════════
+   BADGES
+═══════════════════════════════════════ */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 10px; font-weight: 700; font-family: var(--mono); letter-spacing: .5px;
+}
+.badge-green  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.badge-gray   { background: rgba(107,114,128,.12); color: #9ca3af;    border: 1px solid rgba(107,114,128,.2); }
+.badge-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+
+/* ═══════════════════════════════════════
+   EMERGENCY
+═══════════════════════════════════════ */
+.emergency-btn {
+  padding: 10px 20px; border-radius: 20px; border: 1px solid rgba(245,158,11,.3);
+  background: rgba(245,158,11,.1); color: var(--amber);
+  cursor: pointer; font-size: 13px; font-weight: 600;
+  font-family: var(--font); transition: all .15s;
+}
+.emergency-btn:hover { background: rgba(245,158,11,.2); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
 
-{% endblock %}
+<div class="dash-wrap">
 
-{% block extra_js %}
+  <!-- ══════════════════════════════════════════
+       KPI STRIP
+  ══════════════════════════════════════════ -->
+  <div class="kpi-grid">
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Accès autorisés</span><div class="kpi-icon-wrap">✅</div></div>
+      <div class="kpi-val" id="kpi-ok">{{ acces_ok|default:"0" }}</div>
+      <div class="kpi-sub up" id="kpi-ok-delta">{% if delta_ok > 0 %}+{{ delta_ok }}%{% else %}{{ delta_ok }}%{% endif %}</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%"></div></div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Accès refusés</span><div class="kpi-icon-wrap">🚫</div></div>
+      <div class="kpi-val" id="kpi-no">{{ acces_no|default:"0" }}</div>
+      <div class="kpi-sub down">Aujourd'hui</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:30%"></div></div>
+    </div>
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Zones actives</span><div class="kpi-icon-wrap">🚪</div></div>
+      <div class="kpi-val">{{ total_bureaux|default:"0" }}</div>
+      <div class="kpi-sub">En surveillance</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Alertes</span><div class="kpi-icon-wrap">⚠️</div></div>
+      <div class="kpi-val" id="kpi-alertes">{{ alertes|default:"0" }}</div>
+      <div class="kpi-sub">Non traitées</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if alertes %}60{% else %}5{% endif %}%"></div></div>
+    </div>
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Employés</span><div class="kpi-icon-wrap">👥</div></div>
+      <div class="kpi-val">{{ total_employes|default:"0" }}</div>
+      <div class="kpi-sub">Actifs</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+    <div class="kpi cyan">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Taux succès</span><div class="kpi-icon-wrap">📈</div></div>
+      <div class="kpi-val" id="kpi-taux">{{ taux_succes|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
+      <div class="kpi-sub">Dernière heure</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:0 }}%"></div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       FLUX LIVE + ALERTES
+  ══════════════════════════════════════════ -->
+  <div class="grid-2">
+
+    <!-- Flux temps réel -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">📡</div>
+        <span class="card-title">Flux accès — temps réel</span>
+        <div style="display:flex; gap:4px; margin-left:auto;">
+          <button class="filter-tab active" onclick="filterFeed('all', this)">Tous</button>
+          <button class="filter-tab" onclick="filterFeed('autorise', this)">Autorisés</button>
+          <button class="filter-tab" onclick="filterFeed('refuse', this)">Refusés</button>
+        </div>
+      </div>
+      <div style="padding:12px 14px;">
+        <div class="feed-scroll" id="live-feed">
+          {% for log in derniers_logs %}
+          <div class="feed-row {% if forloop.first %}new{% endif %}" data-resultat="{{ log.resultat|lower }}">
+            <div class="feed-av {% if log.resultat == 'AUTORISE' %}ok{% else %}nok{% endif %}">
+              {{ log.nom_utilisateur|default:"?"|slice:":2"|upper }}
+            </div>
+            <div class="feed-info">
+              <div class="feed-name">{{ log.nom_utilisateur|default:"Inconnu" }}</div>
+              <div class="feed-meta">
+                <span>🚪 {{ log.bureau_nom|default:"Zone ?" }}</span>
+                <span>{% if log.type_acces == 'QR' %}📱 QR{% else %}🔖 RFID{% endif %}</span>
+              </div>
+            </div>
+            <div class="feed-time">{{ log.timestamp|date:"H:i:s" }}</div>
+            <span class="feed-status {% if log.resultat == 'AUTORISE' %}ok{% else %}nok{% endif %}">
+              {% if log.resultat == 'AUTORISE' %}✓ AUTORISÉ{% else %}✗ REFUSÉ{% endif %}
+            </span>
+          </div>
+          {% empty %}
+          <div style="text-align:center;padding:60px;color:var(--text3);">
+            <div style="font-size:44px;margin-bottom:10px;opacity:.4;">📭</div>
+            <div>Aucun accès enregistré</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Alertes & Zones -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">⚠️</div>
+        <span class="card-title">Alertes & État des zones</span>
+        <span class="card-badge badge-red" id="alert-count">{{ alertes }} active{{ alertes|pluralize }}</span>
+      </div>
+      <div style="padding:16px 20px;">
+
+        {% if alertes > 0 %}
+        <div class="alert-box danger">
+          <span style="font-size:20px;">🔴</span>
+          <div>
+            <div style="font-weight:700;font-size:13px;">{{ alertes }} alerte{{ alertes|pluralize }} non traitée{{ alertes|pluralize }}</div>
+            <div style="font-size:10.5px;opacity:.8;">Vérification immédiate requise</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="alert-box info">
+          <span>✅</span>
+          <div style="font-weight:600;font-size:13px;">Aucune alerte active — Système nominal</div>
+        </div>
+        {% endif %}
+
+        <!-- Occupation zones -->
+        <div style="margin-top:16px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:10px;">📊 Occupation — temps réel</div>
+          <div id="zone-occupation">
+            {% for bureau in bureaux %}
+            <div class="zone-occ-row">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-weight:600;font-size:12px;color:var(--text1);">{{ bureau.nom }}</span>
+                <span id="occ-{{ bureau.id }}" style="font-family:var(--mono);font-size:10.5px;color:var(--text2);">{{ bureau.occupation|default:0 }}/{{ bureau.capacite_max|default:"?" }}</span>
+              </div>
+              <div class="kpi-bar" style="height:5px;">
+                <div class="kpi-bar-fill" id="bar-{{ bureau.id }}" style="width:{{ bureau.taux|default:0 }}%;{% if bureau.taux >= 80 %}background:var(--red);{% elif bureau.taux >= 60 %}background:var(--amber);{% else %}background:var(--green);{% endif %}"></div>
+              </div>
+              <div style="font-size:10px;color:var(--text3);margin-top:3px;" id="status-{{ bureau.id }}">
+                {% if bureau.taux >= 80 %}🔴 Très fréquenté
+                {% elif bureau.taux >= 60 %}🟡 Affluence modérée
+                {% elif bureau.taux >= 30 %}🟢 Normal
+                {% else %}⚪ Peu fréquenté{% endif %}
+              </div>
+            </div>
+            {% empty %}
+            <div style="text-align:center;padding:20px;color:var(--text3);">Aucune zone configurée</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Équipements -->
+        <div style="margin-top:16px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:10px;">🔌 Équipements connectés</div>
+          <div id="equipments-status">
+            {% for eq in equipements %}
+            <div class="equip-row">
+              <div>
+                <span style="font-weight:600;font-size:12px;color:var(--text1);">{{ eq.nom }}</span>
+                <span style="font-size:10px;color:var(--text3);margin-left:6px;">{{ eq.type }}</span>
+              </div>
+              <span class="badge {% if eq.statut == 'actif' %}badge-green{% else %}badge-gray{% endif %}" id="eq-status-{{ eq.id }}">
+                {% if eq.statut == 'actif' %}🟢 EN LIGNE{% else %}⚫ HORS LIGNE{% endif %}
+              </span>
+            </div>
+            {% empty %}
+            <div style="text-align:center;padding:15px;color:var(--text3);">Aucun équipement</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /grid-2 -->
+
+  <!-- ══════════════════════════════════════════
+       HISTORIQUE ALERTES
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.2);">📋</div>
+      <span class="card-title">Historique des alertes récentes</span>
+    </div>
+    <div style="padding:14px 20px;" id="alert-history">
+      {% if alertes_list %}
+        {% for alerte in alertes_list %}
+        <div class="alert-box warn">
+          <span>⚠️</span>
+          <div>
+            <div style="font-weight:600;font-size:12px;">{{ alerte.message }}</div>
+            <div style="font-size:10px;opacity:.7;">{{ alerte.timestamp|date:"d/m/Y H:i:s" }} · {{ alerte.zone|default:"Système" }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div style="text-align:center;padding:30px;color:var(--text3);">Aucune alerte récente</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       DÉVERROUILLAGE URGENCE
+  ══════════════════════════════════════════ -->
+  <div class="card" style="border-color:rgba(245,158,11,.2);">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">🛡️</div>
+      <span class="card-title">Mode de secours — Déverrouillage d'urgence</span>
+    </div>
+    <div style="padding:16px 20px;">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <div style="flex:1;font-size:12px;color:var(--text2);line-height:1.5;">
+          En situation d'urgence (incendie, panne, sécurité), déverrouillez manuellement tous les accès. Cette action est journalisée.
+        </div>
+        <button class="emergency-btn" onclick="emergencyUnlock()">🔓 Déverrouillage d'urgence</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /dash-wrap -->
+
 <script>
 let liveEnabled = true;
 let refreshInterval = null;
 let occupationInterval = null;
 let currentFeedFilter = 'all';
 
+/* ─── Refresh ─── */
 function startLiveRefresh() {
   if (refreshInterval) clearInterval(refreshInterval);
-  refreshInterval = setInterval(() => {
-    if (liveEnabled) fetchLiveData();
-  }, 10000);
+  refreshInterval = setInterval(function() { if (liveEnabled) fetchLiveData(); }, 10000);
 }
 
 function startOccupationRefresh() {
   if (occupationInterval) clearInterval(occupationInterval);
-  occupationInterval = setInterval(() => {
-    if (liveEnabled) fetchOccupationData();
-  }, 5000);
+  occupationInterval = setInterval(function() { if (liveEnabled) fetchOccupationData(); }, 5000);
 }
 
+/* ─── Fetch ─── */
 async function fetchLiveData() {
   try {
-    const response = await fetch('/api/live-feed/');
-    const data = await response.json();
-    if (data.logs) {
-      updateLiveFeed(data.logs);
-      updateKPIs(data.stats);
-    }
-  } catch (error) {
-    console.error('Erreur fetch live:', error);
-  }
+    var response = await fetch('/api/live-feed/');
+    var data = await response.json();
+    if (data.logs) { updateLiveFeed(data.logs); updateKPIs(data.stats); }
+  } catch(e) { console.error('Erreur fetch live:', e); }
 }
 
 async function fetchOccupationData() {
   try {
-    const response = await fetch('/api/occupation/');
-    const data = await response.json();
-    if (data.bureaux) {
-      updateZoneOccupation(data.bureaux);
-    }
-  } catch (error) {
-    console.error('Erreur fetch occupation:', error);
-  }
+    var response = await fetch('/api/occupation/');
+    var data = await response.json();
+    if (data.bureaux) updateZoneOccupation(data.bureaux);
+  } catch(e) { console.error('Erreur fetch occupation:', e); }
 }
 
+/* ─── Update UI ─── */
 function updateLiveFeed(logs) {
-  const container = document.getElementById('live-feed');
+  var container = document.getElementById('live-feed');
   if (!container) return;
-  
-  const newLogs = logs.slice(0, 20);
-  container.innerHTML = newLogs.map((log, idx) => `
-    <div class="feed-item new" data-resultat="${log.resultat.toLowerCase()}" data-log-id="${idx}">
-      <div class="feed-av" style="background:${log.resultat === 'AUTORISE' ? '#2dba6f' : '#f85149'}">
-        ${(log.nom || '?').slice(0,2).toUpperCase()}
-      </div>
-      <div class="feed-info">
-        <div class="feed-name">
-          ${log.nom || 'Inconnu'}
-          <span style="font-size:10px; color:var(--text3); margin-left:6px">#${log.badge || '?'}</span>
-        </div>
-        <div class="feed-door">
-          🚪 ${log.zone || 'Zone inconnue'} · ${log.method === 'QR' ? '📱 QR Code' : '🔖 RFID'}
-        </div>
-      </div>
-      <div class="feed-time">${log.time || '--:--:--'}</div>
-      <div class="feed-status ${log.resultat === 'AUTORISE' ? 'fs-ok' : 'fs-no'}">
-        ${log.resultat === 'AUTORISE' ? '✓ AUTORISÉ' : '✗ REFUSÉ'}
-      </div>
-    </div>
-  `).join('');
-  
-  if (currentFeedFilter !== 'all') {
-    filterFeed(currentFeedFilter);
-  }
-  highlightNewLogs();
+  var newLogs = logs.slice(0, 20);
+  container.innerHTML = newLogs.map(function(log, idx) {
+    return '<div class="feed-row new" data-resultat="' + (log.resultat || '').toLowerCase() + '">' +
+      '<div class="feed-av ' + (log.resultat === 'AUTORISE' ? 'ok' : 'nok') + '">' + (log.nom || '?').slice(0,2).toUpperCase() + '</div>' +
+      '<div class="feed-info"><div class="feed-name">' + (log.nom || 'Inconnu') + '</div>' +
+      '<div class="feed-meta"><span>🚪 ' + (log.zone || 'Zone ?') + '</span><span>' + (log.method === 'QR' ? '📱 QR' : '🔖 RFID') + '</span></div></div>' +
+      '<div class="feed-time">' + (log.time || '--:--:--') + '</div>' +
+      '<span class="feed-status ' + (log.resultat === 'AUTORISE' ? 'ok' : 'nok') + '">' + (log.resultat === 'AUTORISE' ? '✓ AUTORISÉ' : '✗ REFUSÉ') + '</span></div>';
+  }).join('');
+  if (currentFeedFilter !== 'all') filterFeed(currentFeedFilter);
 }
 
 function updateKPIs(stats) {
-  const okEl = document.getElementById('kpi-ok');
-  const noEl = document.getElementById('kpi-no');
-  const tauxEl = document.getElementById('kpi-taux');
-  const alertEl = document.getElementById('kpi-alertes');
-  
+  var okEl = document.getElementById('kpi-ok');
+  var noEl = document.getElementById('kpi-no');
+  var tauxEl = document.getElementById('kpi-taux');
+  var alertEl = document.getElementById('kpi-alertes');
   if (okEl) okEl.textContent = stats.acces_ok || 0;
   if (noEl) noEl.textContent = stats.acces_no || 0;
   if (tauxEl) tauxEl.textContent = (stats.taux_succes || 0) + '%';
@@ -353,19 +499,18 @@ function updateKPIs(stats) {
 }
 
 function updateZoneOccupation(bureaux) {
-  bureaux.forEach(b => {
-    const occEl = document.getElementById(`occ-${b.id}`);
-    const barEl = document.getElementById(`bar-${b.id}`);
-    const statusEl = document.getElementById(`status-${b.id}`);
-    
-    if (occEl) occEl.textContent = `${b.occupation || 0}/${b.capacite || 10}`;
+  bureaux.forEach(function(b) {
+    var occEl = document.getElementById('occ-' + b.id);
+    var barEl = document.getElementById('bar-' + b.id);
+    var statusEl = document.getElementById('status-' + b.id);
+    if (occEl) occEl.textContent = (b.occupation || 0) + '/' + (b.capacite || 10);
     if (barEl) {
-      const taux = b.taux || 0;
-      barEl.style.width = `${taux}%`;
+      var taux = b.taux || 0;
+      barEl.style.width = taux + '%';
       barEl.style.background = taux >= 80 ? 'var(--red)' : (taux >= 60 ? 'var(--amber)' : 'var(--green)');
     }
     if (statusEl) {
-      const taux = b.taux || 0;
+      var taux = b.taux || 0;
       if (taux >= 80) statusEl.innerHTML = '🔴 Très fréquenté';
       else if (taux >= 60) statusEl.innerHTML = '🟡 Affluence modérée';
       else if (taux >= 30) statusEl.innerHTML = '🟢 Normal';
@@ -374,145 +519,82 @@ function updateZoneOccupation(bureaux) {
   });
 }
 
-function filterFeed(filter) {
+/* ─── Filtre ─── */
+function filterFeed(filter, btn) {
   currentFeedFilter = filter;
-  const items = document.querySelectorAll('#live-feed .feed-item');
-  items.forEach(item => {
-    const resultat = item.dataset.resultat;
-    if (filter === 'all') item.style.display = '';
-    else if (filter === 'autorise') item.style.display = resultat === 'autorise' ? '' : 'none';
-    else if (filter === 'refuse') item.style.display = resultat === 'refuse' ? '' : 'none';
-  });
-  
-  // Mettre à jour l'état des boutons
-  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('filter-active'));
-  if (filter === 'all') document.getElementById('filter-all')?.classList.add('filter-active');
-  else if (filter === 'autorise') document.getElementById('filter-ok')?.classList.add('filter-active');
-  else if (filter === 'refuse') document.getElementById('filter-no')?.classList.add('filter-active');
-}
-
-function highlightNewLogs() {
-  const newLogs = document.querySelectorAll('.feed-item.new');
-  newLogs.forEach((log, index) => {
-    setTimeout(() => {
-      log.classList.remove('new');
-    }, 3000 + index * 200);
+  document.querySelectorAll('.filter-tab').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('#live-feed .feed-row').forEach(function(row) {
+    var r = row.dataset.resultat;
+    row.style.display = filter === 'all' ? '' : (filter === 'autorise' && r === 'autorise' || filter === 'refuse' && r === 'refuse' ? '' : 'none');
   });
 }
 
+/* ─── Toggle Live ─── */
 function toggleLive() {
   liveEnabled = !liveEnabled;
-  const dot = document.getElementById('live-dot');
-  const status = document.getElementById('live-status');
-  const pill = document.getElementById('live-pill');
-  
+  var dot = document.getElementById('live-dot');
+  var status = document.getElementById('live-status');
+  var pill = document.getElementById('live-pill');
   if (liveEnabled) {
-    dot.style.animation = 'pulse 2s infinite';
+    dot.style.animation = 'pulse-dot 1.8s ease-in-out infinite';
     status.textContent = 'LIVE (10s)';
-    pill.style.background = 'var(--green2)';
-    startLiveRefresh();
-    startOccupationRefresh();
+    pill.style.background = 'rgba(16,185,129,.1)';
+    pill.style.color = 'var(--green)';
+    startLiveRefresh(); startOccupationRefresh();
   } else {
-    dot.style.animation = 'none';
-    status.textContent = 'PAUSE';
-    pill.style.background = 'var(--bg3)';
+    dot.style.animation = 'none'; status.textContent = 'PAUSE';
+    pill.style.background = 'rgba(245,158,11,.1)'; pill.style.color = 'var(--amber)';
     if (refreshInterval) clearInterval(refreshInterval);
     if (occupationInterval) clearInterval(occupationInterval);
   }
 }
 
-function manualRefresh() {
-  location.reload();
-}
+function manualRefresh() { location.reload(); }
 
-function viewAlerts() {
-  const alertBox = document.getElementById('alert-box');
-  if (alertBox) alertBox.scrollIntoView({ behavior: 'smooth' });
-  
-  const alerts = document.querySelectorAll('#alert-history .alert-box');
-  if (alerts.length > 0) {
-    let message = '🔔 Liste des alertes actives:\n\n';
-    alerts.forEach((alert, i) => {
-      const text = alert.querySelector('.alert-text')?.textContent || '';
-      const meta = alert.querySelector('.alert-meta')?.textContent || '';
-      message += `${i+1}. ${text}\n   ${meta}\n\n`;
-    });
-    alert(message);
-  } else {
-    alert('✅ Aucune alerte active actuellement.');
-  }
-}
-
+/* ─── Urgence ─── */
 async function emergencyUnlock() {
-  if (confirm('⚠️ ACTION D\'URGENCE ⚠️\n\n' +
-              'Cette action déverrouillera TOUS les accès du bâtiment.\n' +
-              'Cette action sera journalisée dans les logs système.\n\n' +
-              'Confirmez-vous le déverrouillage d\'urgence ?')) {
-    
-    try {
-      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
-      const response = await fetch('/api/emergency-unlock/', {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': csrfToken,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'same-origin'
-      });
-      const data = await response.json();
-      
-      if (response.ok) {
-        alert('✅ ' + (data.message || 'Déverrouillage d\'urgence activé. Tous les accès sont ouverts.'));
-        location.reload();
-      } else {
-        alert('❌ ' + (data.message || 'Erreur lors du déverrouillage'));
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-      alert('❌ Erreur lors du déverrouillage: ' + error.message);
-    }
-  }
+  if (!confirm('⚠️ ACTION D\'URGENCE\n\nDéverrouiller TOUS les accès ?\nCette action sera journalisée.\n\nConfirmer ?')) return;
+  try {
+    var csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
+    var r = await fetch('/api/emergency-unlock/', { method:'POST', headers:{'X-CSRFToken':csrf,'Content-Type':'application/json'} });
+    var d = await r.json();
+    alert(r.ok ? '✅ ' + (d.message || 'Déverrouillage activé') : '❌ ' + (d.message || 'Erreur'));
+    if (r.ok) location.reload();
+  } catch(e) { alert('❌ Erreur: ' + e.message); }
 }
 
+/* ─── Export ─── */
 function exportLiveData() {
-  const logs = document.querySelectorAll('#live-feed .feed-item');
-  let csv = "Heure,Employé,Badge,Zone,Méthode,Résultat\n";
-  
-  logs.forEach(log => {
-    if (log.style.display !== 'none') {
-      const time = log.querySelector('.feed-time')?.textContent || '';
-      const nameEl = log.querySelector('.feed-name');
-      const name = nameEl?.childNodes[0]?.textContent.trim() || '';
-      const badgeSpan = nameEl?.querySelector('span');
-      const badge = badgeSpan?.textContent.replace('#', '').trim() || '';
-      const door = log.querySelector('.feed-door')?.textContent.replace('🚪', '').split('·')[0].trim() || '';
-      const method = log.querySelector('.feed-door')?.textContent.includes('QR') ? 'QR' : 'RFID';
-      const result = log.querySelector('.feed-status')?.textContent.trim() || '';
-      
-      csv += `"${time}","${name}","${badge}","${door}","${method}","${result}"\n`;
+  var rows = document.querySelectorAll('#live-feed .feed-row');
+  var csv = 'Heure,Employé,Zone,Méthode,Résultat\n';
+  rows.forEach(function(row) {
+    if (row.style.display !== 'none') {
+      csv += '"' + (row.querySelector('.feed-time')?.textContent||'') + '",';
+      csv += '"' + (row.querySelector('.feed-name')?.textContent||'').trim() + '",';
+      csv += '"' + ((row.querySelector('.feed-meta span:first-child')?.textContent||'').replace('🚪','').trim()) + '",';
+      csv += '"' + (row.querySelector('.feed-meta span:last-child')?.textContent||'').trim() + '",';
+      csv += '"' + (row.querySelector('.feed-status')?.textContent||'').trim() + '"\n';
     }
   });
-  
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `surveillance_live_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  var blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'surveillance_live_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.csv'; a.click();
 }
 
-// Initialisation
-document.addEventListener('DOMContentLoaded', function() {
-  startLiveRefresh();
-  startOccupationRefresh();
-  highlightNewLogs();
-  
-  // Activer le filtre "Tous" par défaut
-  const filterAll = document.getElementById('filter-all');
-  if (filterAll) filterAll.classList.add('filter-active');
+/* ─── KPI counter ─── */
+document.querySelectorAll('.kpi-val').forEach(function(el) {
+  var text = el.textContent.replace(/\s/g,' ');
+  var num = parseInt(text.replace(/[^0-9]/g,''),10);
+  if (isNaN(num)||num===0)return;
+  var duration=900, step=num/duration*16, current=0;
+  var timer=setInterval(function(){current=Math.min(current+step,num);el.textContent=Math.round(current)+(text.includes('%')?'%':'');if(current>=num)clearInterval(timer);},16);
 });
 
-// Nettoyage
+/* ─── Init ─── */
+document.addEventListener('DOMContentLoaded', function() {
+  startLiveRefresh(); startOccupationRefresh();
+});
 window.addEventListener('beforeunload', function() {
   if (refreshInterval) clearInterval(refreshInterval);
   if (occupationInterval) clearInterval(occupationInterval);

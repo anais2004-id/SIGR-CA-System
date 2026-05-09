@@ -1553,6 +1553,270 @@ def employe_supprimer(request, employe_id):
             messages.error(request, f"Erreur : {str(e)}")
     return redirect('employe_list')
 
+# ─────────────────────────────────────────────
+#  EXPORT PDF — RAPPORT EMPLOYÉS AVEC LOGO
+# ─────────────────────────────────────────────
+
+from django.http import HttpResponse
+from django.conf import settings
+from bson import ObjectId
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable
+)
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+import io, os
+from datetime import datetime
+
+
+@login_required
+def api_employes_export_pdf(request):
+    """
+    Export PDF de la liste des employés avec logo SIGR-CA.
+    Paramètre GET : ids (optionnel) — liste d'IDs séparés par des virgules
+    """
+    # Récupérer les IDs depuis la requête
+    ids_param = request.GET.get('ids', '')
+    if ids_param:
+        ids = [ObjectId(id_str) for id_str in ids_param.split(',') if id_str]
+        employes_cursor = db.employees.find({'_id': {'$in': ids}})
+    else:
+        employes_cursor = db.employees.find({})
+
+    employes = list(employes_cursor)
+
+    # ── Création du buffer PDF ──
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        leftMargin=2 * cm, rightMargin=2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # ── Styles ──
+    title_style = ParagraphStyle(
+        'RapportTitle', parent=styles['Title'],
+        fontSize=16, textColor=colors.HexColor('#1d4ed8'),
+        spaceAfter=4, alignment=TA_CENTER,
+    )
+    subtitle_style = ParagraphStyle(
+        'RapportSubtitle', parent=styles['Normal'],
+        fontSize=10, textColor=colors.grey,
+        spaceAfter=14, alignment=TA_CENTER,
+    )
+    section_style = ParagraphStyle(
+        'SectionTitle', parent=styles['Heading2'],
+        fontSize=12, textColor=colors.HexColor('#7b3fe4'),
+        spaceBefore=16, spaceAfter=10,
+    )
+    th_style = ParagraphStyle(
+        'TH', parent=styles['Normal'],
+        fontSize=9, fontName='Helvetica-Bold', textColor=colors.white,
+        alignment=TA_CENTER,
+    )
+    td_style = ParagraphStyle(
+        'TD', parent=styles['Normal'],
+        fontSize=9, fontName='Helvetica',
+        alignment=TA_CENTER,
+    )
+    td_left = ParagraphStyle(
+        'TD_LEFT', parent=td_style, alignment=TA_LEFT,
+    )
+    footer_style = ParagraphStyle(
+        'Footer', parent=styles['Normal'],
+        fontSize=8, textColor=colors.grey, alignment=TA_CENTER,
+    )
+
+    # ═══════════════════════════════════════════
+    #  EN-TÊTE AVEC LOGO
+    # ═══════════════════════════════════════════
+    logo_path = os.path.join(settings.MEDIA_ROOT, 'avatars', 'logo SIGR-CA.png')
+    # Texte à gauche (titre + sous-titre)
+    header_text = [
+        [Paragraph("SIGR-CA", ParagraphStyle(
+            'LogoTitle', fontName='Helvetica-Bold', fontSize=20,
+            textColor=colors.HexColor('#1d4ed8'), alignment=TA_LEFT,
+        ))],
+        [Paragraph("Système Intégré de Gestion des Ressources<br/>et de Contrôle d'Accès", ParagraphStyle(
+            'LogoSub', fontName='Helvetica', fontSize=8,
+            textColor=colors.HexColor('#666666'), alignment=TA_LEFT,
+        ))],
+    ]
+    header_text_table = Table(header_text, colWidths=[10 * cm])
+    header_text_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+
+    # Logo à droite
+    logo_img = None
+    if os.path.exists(logo_path):
+        logo_img = Image(logo_path, width=2.8 * cm, height=1.4 * cm)
+    else:
+        # Fallback : placeholder text
+        logo_img = Paragraph("SIGR-CA", ParagraphStyle(
+            'FallbackLogo', fontName='Helvetica-Bold', fontSize=14,
+            textColor=colors.HexColor('#1d4ed8'), alignment=TA_RIGHT,
+        ))
+
+    # Tableau en-tête (texte gauche + logo droite)
+    header_table = Table(
+        [[header_text_table, logo_img]],
+        colWidths=[14 * cm, 4 * cm],
+    )
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    elements.append(header_table)
+    elements.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#1d4ed8')))
+    elements.append(Spacer(1, 0.5 * cm))
+
+    # ── Titre du rapport ──
+    elements.append(Paragraph("RAPPORT GÉNÉRAL — EMPLOYÉS", title_style))
+    elements.append(Paragraph(
+        f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — "
+        f"{len(employes)} employé(s) — Niveaux d'accès et statistiques",
+        subtitle_style,
+    ))
+    elements.append(Spacer(1, 0.8 * cm))
+
+    # ═══════════════════════════════════════════
+    #  TABLEAU PRINCIPAL : LISTE COMPLÈTE
+    # ═══════════════════════════════════════════
+    elements.append(Paragraph('📋 Liste des employés', section_style))
+
+    headers = [
+        Paragraph('Nom & Prénom', th_style),
+        Paragraph('Badge RFID', th_style),
+        Paragraph('Département', th_style),
+        Paragraph('Niveau', th_style),
+        Paragraph('Nb Accès', th_style),
+        Paragraph('Taux succès', th_style),
+        Paragraph('Statut', th_style),
+    ]
+
+    data = [headers]
+
+    for emp in employes:
+        nom_complet = f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or '—'
+        badge = emp.get('badge_id', '—')
+        departement = emp.get('departement', '—')
+        niveau = emp.get('niveau', 'Staff')
+
+        nb_acces = db.acces_logs.count_documents({'utilisateur_id': emp['_id']})
+        acces_ok = db.acces_logs.count_documents({
+            'utilisateur_id': emp['_id'], 'resultat': 'AUTORISE'
+        })
+        taux = round((acces_ok / nb_acces * 100), 1) if nb_acces > 0 else 0
+        taux_str = f"{taux}%"
+
+        statut = emp.get('statut', 'actif')
+        statut_display = 'Actif' if statut == 'actif' else 'Archivé'
+
+        # Couleur du taux
+        if taux >= 80:
+            taux_color = colors.HexColor('#10b981')  # vert
+        elif taux >= 50:
+            taux_color = colors.HexColor('#f59e0b')  # amber
+        else:
+            taux_color = colors.HexColor('#ef4444')  # rouge
+
+        row = [
+            Paragraph(nom_complet, td_left),
+            Paragraph(badge, ParagraphStyle('Mono', parent=td_style, fontName='Courier', fontSize=8)),
+            Paragraph(departement, td_style),
+            Paragraph(niveau, td_style),
+            Paragraph(str(nb_acces), td_style),
+            Paragraph(taux_str, ParagraphStyle('Taux', parent=td_style, textColor=taux_color, fontName='Helvetica-Bold')),
+            Paragraph(statut_display, td_style),
+        ]
+        data.append(row)
+
+    col_widths = [5 * cm, 3 * cm, 3 * cm, 2.2 * cm, 2 * cm, 2 * cm, 2 * cm]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+
+    table_style = TableStyle([
+        # En-tête
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d4ed8')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        # Grille
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
+        # Padding
+        ('PADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        # Alternance lignes
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+        # Alignement vertical
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ])
+    table.setStyle(table_style)
+    elements.append(table)
+
+    # ═══════════════════════════════════════════
+    #  RÉSUMÉ STATISTIQUE
+    # ═══════════════════════════════════════════
+    elements.append(Spacer(1, 1 * cm))
+    elements.append(Paragraph('📊 Résumé statistique', section_style))
+
+    total = len(employes)
+    actifs = sum(1 for e in employes if e.get('statut', 'actif') == 'actif')
+    inactifs = total - actifs
+    taux_global = round(
+        sum(1 for e in employes if e.get('taux_succes', 0) >= 80) / total * 100, 1
+    ) if total > 0 else 0
+
+    stats_data = [
+        [Paragraph('Total employés', td_left), Paragraph(str(total), td_style)],
+        [Paragraph('Actifs', td_left), Paragraph(str(actifs), td_style)],
+        [Paragraph('Archivés', td_left), Paragraph(str(inactifs), td_style)],
+        [Paragraph('Taux de succès ≥ 80%', td_left), Paragraph(f"{taux_global}%", td_style)],
+    ]
+
+    stats_table = Table(stats_data, colWidths=[10 * cm, 8 * cm])
+    stats_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f6ff')),
+        ('PADDING', (0, 0), (-1, -1), 8),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+    ]))
+    elements.append(stats_table)
+
+    # ── Pied de page ──
+    elements.append(Spacer(1, 1.2 * cm))
+    elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
+    elements.append(Spacer(1, 0.3 * cm))
+    elements.append(Paragraph(
+        f"Document généré automatiquement le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — "
+        f"SIGR-CA — Système Intégré de Gestion des Ressources et de Contrôle d'Accès",
+        footer_style,
+    ))
+    elements.append(Paragraph(
+        "Ce document est confidentiel et destiné à un usage interne uniquement.",
+        ParagraphStyle('Conf', parent=footer_style, fontSize=7, textColor=colors.HexColor('#999999')),
+    ))
+
+    # ── Build PDF ──
+    doc.build(elements)
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'inline; filename="Rapport_Employes_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf"'
+    )
+    return response
+
 # ====================== HISTORIQUE ======================
 
 @login_required

@@ -1,273 +1,450 @@
 {% extends "base.html" %}
-{% block title %}Planning d'accès par employé - SIGR-CA{% endblock %}
+{% block title %}Planning d'accès · SIGR-CA{% endblock %}
 {% block nav_calendrier %}active{% endblock %}
 {% block page_title %}Planning d'accès intelligent{% endblock %}
 {% block page_sub %}Autorisations horaires par employé et par zone{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
-  <div class="search-inp" style="display:flex; align-items:center; gap:8px; padding:4px 12px">
-    <span>🔍</span>
-    <input type="text" id="employeeSearch" placeholder="Rechercher employé..." 
-           style="background:none; border:none; outline:none; color:var(--text); width:200px"
-           onkeyup="filterEmployees()">
-  </div>
-  <select id="employeeSelect" class="form-select" style="width:280px" onchange="loadEmployeeRules()">
+<div style="display:flex; gap:10px; align-items:center;">
+  
+  <!-- Select employé -->
+  <select id="employeeSelect" 
+          style="width:280px; height:38px; padding:0 36px 0 14px; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; font-size:13px; color:var(--text1); font-family:var(--font); outline:none; cursor:pointer; transition:all .15s; appearance:none; -webkit-appearance:none; background-image:url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%238fa3bc\" stroke-width=\"2\"><polyline points=\"6 9 12 15 18 9\"/></svg>'); background-repeat:no-repeat; background-position:right 12px center;"
+          onfocus="this.style.borderColor='var(--blue)';this.style.boxShadow='0 0 0 3px rgba(59,130,246,.12)'" 
+          onblur="this.style.borderColor='var(--border2)';this.style.boxShadow='none'"
+          onchange="loadEmployeeRules()">
     <option value="">— Choisir un employé —</option>
     {% for emp in employes %}
-    <option value="{{ emp.id }}" data-name="{{ emp.nom }} {{ emp.prenom }}" data-dept="{{ emp.departement }}">
-      👤 {{ emp.nom }} {{ emp.prenom }} — {{ emp.badge_id|default:"" }}
-    </option>
+    <option value="{{ emp.id }}">👤 {{ emp.nom }} {{ emp.prenom }} · {{ emp.badge_id|default:"" }}</option>
     {% endfor %}
   </select>
-  <button class="btn btn-sm btn-ghost" onclick="openTemplateModal()" title="Utiliser un modèle">📋 Modèle</button>
-  <button class="btn btn-sm btn-ghost" onclick="copyWeekSchedule()" title="Copier la semaine">📅 Copier semaine</button>
-  <div id="saveStatus" style="font-size:11px; color:var(--text2)"></div>
+  
+  <!-- Bouton Modèle -->
+  <button onclick="openTemplateModal()" title="Appliquer un modèle"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" 
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+      <line x1="3" y1="9" x2="21" y2="9"/>
+      <line x1="9" y1="21" x2="9" y2="9"/>
+    </svg>
+  </button>
+  
+  <!-- Bouton Copier semaine -->
+  <button onclick="copyWeekSchedule()" title="Copier la semaine"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" 
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  </button>
+  
+  <!-- Bouton Export -->
+  <button onclick="exportRules()" title="Exporter CSV"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'" 
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  </button>
+  
+  <!-- Bouton Reset -->
+  <button onclick="resetDayRules()" title="Réinitialiser le jour"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='rgba(239,68,68,.1)';this.style.color='var(--red)';this.style.borderColor='rgba(239,68,68,.3)'" 
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/>
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    </svg>
+  </button>
+  
+  <!-- Bouton Enregistrer -->
+  <button onclick="saveAllRules()" 
+          style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; white-space:nowrap;"
+          onmouseover="this.style.background='var(--blue2)';this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 14px rgba(59,130,246,.35)'" 
+          onmouseout="this.style.background='var(--blue)';this.style.transform='none';this.style.boxShadow='none'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+    Enregistrer
+  </button>
+  
+  <!-- Statut -->
+  <span id="saveStatus" style="font-size:11px; font-family:var(--mono); font-weight:600; color:var(--green); min-width:80px;"></span>
+  
 </div>
 {% endblock %}
 
 {% block content %}
-
-<div class="g2" style="gap:24px">
-
-  <!-- Calendrier Principal amélioré -->
-  <div class="card" style="grid-column: span 2;">
-    <div class="card-head">
-      <span>📅</span>
-      <span class="card-title" id="employee-title">Sélectionnez un employé pour configurer ses accès</span>
-      <span class="card-sub" id="employee-badge"></span>
-    </div>
-    <div class="card-body">
-
-      <!-- Navigation Calendrier améliorée -->
-      <div class="cal-nav">
-        <button class="cal-btn" onclick="chMon(-1)">‹ Mois précédent</button>
-        <button class="cal-btn" onclick="chYear(-1)">‹ Année</button>
-        <span class="cal-month" id="cal-lbl" style="font-size:18px; font-weight:600"></span>
-        <button class="cal-btn" onclick="chYear(1)">Année ›</button>
-        <button class="cal-btn" onclick="chMon(1)">Mois suivant ›</button>
-        <button class="cal-btn btn-ghost" onclick="gotoToday()">📅 Aujourd'hui</button>
-        <button class="cal-btn btn-ghost" onclick="toggleWeekView()">📆 Vue semaine</button>
-      </div>
-      
-      <div class="cal-grid" id="cal-grid"></div>
-
-      <!-- Légende améliorée -->
-      <div style="display:flex; gap:20px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border2); flex-wrap:wrap">
-        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--green); border-radius:2px"></div>Accès autorisé</span>
-        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--red); border-radius:2px"></div>Accès refusé</span>
-        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--blue); border-radius:2px"></div>Jour sélectionné</span>
-        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--amber); border-radius:2px"></div>Règle configurée</span>
-        <span style="display:flex; align-items:center; gap:6px"><div style="width:12px; height:12px; background:var(--purple); border-radius:2px"></div>Modèle appliqué</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Configuration des horaires améliorée -->
-  <div class="card">
-    <div class="card-head">
-      <span>⏰</span>
-      <span class="card-title">Configuration horaire</span>
-      <span class="card-sub" id="selected-date-display">—</span>
-    </div>
-    <div class="card-body" style="padding:20px">
-
-      <!-- Vue rapide des créneaux -->
-      <div id="quick-slots" style="display:none; margin-bottom:16px; padding:12px; background:var(--blue3); border-radius:8px">
-        <div style="font-size:12px; font-weight:600; margin-bottom:8px">⚡ Créneaux pré-définis</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('08:00','12:00')">Matin (8h-12h)</button>
-          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('14:00','18:00')">Après-midi (14h-18h)</button>
-          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('08:00','18:00')">Journée complète</button>
-          <button class="btn btn-sm btn-ghost" onclick="applyQuickSlot('','')">Désactiver tous</button>
-        </div>
-      </div>
-
-      <div id="zone-rules-container" style="min-height:400px">
-        <div style="text-align:center; padding:60px; color:var(--text3)">
-          <div style="font-size:48px; margin-bottom:16px">📅</div>
-          <div>Sélectionnez un employé et un jour pour configurer ses horaires d'accès</div>
-        </div>
-      </div>
-
-      <div style="margin-top:20px; display:flex; gap:12px; justify-content:flex-end; flex-wrap:wrap">
-        <button class="btn btn-ghost btn-sm" onclick="copyToNextDay()">📋 Copier au jour suivant</button>
-        <button class="btn btn-ghost btn-sm" onclick="copyToAllWeek()">📅 Appliquer à toute la semaine</button>
-        <button class="btn btn-ghost btn-sm" onclick="resetDayRules()">↺ Réinitialiser</button>
-        <button class="btn btn-primary btn-sm" onclick="saveCurrentDayRules()">💾 Enregistrer pour ce jour</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Récapitulatif des règles amélioré -->
-  <div class="card">
-    <div class="card-head">
-      <span>📋</span>
-      <span class="card-title">Règles d'accès de l'employé</span>
-      <button class="btn btn-edit btn-sm" onclick="exportRules()" style="margin-left:auto">⬇️ Exporter</button>
-      <button class="btn btn-edit btn-sm" onclick="importRules()">📂 Importer</button>
-      <button class="btn btn-primary btn-sm" onclick="saveAllRules()">💾 Tout enregistrer</button>
-    </div>
-    <div class="card-body" id="rules-summary" style="max-height:400px; overflow-y:auto">
-      <div style="text-align:center; padding:60px; color:var(--text3)">
-        👥 Sélectionnez un employé pour voir ses règles d'accès
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- Modal Modèle -->
-<div class="modal-overlay" id="templateModal" style="display:none" onclick="if(event.target===this)closeTemplateModal()">
-  <div class="modal" style="width:500px">
-    <div class="modal-title">📋 Appliquer un modèle</div>
-    <div class="modal-sub">Choisissez un modèle de planning prédéfini</div>
-    <div style="margin:20px 0">
-      <div class="form-row">
-        <label class="form-label">Modèle</label>
-        <select id="templateSelect" class="form-select">
-          <option value="">— Sélectionner un modèle —</option>
-          <option value="standard">🏢 Standard (9h-17h, tous les jours)</option>
-          <option value="shift">🔄 Horaires postés (6h-14h / 14h-22h alternés)</option>
-          <option value="parttime">⏳ Mi-temps (9h-13h, lun-ven)</option>
-          <option value="weekend">🌙 Weekend uniquement (sam-dim, 10h-18h)</option>
-          <option value="night">🌙 Nuit (22h-6h, autorisé uniquement)</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="form-label">Appliquer à</label>
-        <select id="templateRange" class="form-select">
-          <option value="current">Jour sélectionné uniquement</option>
-          <option value="week">Toute la semaine</option>
-          <option value="month">Tout le mois</option>
-        </select>
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeTemplateModal()">Annuler</button>
-      <button class="btn btn-primary" onclick="applyTemplate()">Appliquer</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal Importer -->
-<div class="modal-overlay" id="importModal" style="display:none" onclick="if(event.target===this)closeImportModal()">
-  <div class="modal" style="width:500px">
-    <div class="modal-title">📂 Importer des règles</div>
-    <div class="modal-sub">Importez un fichier CSV ou JSON</div>
-    <div class="form-row">
-      <label class="form-label">Format</label>
-      <select id="importFormat" class="form-select">
-        <option value="csv">CSV</option>
-        <option value="json">JSON</option>
-      </select>
-    </div>
-    <div class="form-row">
-      <label class="form-label">Fichier</label>
-      <input type="file" id="importFile" class="form-input" accept=".csv,.json">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeImportModal()">Annuler</button>
-      <button class="btn btn-primary" onclick="processImport()">Importer</button>
-    </div>
-  </div>
-</div>
-
 <style>
+/* ═══════════════════════════════════════
+   FONTS & TOKENS (identiques dashboard)
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
+  --border: rgba(99,140,185,.12); --border2: rgba(99,140,185,.18); --border3: rgba(99,140,185,.28);
+  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
+  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6; --pink: #ec4899;
+  --glow-blue: 0 0 20px rgba(59,130,246,.25); --glow-green: 0 0 20px rgba(16,185,129,.25); --glow-red: 0 0 20px rgba(239,68,68,.25);
+  --glow-amber: 0 0 20px rgba(245,158,11,.25); --glow-purple: 0 0 20px rgba(139,92,246,.25); --glow-cyan: 0 0 20px rgba(6,182,212,.25);
+  --radius: 14px; --radius-sm: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══════════════════════════════════════
+   CARD
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.card-head {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-head-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+
+/* ═══════════════════════════════════════
+   GRID 2 COLONNES PRINCIPALES
+═══════════════════════════════════════ */
+.grid-main { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+@media (max-width:1100px) { .grid-main { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════
+   CALENDRIER
+═══════════════════════════════════════ */
 .cal-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+  display: flex; justify-content: center; align-items: center;
+  gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
 }
-.cal-btn {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
+.cal-nav-btn {
+  width: 34px; height: 34px; border-radius: 8px;
+  border: 1px solid var(--border2); background: var(--bg3);
+  color: var(--text2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; transition: all .15s;
+  font-family: var(--font);
 }
-.cal-btn:hover {
-  background: var(--blue2);
-  border-color: var(--blue);
-  color: white;
+.cal-nav-btn:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+.cal-month-label {
+  font-size: 16px; font-weight: 700; color: var(--text1);
+  min-width: 200px; text-align: center; font-family: var(--font);
 }
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
+
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-day-header {
+  padding: 10px 4px; text-align: center;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text3);
+  background: var(--bg3); border-radius: 6px;
 }
-.cal-d {
-  background: var(--bg2);
-  border-radius: 8px;
-  padding: 10px 6px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 13px;
-  font-weight: 500;
-  position: relative;
+.cal-day {
+  aspect-ratio: 1; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; cursor: pointer;
+  transition: all .2s; position: relative;
+  background: var(--bg3); border: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--text2);
+  min-height: 52px;
 }
-.cal-d:hover {
-  background: var(--blue3);
-  transform: translateY(-2px);
+.cal-day:hover { background: var(--bg4); transform: translateY(-2px); border-color: var(--border3); z-index: 1; }
+.cal-day.selected {
+  background: var(--blue); color: #fff; border-color: var(--blue);
+  box-shadow: 0 0 20px rgba(59,130,246,.35); transform: scale(1.05); z-index: 2;
 }
-.cal-d.sel {
-  background: var(--blue);
-  color: white;
+.cal-day.today { border: 2px solid var(--blue); font-weight: 800; }
+.cal-day.other-month { opacity: .3; cursor: default; }
+.cal-day.other-month:hover { background: var(--bg3); transform: none; }
+.cal-day.has-rules { border-bottom: 3px solid var(--amber); }
+.cal-day.weekend { opacity: .7; }
+
+.cal-day-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--amber); margin-top: 3px;
 }
-.cal-d.today {
-  border: 2px solid var(--blue);
-  font-weight: bold;
+
+/* ═══════════════════════════════════════
+   ZONE RULES
+═══════════════════════════════════════ */
+.zone-rule-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 12px; margin-bottom: 10px; overflow: hidden;
+  transition: all .2s;
 }
-.cal-d.has-r {
-  border-bottom: 3px solid var(--amber);
+.zone-rule-card:hover { border-color: var(--border3); }
+.zone-rule-header {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
 }
-.cal-d.weekend {
-  opacity: 0.7;
+.zone-rule-body { padding: 14px 16px; }
+
+/* ═══════════════════════════════════════
+   TOGGLE SWITCH
+═══════════════════════════════════════ */
+.toggle-switch {
+  position: relative; display: inline-block; width: 44px; height: 24px;
 }
-.cal-d.other {
-  opacity: 0.4;
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--bg4); border-radius: 24px; transition: .3s;
+  border: 1px solid var(--border2);
 }
-.cal-dh {
-  background: var(--bg3);
-  border-radius: 6px;
-  padding: 8px 4px;
-  text-align: center;
-  font-weight: 600;
-  font-size: 12px;
-  color: var(--text2);
+.toggle-slider::before {
+  content: ''; position: absolute; height: 18px; width: 18px;
+  left: 2px; bottom: 2px; background: var(--text3);
+  border-radius: 50%; transition: .3s;
 }
-.quick-slot-btn {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
+.toggle-switch input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); background: #fff; }
+
+/* ═══════════════════════════════════════
+   BADGES
+═══════════════════════════════════════ */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 9.5px; font-weight: 700; font-family: var(--mono); letter-spacing: .4px;
 }
-.quick-slot-btn:hover {
-  background: var(--blue3);
-  border-color: var(--blue);
+.badge-green  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.badge-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+.badge-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.2); }
+.badge-purple { background: rgba(139,92,246,.12); color: var(--purple); border: 1px solid rgba(139,92,246,.2); }
+.badge-amber  { background: rgba(245,158,11,.12); color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
+.badge-gray   { background: rgba(107,114,128,.12); color: #9ca3af;    border: 1px solid rgba(107,114,128,.2); }
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn {
+  padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
+  font-weight: 600; font-size: 12px; font-family: var(--font);
+  transition: all .18s; display: inline-flex; align-items: center; gap: 5px;
+  text-decoration: none;
 }
-@media (max-width: 768px) {
-  .cal-grid {
-    gap: 4px;
-  }
-  .cal-d, .cal-dh {
-    padding: 6px 2px;
-    font-size: 11px;
-  }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+.form-input, .form-select {
+  padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 8px; font-size: 12.5px; color: var(--text1); font-family: var(--font);
+  outline: none; transition: all .15s;
 }
+.form-input:focus, .form-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+
+/* ═══════════════════════════════════════
+   MODAL
+═══════════════════════════════════════ */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999;
+  background: rgba(8,13,23,.85); backdrop-filter: blur(6px);
+  align-items: center; justify-content: center;
+}
+.modal {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); width: 520px; max-width: 95vw;
+  max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  animation: modal-in .25s cubic-bezier(.22,1,.36,1);
+}
+@keyframes modal-in { from { opacity:0; transform:translateY(20px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+.modal-head {
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title { font-weight: 700; font-size: 16px; color: var(--text1); }
+.modal-close {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border2);
+  background: var(--bg3); color: var(--text2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .15s;
+}
+.modal-close:hover { background: var(--bg4); color: var(--text1); }
+.modal-body { padding: 24px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
 
-{% endblock %}
+<div class="dash-wrap">
 
-{% block extra_js %}
+  <!-- ══════════════════════════════════════════
+       CALENDRIER PRINCIPAL
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">📅</div>
+      <span class="card-title" id="employee-title">Calendrier des accès</span>
+      <span class="card-badge badge-purple" id="employee-badge"></span>
+    </div>
+    <div style="padding:20px;">
+
+      <!-- Navigation -->
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="chYear(-1)" title="Année précédente">«</button>
+        <button class="cal-nav-btn" onclick="chMon(-1)" title="Mois précédent">‹</button>
+        <span class="cal-month-label" id="cal-lbl"></span>
+        <button class="cal-nav-btn" onclick="chMon(1)" title="Mois suivant">›</button>
+        <button class="cal-nav-btn" onclick="chYear(1)" title="Année suivante">»</button>
+        <button class="btn btn-ghost btn-sm" onclick="gotoToday()" style="margin-left:12px;">📅 Aujourd'hui</button>
+      </div>
+
+      <!-- Grille calendrier -->
+      <div class="cal-grid" id="cal-grid"></div>
+
+      <!-- Légende -->
+      <div style="display:flex; gap:18px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text3);">
+          <div style="width:10px;height:10px;border-radius:2px;background:var(--blue);box-shadow:0 0 6px rgba(59,130,246,.4);"></div> Jour sélectionné
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text3);">
+          <div style="width:10px;height:3px;border-radius:2px;background:var(--amber);box-shadow:0 0 6px rgba(245,158,11,.4);"></div> Règles configurées
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text3);">
+          <div style="width:10px;height:10px;border-radius:2px;border:2px solid var(--blue);"></div> Aujourd'hui
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       CONFIGURATION + RÉCAPITULATIF
+  ══════════════════════════════════════════ -->
+  <div class="grid-main">
+
+    <!-- Configuration horaire -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.2);">⏰</div>
+        <span class="card-title">Configuration horaire</span>
+        <span class="card-badge badge-green" id="selected-date-display">—</span>
+      </div>
+      <div style="padding:18px 20px;">
+
+        <!-- Créneaux rapides -->
+        <div id="quick-slots" style="display:none; margin-bottom:16px; padding:14px; background:var(--bg3); border-radius:10px; border:1px solid var(--border2);">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text3); margin-bottom:10px;">⚡ Créneaux prédéfinis</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="applyQuickSlot('08:00','12:00')">🌅 Matin</button>
+            <button class="btn btn-ghost btn-sm" onclick="applyQuickSlot('14:00','18:00')">🌤 Après-midi</button>
+            <button class="btn btn-ghost btn-sm" onclick="applyQuickSlot('08:00','18:00')">☀️ Journée</button>
+            <button class="btn btn-ghost btn-sm" onclick="applyQuickSlot('22:00','06:00')">🌙 Nuit</button>
+            <button class="btn btn-ghost btn-sm" onclick="applyQuickSlot('','')" style="color:var(--red);border-color:rgba(239,68,68,.2);">✕ Désactiver</button>
+          </div>
+        </div>
+
+        <div id="zone-rules-container" style="max-height:420px; overflow-y:auto; padding-right:4px;">
+          <div style="text-align:center; padding:60px 20px; color:var(--text3);">
+            <div style="font-size:52px; margin-bottom:12px; opacity:.4;">📅</div>
+            <div style="font-size:13px;">Sélectionnez un employé et un jour pour configurer</div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-sm" onclick="copyToNextDay()" title="Copier les règles au jour suivant">📋 Jour suivant</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyToAllWeek()" title="Appliquer à toute la semaine">📅 Semaine</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetDayRules()" style="color:var(--red);border-color:rgba(239,68,68,.2);">↺ Reset</button>
+          <button class="btn btn-primary btn-sm" onclick="saveCurrentDayRules()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Récapitulatif des règles -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📋</div>
+        <span class="card-title">Règles actives</span>
+        <button class="btn btn-ghost btn-sm" onclick="exportRules()" style="margin-left:auto;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exporter
+        </button>
+      </div>
+      <div style="padding:14px 20px; max-height:380px; overflow-y:auto;" id="rules-summary">
+        <div style="text-align:center; padding:50px 20px; color:var(--text3);">
+          <div style="font-size:48px; margin-bottom:10px; opacity:.4;">👤</div>
+          <div style="font-size:13px;">Sélectionnez un employé</div>
+        </div>
+      </div>
+      <div style="padding:12px 20px; border-top:1px solid var(--border);">
+        <button class="btn btn-primary btn-sm" onclick="saveAllRules()" style="width:100%; justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Tout enregistrer
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /grid-main -->
+
+</div><!-- /dash-wrap -->
+
+<!-- ══════════════════════════════════════════
+     MODAL MODÈLES
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="templateModal" onclick="if(event.target===this)closeTemplateModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">📋 Appliquer un modèle</span>
+      <button class="modal-close" onclick="closeTemplateModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:18px;">
+        <label style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);display:block;margin-bottom:6px;">Modèle prédéfini</label>
+        <select id="templateSelect" class="form-select" style="width:100%;">
+          <option value="">— Sélectionner —</option>
+          <option value="standard">🏢 Standard (9h-17h, lun-ven)</option>
+          <option value="parttime">⏳ Mi-temps (9h-13h, lun-ven)</option>
+          <option value="night">🌙 Nuit (22h-6h)</option>
+          <option value="fullaccess">🔓 Accès complet (24h/24)</option>
+        </select>
+      </div>
+      <div style="margin-bottom:18px;">
+        <label style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);display:block;margin-bottom:6px;">Appliquer à</label>
+        <select id="templateRange" class="form-select" style="width:100%;">
+          <option value="current">Jour sélectionné</option>
+          <option value="week">Semaine entière</option>
+          <option value="month">Mois entier</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeTemplateModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="applyTemplate()">Appliquer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════ -->
+<script>
+/* ─── Variables globales ─── */
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
 let selectedDay = null;
@@ -276,32 +453,40 @@ let selectedDayMonth = null;
 let selectedEmployeeId = null;
 let employeeRules = {};
 let zones = [];
-let weekView = false;
 
 const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+const DAYS = ["Lu","Ma","Me","Je","Ve","Sa","Di"];
 
+/* ─── Helpers ─── */
 function getCsrfToken() {
   const name = 'csrftoken';
   const cookies = document.cookie.split(';');
   for (let c of cookies) {
     c = c.trim();
-    if (c.startsWith(name + '=')) {
-      return decodeURIComponent(c.substring(name.length + 1));
-    }
+    if (c.startsWith(name + '=')) return decodeURIComponent(c.substring(name.length + 1));
   }
   return '';
 }
 
-function dayKey(year, month, day) {
-  return `${year}-${month + 1}-${day}`;
-}
+function dayKey(year, month, day) { return `${year}-${month + 1}-${day}`; }
 
+/* ─── Chargement zones ─── */
 async function loadZones() {
   try {
     const response = await fetch('/api/bureaux/');
     const data = await response.json();
     zones = data.bureaux || [];
+    if (zones.length === 0) {
+      zones = [
+        {id: '1', nom: 'Direction Générale', niveau: 'critique'},
+        {id: '2', nom: 'Atelier Production', niveau: 'standard'},
+        {id: '3', nom: 'Salle Serveur', niveau: 'critique'},
+        {id: '4', nom: 'Archives', niveau: 'restreint'},
+        {id: '5', nom: 'Bureau RH', niveau: 'standard'},
+        {id: '6', nom: 'Laboratoire', niveau: 'restreint'},
+        {id: '7', nom: 'Entrée Principale', niveau: 'public'}
+      ];
+    }
   } catch (error) {
     console.error('Erreur chargement zones:', error);
     zones = [
@@ -316,10 +501,12 @@ async function loadZones() {
   }
 }
 
+/* ─── Rendu calendrier ─── */
 function renderCalendar() {
   const firstDay = new Date(currentYear, currentMonth, 1);
-  const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+  const startDay = (firstDay.getDay() + 6) % 7; // Lundi = 0
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
   const today = new Date();
   const todayYear = today.getFullYear();
   const todayMonth = today.getMonth();
@@ -329,64 +516,75 @@ function renderCalendar() {
   const grid = document.getElementById("cal-grid");
   grid.innerHTML = "";
 
+  // En-têtes jours
   DAYS.forEach(d => {
     const el = document.createElement("div");
-    el.className = "cal-dh";
-    el.textContent = d.substring(0, 2);
+    el.className = "cal-day-header";
+    el.textContent = d;
     grid.appendChild(el);
   });
 
-  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+  // Jours du mois précédent
   for (let i = 0; i < startDay; i++) {
     const d = document.createElement("div");
-    d.className = "cal-d other";
+    d.className = "cal-day other-month";
     d.textContent = prevMonthDays - startDay + i + 1;
     grid.appendChild(d);
   }
 
+  // Jours du mois courant
   for (let day = 1; day <= daysInMonth; day++) {
     const d = document.createElement("div");
     const date = new Date(currentYear, currentMonth, day);
     const dayOfWeek = date.getDay();
     const key = dayKey(currentYear, currentMonth, day);
 
-    let cls = "cal-d";
+    let cls = "cal-day";
     if (dayOfWeek === 0 || dayOfWeek === 6) cls += " weekend";
     if (currentYear === todayYear && currentMonth === todayMonth && day === todayDate) cls += " today";
-    if (selectedDay === day && selectedDayMonth === currentMonth && selectedDayYear === currentYear) cls += " sel";
-
-    if (selectedEmployeeId && employeeRules[key] && Object.keys(employeeRules[key]).length > 0) {
-      cls += " has-r";
-    }
+    if (selectedDay === day && selectedDayMonth === currentMonth && selectedDayYear === currentYear) cls += " selected";
+    if (selectedEmployeeId && employeeRules[key] && Object.keys(employeeRules[key]).length > 0) cls += " has-rules";
 
     d.className = cls;
-    d.textContent = day;
-    d.dataset.day = day;
+    d.innerHTML = `${day}`;
+
+    // Indicateur règles
+    if (selectedEmployeeId && employeeRules[key] && Object.keys(employeeRules[key]).length > 0) {
+      d.innerHTML += '<div class="cal-day-dot"></div>';
+    }
+
     d.onclick = () => selectDay(day);
     grid.appendChild(d);
   }
 
+  // Jours du mois suivant
   const totalCells = 42;
   const remaining = totalCells - (startDay + daysInMonth);
   for (let i = 1; i <= remaining; i++) {
     const d = document.createElement("div");
-    d.className = "cal-d other";
+    d.className = "cal-day other-month";
     d.textContent = i;
     grid.appendChild(d);
   }
 }
 
-function chYear(dir) {
-  currentYear += dir;
+/* ─── Navigation ─── */
+function chMon(dir) {
+  currentMonth += dir;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
   renderCalendar();
-  if (selectedEmployeeId && selectedDay !== null) {
-    renderZoneRulesForDay();
-  }
+  if (selectedDay !== null) renderZoneRulesForDay();
 }
 
-function toggleWeekView() {
-  weekView = !weekView;
+function chYear(dir) { currentYear += dir; renderCalendar(); if (selectedDay !== null) renderZoneRulesForDay(); }
+
+function gotoToday() {
+  const today = new Date();
+  currentYear = today.getFullYear();
+  currentMonth = today.getMonth();
   renderCalendar();
+  selectDay(today.getDate());
 }
 
 function selectDay(day) {
@@ -400,175 +598,149 @@ function selectDay(day) {
   document.getElementById('quick-slots').style.display = 'block';
 }
 
-function gotoToday() {
-  const today = new Date();
-  currentYear = today.getFullYear();
-  currentMonth = today.getMonth();
-  renderCalendar();
-  selectDay(today.getDate());
-}
-
-function chMon(dir) {
-  currentMonth += dir;
-  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
-  renderCalendar();
-  if (selectedEmployeeId && selectedDay !== null) {
-    renderZoneRulesForDay();
-  }
-}
-
+/* ─── Filtrage employés ─── */
 function filterEmployees() {
   const search = document.getElementById('employeeSearch').value.toLowerCase();
   const select = document.getElementById('employeeSelect');
   for (let i = 0; i < select.options.length; i++) {
     const option = select.options[i];
-    const text = option.text.toLowerCase();
-    option.style.display = text.includes(search) ? '' : 'none';
+    option.style.display = option.text.toLowerCase().includes(search) ? '' : 'none';
   }
 }
 
+/* ─── Chargement règles employé ─── */
 async function loadEmployeeRules() {
   const select = document.getElementById("employeeSelect");
   selectedEmployeeId = select.value;
 
   if (!selectedEmployeeId) {
-    document.getElementById("employee-title").textContent = "Sélectionnez un employé pour configurer ses accès";
+    document.getElementById("employee-title").textContent = "Calendrier des accès";
     document.getElementById("employee-badge").textContent = "";
-    document.getElementById("rules-summary").innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">👥 Aucune sélection</div>`;
+    document.getElementById("rules-summary").innerHTML = '<div style="text-align:center;padding:50px;color:var(--text3);"><div style="font-size:48px;margin-bottom:10px;opacity:.4;">👤</div><div>Sélectionnez un employé</div></div>';
     employeeRules = {};
     renderCalendar();
     return;
   }
 
   const selectedOption = select.options[select.selectedIndex];
-  const parts = selectedOption.text.split('—');
-  document.getElementById("employee-title").textContent = parts[0].trim();
-  document.getElementById("employee-badge").textContent = parts[1] ? parts[1].trim() : "";
+  const name = selectedOption.text.split('—')[0].trim();
+  const badge = selectedOption.text.split('—')[1]?.trim() || '';
+  document.getElementById("employee-title").textContent = name;
+  document.getElementById("employee-badge").textContent = badge;
 
-  document.getElementById("rules-summary").innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">⏳ Chargement des règles...</div>`;
+  document.getElementById("rules-summary").innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);"><div style="animation:spin 1s linear infinite;display:inline-block;font-size:24px;">⚙️</div><div style="margin-top:8px;">Chargement...</div></div>';
 
   try {
     const response = await fetch(`/api/employee/${selectedEmployeeId}/rules/`);
     const data = await response.json();
-
-    if (data.status === 'success') {
-      employeeRules = data.rules || {};
-    } else {
-      employeeRules = {};
-    }
-
+    employeeRules = (data.status === 'success') ? (data.rules || {}) : {};
     renderRulesSummary(employeeRules);
     renderCalendar();
-    if (selectedDay !== null) {
-      renderZoneRulesForDay();
-    }
+    if (selectedDay !== null) renderZoneRulesForDay();
   } catch (error) {
-    console.error('Erreur chargement règles:', error);
+    console.error('Erreur:', error);
     employeeRules = {};
     renderRulesSummary({});
     renderCalendar();
   }
 }
 
+/* ─── Rendu récapitulatif ─── */
 function renderRulesSummary(rules) {
   const summaryDiv = document.getElementById("rules-summary");
-
   if (!rules || Object.keys(rules).length === 0) {
-    summaryDiv.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">
-      <div style="font-size:48px; margin-bottom:16px">📋</div>
-      <div>Aucune règle définie pour cet employé</div>
-      <div style="margin-top:12px; font-size:12px">Utilisez le calendrier pour ajouter des règles</div>
-    </div>`;
+    summaryDiv.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);"><div style="font-size:40px;margin-bottom:10px;opacity:.4;">📋</div><div>Aucune règle définie</div></div>';
     return;
   }
 
-  let html = '<div style="display:flex; flex-direction:column; gap:12px">';
   const rulesByZone = {};
-  
   for (const [key, zonesRules] of Object.entries(rules)) {
     const [yr, mo, dy] = key.split('-');
-    const label = `${dy} ${MONTHS[parseInt(mo) - 1]} ${yr}`;
+    const label = `${dy}/${mo}/${yr}`;
     for (const [zoneName, rule] of Object.entries(zonesRules)) {
       if (!rulesByZone[zoneName]) rulesByZone[zoneName] = [];
       rulesByZone[zoneName].push({key, label, ...rule});
     }
   }
 
+  let html = '';
   for (const [zoneName, zoneRules] of Object.entries(rulesByZone)) {
+    const enabledCount = zoneRules.filter(r => r.acces_autorise !== false).length;
     html += `
-      <div style="background:var(--bg3); border-radius:10px; overflow:hidden">
-        <div style="padding:12px 16px; background:var(--blue3); border-bottom:1px solid var(--border2)">
-          <strong>🚪 ${zoneName}</strong>
-          <span style="float:right; font-size:11px; color:var(--text2)">${zoneRules.length} jour(s)</span>
+      <div style="background:var(--bg3);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+        <div style="padding:10px 14px;background:rgba(59,130,246,.08);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:600;font-size:12.5px;color:var(--text1);">🚪 ${zoneName}</span>
+          <span class="badge badge-blue">${enabledCount}/${zoneRules.length} j</span>
         </div>
-        <div style="padding:12px">`;
-
-    zoneRules.sort((a, b) => a.key.localeCompare(b.key)).forEach(rule => {
-      html += `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border2)">
-          <div>
-            <div style="font-weight:500">📅 ${rule.label}</div>
-            <div style="font-size:11px; color:var(--text2)">⏰ ${rule.heure_debut || '08:00'} - ${rule.heure_fin || '18:00'}</div>
-          </div>
-          <div>
-            ${rule.acces_autorise !== false ? '<span class="badge b-green">✓ Autorisé</span>' : '<span class="badge b-red">✗ Refusé</span>'}
-          </div>
-        </div>`;
-    });
-    html += `</div></div>`;
+        <div style="padding:8px 14px;max-height:120px;overflow-y:auto;">
+          ${zoneRules.sort((a,b) => a.key.localeCompare(b.key)).map(r => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;">
+              <span style="color:var(--text2);">📅 ${r.label}</span>
+              <span style="font-family:var(--mono);color:var(--text3);">${r.heure_debut || '08:00'}→${r.heure_fin || '18:00'}</span>
+              <span class="badge ${r.acces_autorise !== false ? 'badge-green' : 'badge-red'}">${r.acces_autorise !== false ? '✓' : '✗'}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
   }
-  html += '</div>';
-  summaryDiv.innerHTML = html;
+  summaryDiv.innerHTML = html || '<div style="text-align:center;padding:40px;">Aucune règle</div>';
 }
 
+/* ─── Rendu zone rules ─── */
 function renderZoneRulesForDay() {
+  const container = document.getElementById("zone-rules-container");
   if (!selectedEmployeeId) {
-    document.getElementById("zone-rules-container").innerHTML = `<div style="text-align:center; padding:60px; color:var(--text3)"><div style="font-size:48px; margin-bottom:16px">👥</div><div>Sélectionnez un employé pour commencer</div></div>`;
+    container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text3);"><div style="font-size:48px;margin-bottom:12px;opacity:.4;">👤</div><div>Sélectionnez un employé</div></div>';
     return;
   }
-
   if (selectedDay === null) {
-    document.getElementById("zone-rules-container").innerHTML = `<div style="text-align:center; padding:60px; color:var(--text3)"><div style="font-size:48px; margin-bottom:16px">📅</div><div>Cliquez sur un jour du calendrier pour le configurer</div></div>`;
+    container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text3);"><div style="font-size:48px;margin-bottom:12px;opacity:.4;">📅</div><div>Cliquez sur un jour du calendrier</div></div>';
     return;
   }
 
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   const dayRules = employeeRules[key] || {};
 
-  let html = `
-    <div style="margin-bottom:16px; padding:12px; background:var(--blue3); border-radius:8px">
-      <div style="font-weight:600; margin-bottom:8px">📅 ${selectedDay} ${MONTHS[selectedDayMonth]} ${selectedDayYear}</div>
-      <div style="font-size:12px; color:var(--text2)">Configurez les horaires d'accès pour chaque zone</div>
-    </div>
-    <div style="max-height:350px; overflow-y:auto">`;
-
+  let html = '';
   zones.forEach(zone => {
     const zoneRule = dayRules[zone.nom] || { acces_autorise: true, heure_debut: '08:00', heure_fin: '18:00' };
-    const niveauClass = zone.niveau === 'critique' ? 'risk-h' : (zone.niveau === 'restreint' ? 'risk-m' : 'risk-l');
-    const niveauText = zone.niveau === 'critique' ? 'CRITIQUE' : (zone.niveau === 'restreint' ? 'RESTREINT' : 'STANDARD');
+    const niveauColors = { critique: 'badge-red', restreint: 'badge-amber', standard: 'badge-blue', public: 'badge-gray' };
+    const niveauBadge = niveauColors[zone.niveau] || 'badge-gray';
 
     html += `
-      <div style="background:var(--bg3); border-radius:10px; margin-bottom:12px; overflow:hidden">
-        <div style="padding:12px 16px; border-bottom:1px solid var(--border2)">
-          <div style="display:flex; justify-content:space-between; align-items:center">
-            <div><span style="font-weight:600">🚪 ${zone.nom}</span><span class="badge ${niveauClass}" style="margin-left:8px">${niveauText}</span></div>
-            <label class="tswitch"><input type="checkbox" class="zone-toggle" data-zone="${zone.nom}" ${zoneRule.acces_autorise !== false ? 'checked' : ''} onchange="toggleZoneAccess('${zone.nom}', this.checked)"><span class="tslider"></span></label>
+      <div class="zone-rule-card">
+        <div class="zone-rule-header">
+          <div>
+            <span style="font-weight:600;font-size:13px;color:var(--text1);">🚪 ${zone.nom}</span>
+            <span class="badge ${niveauBadge}" style="margin-left:8px;">${zone.niveau?.toUpperCase() || 'STANDARD'}</span>
           </div>
+          <label class="toggle-switch">
+            <input type="checkbox" ${zoneRule.acces_autorise !== false ? 'checked' : ''} onchange="toggleZoneAccess('${zone.nom}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
-        <div style="padding:12px 16px">
-          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap">
-            <div style="display:flex; align-items:center; gap:8px"><span style="font-size:12px; color:var(--text2)">🕐 De</span><input type="time" class="form-input" style="width:100px" value="${zoneRule.heure_debut || '08:00'}" data-zone="${zone.nom}" data-type="start" onchange="updateZoneTime('${zone.nom}', 'start', this.value)"></div>
-            <div style="display:flex; align-items:center; gap:8px"><span style="font-size:12px; color:var(--text2)">à</span><input type="time" class="form-input" style="width:100px" value="${zoneRule.heure_fin || '18:00'}" data-zone="${zone.nom}" data-type="end" onchange="updateZoneTime('${zone.nom}', 'end', this.value)"></div>
-            <div style="margin-left:auto"><span class="badge ${zoneRule.acces_autorise !== false ? 'b-green' : 'b-red'}">${zoneRule.acces_autorise !== false ? '✓ Accès autorisé' : '✗ Accès bloqué'}</span></div>
+        <div class="zone-rule-body">
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11px;color:var(--text3);">🕐 De</span>
+              <input type="time" class="form-input" style="width:110px;" value="${zoneRule.heure_debut || '08:00'}" onchange="updateZoneTime('${zone.nom}', 'start', this.value)">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11px;color:var(--text3);">à</span>
+              <input type="time" class="form-input" style="width:110px;" value="${zoneRule.heure_fin || '18:00'}" onchange="updateZoneTime('${zone.nom}', 'end', this.value)">
+            </div>
+            <span class="badge ${zoneRule.acces_autorise !== false ? 'badge-green' : 'badge-red'}" style="margin-left:auto;">
+              ${zoneRule.acces_autorise !== false ? '✓ Autorisé' : '✗ Bloqué'}
+            </span>
           </div>
         </div>
       </div>`;
   });
-  html += `</div>`;
-  document.getElementById("zone-rules-container").innerHTML = html;
+
+  container.innerHTML = html || '<div style="text-align:center;padding:40px;">Aucune zone configurée</div>';
 }
 
+/* ─── Actions zones ─── */
 function toggleZoneAccess(zoneName, enabled) {
   if (!selectedEmployeeId || selectedDay === null) return;
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
@@ -596,16 +768,16 @@ function resetDayRules() {
   if (employeeRules[key]) delete employeeRules[key];
   renderZoneRulesForDay();
   renderCalendar();
+  showSaveStatus("🔄 Règles réinitialisées");
 }
 
 function applyQuickSlot(start, end) {
   if (!selectedEmployeeId || selectedDay === null) return;
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   if (!employeeRules[key]) employeeRules[key] = {};
-  
   zones.forEach(zone => {
     if (!employeeRules[key][zone.nom]) employeeRules[key][zone.nom] = {};
-    employeeRules[key][zone.nom].acces_autorise = start && end;
+    employeeRules[key][zone.nom].acces_autorise = !!(start && end);
     employeeRules[key][zone.nom].heure_debut = start || '00:00';
     employeeRules[key][zone.nom].heure_fin = end || '00:00';
   });
@@ -618,16 +790,12 @@ function copyToNextDay() {
   const currentKey = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   const nextDay = selectedDay + 1;
   const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
-  if (nextDay > daysInMonth) {
-    showSaveStatus("⚠️ Fin du mois atteinte", true);
-    return;
-  }
+  if (nextDay > daysInMonth) { showSaveStatus("⚠️ Fin du mois", true); return; }
   const nextKey = dayKey(selectedDayYear, selectedDayMonth, nextDay);
   if (employeeRules[currentKey]) {
     employeeRules[nextKey] = JSON.parse(JSON.stringify(employeeRules[currentKey]));
-    showSaveStatus("✅ Règles copiées au jour suivant");
+    showSaveStatus("✅ Copié au jour suivant");
   }
-  renderZoneRulesForDay();
   renderCalendar();
 }
 
@@ -635,113 +803,81 @@ function copyToAllWeek() {
   if (!selectedEmployeeId || selectedDay === null) return;
   const currentKey = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   if (!employeeRules[currentKey]) return;
-  
-  const startDay = selectedDay;
-  const endDay = Math.min(selectedDay + 6, new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate());
-  
-  for (let d = startDay + 1; d <= endDay; d++) {
+  const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
+  const endDay = Math.min(selectedDay + 6, daysInMonth);
+  for (let d = selectedDay + 1; d <= endDay; d++) {
     const newKey = dayKey(selectedDayYear, selectedDayMonth, d);
     employeeRules[newKey] = JSON.parse(JSON.stringify(employeeRules[currentKey]));
   }
-  showSaveStatus(`✅ Règles copiées du ${startDay} au ${endDay}`);
-  renderZoneRulesForDay();
+  showSaveStatus(`✅ Semaine copiée (${selectedDay}→${endDay})`);
   renderCalendar();
 }
 
+function copyWeekSchedule() {
+  if (!selectedEmployeeId || selectedDay === null) { showSaveStatus("⚠️ Sélectionnez un jour d'abord", true); return; }
+  copyToAllWeek();
+}
+
+/* ─── Modèles ─── */
 function openTemplateModal() { document.getElementById('templateModal').style.display = 'flex'; }
 function closeTemplateModal() { document.getElementById('templateModal').style.display = 'none'; }
-function openImportModal() { document.getElementById('importModal').style.display = 'flex'; }
-function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
-function importRules() { openImportModal(); }
 
 function applyTemplate() {
   const template = document.getElementById('templateSelect').value;
   const range = document.getElementById('templateRange').value;
   if (!template) { alert("Veuillez sélectionner un modèle"); return; }
-  
+  if (!selectedEmployeeId) { alert("Sélectionnez un employé d'abord"); return; }
+
   const templates = {
     standard: { start: '09:00', end: '17:00', enabled: true },
-    shift: { start: '06:00', end: '14:00', enabled: true },
     parttime: { start: '09:00', end: '13:00', enabled: true },
-    weekend: { start: '10:00', end: '18:00', enabled: true },
-    night: { start: '22:00', end: '06:00', enabled: true }
+    night: { start: '22:00', end: '06:00', enabled: true },
+    fullaccess: { start: '00:00', end: '23:59', enabled: true }
   };
   const tpl = templates[template];
-  
-  if (range === 'current' && selectedDay) {
-    const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
+  if (!tpl) return;
+
+  const applyToDay = (yr, mo, dy) => {
+    const key = dayKey(yr, mo, dy);
     if (!employeeRules[key]) employeeRules[key] = {};
     zones.forEach(zone => {
-      employeeRules[key][zone.nom] = { acces_autorise: tpl.enabled, heure_debut: tpl.start, heure_fin: tpl.end };
+      employeeRules[key][zone.nom] = {
+        acces_autorise: tpl.enabled,
+        heure_debut: tpl.start,
+        heure_fin: tpl.end
+      };
     });
-  } else if (range === 'week' && selectedDay) {
+  };
+
+  if (range === 'current' && selectedDay !== null) {
+    applyToDay(selectedDayYear, selectedDayMonth, selectedDay);
+  } else if (range === 'week' && selectedDay !== null) {
     const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
     const endDay = Math.min(selectedDay + 6, daysInMonth);
-    for (let d = selectedDay; d <= endDay; d++) {
-      const key = dayKey(selectedDayYear, selectedDayMonth, d);
-      if (!employeeRules[key]) employeeRules[key] = {};
-      zones.forEach(zone => {
-        employeeRules[key][zone.nom] = { acces_autorise: tpl.enabled, heure_debut: tpl.start, heure_fin: tpl.end };
-      });
-    }
+    for (let d = selectedDay; d <= endDay; d++) applyToDay(selectedDayYear, selectedDayMonth, d);
   } else if (range === 'month') {
     const daysInMonth = new Date(selectedDayYear, selectedDayMonth + 1, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-      const key = dayKey(selectedDayYear, selectedDayMonth, d);
-      if (!employeeRules[key]) employeeRules[key] = {};
-      zones.forEach(zone => {
-        employeeRules[key][zone.nom] = { acces_autorise: tpl.enabled, heure_debut: tpl.start, heure_fin: tpl.end };
-      });
-    }
+    for (let d = 1; d <= daysInMonth; d++) applyToDay(selectedDayYear, selectedDayMonth, d);
   }
-  
+
   showSaveStatus(`✅ Modèle "${template}" appliqué`);
   renderZoneRulesForDay();
   renderCalendar();
+  renderRulesSummary(employeeRules);
   closeTemplateModal();
 }
 
-function processImport() {
-  const file = document.getElementById('importFile').files[0];
-  if (!file) { alert("Veuillez sélectionner un fichier"); return; }
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const content = e.target.result;
-      const format = document.getElementById('importFormat').value;
-      let imported = {};
-      if (format === 'json') imported = JSON.parse(content);
-      else {
-        const lines = content.split('\n');
-        lines.slice(1).forEach(line => {
-          const [date, zone, access, start, end] = line.split(',');
-          if (date && zone) {
-            if (!imported[date]) imported[date] = {};
-            imported[date][zone] = { acces_autorise: access.trim() === 'AUTORISÉ', heure_debut: start, heure_fin: end };
-          }
-        });
-      }
-      employeeRules = imported;
-      renderRulesSummary(employeeRules);
-      renderZoneRulesForDay();
-      renderCalendar();
-      showSaveStatus(`✅ Import réussi : ${Object.keys(imported).length} règles`);
-    } catch (err) { alert("Erreur d'import: " + err.message); }
-  };
-  reader.readAsText(file);
-  closeImportModal();
-}
-
+/* ─── Sauvegarde ─── */
 function showSaveStatus(message, isError = false) {
   const statusDiv = document.getElementById('saveStatus');
   statusDiv.textContent = message;
   statusDiv.style.color = isError ? 'var(--red)' : 'var(--green)';
-  setTimeout(() => statusDiv.textContent = '', 3000);
+  setTimeout(() => { statusDiv.textContent = ''; }, 3000);
 }
 
 async function saveCurrentDayRules() {
-  if (!selectedEmployeeId) { alert("Veuillez sélectionner un employé"); return; }
-  if (selectedDay === null) { alert("Veuillez sélectionner un jour dans le calendrier"); return; }
+  if (!selectedEmployeeId) { alert("Sélectionnez un employé"); return; }
+  if (selectedDay === null) { alert("Sélectionnez un jour"); return; }
   const key = dayKey(selectedDayYear, selectedDayMonth, selectedDay);
   const dayRules = employeeRules[key] || {};
   const rulesToSave = [];
@@ -754,25 +890,27 @@ async function saveCurrentDayRules() {
     });
   }
   if (rulesToSave.length === 0) {
-    rulesToSave.push({ employe_id: selectedEmployeeId, zone_nom: '__DELETE__',
-      jour: selectedDay, mois: selectedDayMonth + 1, annee: selectedDayYear });
+    rulesToSave.push({
+      employe_id: selectedEmployeeId, zone_nom: '__DELETE__',
+      jour: selectedDay, mois: selectedDayMonth + 1, annee: selectedDayYear
+    });
   }
   try {
     const response = await fetch('/api/save-day-rules/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-      body: JSON.stringify({rules: rulesToSave, employe_id: selectedEmployeeId})
+      body: JSON.stringify({ rules: rulesToSave, employe_id: selectedEmployeeId })
     });
     const result = await response.json();
     if (result.status === 'success') {
       showSaveStatus(`✅ ${result.message}`);
       renderRulesSummary(employeeRules);
       renderCalendar();
-    } else showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
-  } catch (error) { showSaveStatus('❌ Erreur de connexion au serveur', true); }
+    } else showSaveStatus(`❌ ${result.message || 'Erreur'}`, true);
+  } catch (error) { showSaveStatus('❌ Erreur connexion', true); }
 }
 
 async function saveAllRules() {
-  if (!selectedEmployeeId) { alert("Veuillez sélectionner un employé"); return; }
+  if (!selectedEmployeeId) { alert("Sélectionnez un employé"); return; }
   const allRules = [];
   for (const [key, dayRules] of Object.entries(employeeRules)) {
     const [yr, mo, dy] = key.split('-');
@@ -788,14 +926,15 @@ async function saveAllRules() {
   try {
     const response = await fetch('/api/save-all-rules/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-      body: JSON.stringify({employe_id: selectedEmployeeId, rules: allRules})
+      body: JSON.stringify({ employe_id: selectedEmployeeId, rules: allRules })
     });
     const result = await response.json();
     if (result.status === 'success') showSaveStatus(`✅ ${result.message}`);
-    else showSaveStatus(`❌ ${result.message || 'Erreur inconnue'}`, true);
-  } catch (error) { showSaveStatus('❌ Erreur de connexion au serveur', true); }
+    else showSaveStatus(`❌ ${result.message || 'Erreur'}`, true);
+  } catch (error) { showSaveStatus('❌ Erreur connexion', true); }
 }
 
+/* ─── Export ─── */
 function exportRules() {
   if (!selectedEmployeeId || Object.keys(employeeRules).length === 0) {
     alert("Aucune règle à exporter"); return;
@@ -808,16 +947,24 @@ function exportRules() {
       csv += `${dateLabel},${zoneName},${rule.acces_autorise !== false ? 'AUTORISÉ' : 'REFUSÉ'},${rule.heure_debut || '08:00'},${rule.heure_fin || '18:00'}\n`;
     }
   }
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8"});
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `regles_acces_${selectedEmployeeId}_${new Date().toISOString().slice(0,10)}.csv`;
+  link.download = `regles_${selectedEmployeeId}_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
 
+/* ─── Spin animation ─── */
+var styleEl = document.createElement('style');
+styleEl.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(styleEl);
+
+/* ─── Init ─── */
 window.onload = async function() {
   await loadZones();
   renderCalendar();
 };
+</script>
+
 {% endblock %}

@@ -246,5 +246,6 @@ urlpatterns = [
     path('api/ressources/export-csv/',             views.api_export_ressources_csv, name='api_export_ressources_csv'),
     path('api/indisponibilites/export-csv/', views.api_export_indisponibilites_csv, name='api_export_indisponibilites_csv'),
     path('api/indisponibilites/export-pdf/', views.api_export_indisponibilites_pdf, name='api_export_indisponibilites_pdf'),
+    path('api/employes/export-pdf/', views.api_employes_export_pdf, name='api_employes_export_pdf'),
 ]
     
