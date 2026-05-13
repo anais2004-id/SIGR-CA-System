@@ -6,146 +6,495 @@
 {% block nav_emp_resa %}active{% endblock %}
 
 {% block content %}
+<style>
+/* ═══════════════════════════════════════
+   FONTS & TOKENS (Premium Dashboard)
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-{% if messages %}
-  {% for message in messages %}
-    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-      <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-      <div class="alert-text">{{ message }}</div>
+/* Les variables bg/border/text/couleurs viennent de base.html (thème clair/sombre automatique).
+   On ajoute seulement les alias et overrides propres à cette page. */
+:root {
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+/* Alias : --text1 pointe vers --text de base.html */
+*, *::before, *::after {
+  --text1: var(--text);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.resa-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width:768px)  { .kpi-grid { grid-template-columns: 1fr; } }
+
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 18px 16px;
+  position: relative; overflow: hidden;
+  transition: transform .25s, box-shadow .25s;
+  cursor: default;
+}
+.kpi::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%);
+  pointer-events: none;
+}
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+
+.kpi-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--kpi-grad);
+  box-shadow: 0 0 12px var(--kpi-color);
+}
+
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.kpi-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); }
+.kpi-icon-wrap {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--kpi-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent);
+  font-size: 18px; flex-shrink: 0;
+}
+.kpi-val {
+  font-family: var(--mono); font-size: 38px; font-weight: 700;
+  color: var(--kpi-color); line-height: 1;
+  margin-bottom: 8px;
+  text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent);
+}
+.kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
+
+.kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+.kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+
+/* ═══════════════════════════════════════
+   CARDS
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-head-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+.card-body { padding: 20px; }
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn-primary {
+  padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+  background: var(--blue); color: #fff; font-weight: 600; font-size: 13px;
+  font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.btn-ghost {
+  padding: 8px 18px; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--text2); font-weight: 600; font-size: 13px;
+  font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+.btn-ghost:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-sm { padding: 6px 13px; font-size: 12px; }
+
+.btn-edit {
+  background: rgba(59,130,246,.12); color: var(--blue2);
+  border: 1px solid rgba(59,130,246,.25); padding: 5px 12px;
+  border-radius: 6px; cursor: pointer; font-weight: 600; font-family: var(--font);
+  transition: all .18s; display: inline-flex; align-items: center; gap: 4px;
+  text-decoration: none;
+}
+.btn-edit:hover { background: rgba(59,130,246,.2); transform: translateY(-1px); }
+
+.btn-del {
+  background: rgba(239,68,68,.1); color: var(--red);
+  border: 1px solid rgba(239,68,68,.2); padding: 5px 12px;
+  border-radius: 6px; cursor: pointer; font-weight: 600; font-family: var(--font);
+  transition: all .18s; display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-del:hover { background: rgba(239,68,68,.2); transform: translateY(-1px); }
+
+.btn-secondary {
+  background: var(--bg3); color: var(--text1);
+  border: 1px solid var(--border); padding: 8px 16px;
+  border-radius: 6px; cursor: pointer; font-family: var(--font);
+  transition: all .18s;
+}
+.btn-secondary:hover { background: var(--bg4); }
+
+/* ═══════════════════════════════════════
+   BADGES
+═══════════════════════════════════════ */
+.badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px;
+}
+.b-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.25); }
+.b-green  { background: rgba(16,185,129,.1);  color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.b-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+.b-amber  { background: rgba(245,158,11,.1);  color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
+.b-purple { background: rgba(139,92,246,.12); color: var(--purple);border: 1px solid rgba(139,92,246,.25); }
+.b-gray   { background: var(--bg4); color: var(--text3); border: 1px solid var(--border); }
+
+/* ═══════════════════════════════════════
+   ALERT BOX
+═══════════════════════════════════════ */
+.alert-box {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  margin-bottom: 8px; font-size: 12.5px;
+}
+.alert-box.danger { background: rgba(239,68,68,.08);  border: 1px solid rgba(239,68,68,.2); color: var(--red); }
+.alert-box.info   { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); color: var(--blue2); }
+.alert-ico { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.alert-text { font-weight: 500; }
+
+/* ═══════════════════════════════════════
+   TABLE
+═══════════════════════════════════════ */
+.tbl-wrap { overflow-x: auto; }
+.tbl {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.tbl th {
+  padding: 12px 14px; text-align: left; font-size: 10.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .8px; color: var(--text3);
+  border-bottom: 1px solid var(--border); background: var(--bg3);
+}
+.tbl td {
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text2); vertical-align: middle;
+}
+.tbl tr:hover td { background: var(--bg4); }
+.tbl tr:last-child td { border-bottom: none; }
+
+/* ═══════════════════════════════════════
+   WEEK CALENDAR
+═══════════════════════════════════════ */
+.week-nav {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+}
+.week-range { font-size: 15px; font-weight: 700; color: var(--text1); }
+.week-table { width: 100%; border-collapse: collapse; min-width: 750px; font-size: 12px; }
+.week-table th {
+  background: var(--bg3); padding: 10px 6px; text-align: center;
+  font-weight: 600; border-bottom: 1px solid var(--border); font-size: 11px;
+  color: var(--text2);
+}
+.week-table th.today-col { background: rgba(59,130,246,.15); color: var(--blue2); }
+.week-table td {
+  border: 1px solid var(--border); vertical-align: top; padding: 4px;
+  height: 44px; width: 13%;
+}
+.week-table td.time-col {
+  background: var(--bg3); font-weight: 600; text-align: center;
+  width: 60px; font-family: var(--mono); font-size: 11px; color: var(--text2);
+}
+.resa-block {
+  background: rgba(16,185,129,.1); border-left: 3px solid var(--green);
+  border-radius: 4px; padding: 3px 6px; font-size: 10px; cursor: pointer;
+  margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: all .15s; color: var(--text2);
+}
+.resa-block:hover { background: var(--green); color: #fff; }
+.resa-block.pending { background: rgba(245,158,11,.1); border-left-color: var(--amber); }
+.resa-block.cancelled {
+  background: rgba(239,68,68,.08); border-left-color: var(--red);
+  opacity: .7; text-decoration: line-through;
+}
+.slot-empty {
+  background: var(--bg4); border: 1px dashed var(--border2);
+  border-radius: 4px; padding: 3px 6px; font-size: 10px; text-align: center;
+  cursor: pointer; color: var(--text3); transition: all .15s;
+}
+.slot-empty:hover { background: rgba(59,130,246,.12); border-color: var(--blue); color: var(--blue2); }
+
+/* ═══════════════════════════════════════
+   MODAL
+═══════════════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.75);
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px);
+}
+.modal {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px;
+  width: 500px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
+.modal-wide { width: 600px; max-width: 95vw; }
+.modal-title { font-size: 18px; font-weight: 700; color: var(--text1); margin-bottom: 4px; }
+.modal-sub { font-size: 12px; color: var(--text2); margin-bottom: 22px; }
+.modal-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════
+   FORM
+═══════════════════════════════════════ */
+.form-row { margin-bottom: 16px; }
+.form-label {
+  font-size: 11px; font-weight: 700; color: var(--text2);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 7px; display: block;
+}
+.form-input, .form-select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px;
+  color: var(--text1); font-family: var(--font); outline: none;
+  transition: all .18s;
+}
+.form-input:focus, .form-select:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+textarea.form-input { resize: vertical; min-height: 80px; }
+
+.suggestion-box {
+  background: var(--bg3); padding: 12px; border-radius: var(--radius-sm);
+  border: 1px dashed var(--border2);
+}
+
+/* Info box */
+.info-box {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 10px; padding: 40px 20px;
+  text-align: center; color: var(--text3); font-size: 13px;
+}
+.info-ico { font-size: 48px; margin-bottom: 16px; opacity: .5; }
+
+/* Status pill */
+.status-pill {
+  padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+.status-ok  { background: rgba(16,185,129,.1);  color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.status-nok { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
+</style>
+
+<div class="resa-wrap">
+
+  <!-- Messages -->
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+        <div class="alert-text">{{ message }}</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- ══════════════════════════════════════════
+       KPI STRIP
+  ══════════════════════════════════════════ -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Total</span>
+        <div class="kpi-icon-wrap">📆</div>
+      </div>
+      <div class="kpi-val">{{ total|default:"0" }}</div>
+      <div class="kpi-sub">Réservations</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}100{% else %}5{% endif %}%"></div></div>
     </div>
-  {% endfor %}
-{% endif %}
 
-<!-- KPIs 4 colonnes -->
-<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
-  <div class="kpi k-blue">
-    <div class="kpi-header"><div class="kpi-label">Total</div><div class="kpi-icon">📆</div></div>
-    <div class="kpi-value">{{ total|default:0 }}</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header"><div class="kpi-label">Confirmées</div><div class="kpi-icon">✅</div></div>
-    <div class="kpi-value">{{ actives|default:0 }}</div>
-  </div>
-  <div class="kpi k-purple">
-    <div class="kpi-header"><div class="kpi-label">À venir</div><div class="kpi-icon">⏰</div></div>
-    <div class="kpi-value">{{ a_venir|default:0 }}</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header"><div class="kpi-label">En attente</div><div class="kpi-icon">⏳</div></div>
-    <div class="kpi-value">{{ en_attente|default:0 }}</div>
-  </div>
-</div>
-
-<!-- Calendrier hebdomadaire -->
-<div style="background:var(--bg2); border:1px solid var(--border); border-radius:12px; overflow:visible; box-shadow:0 1px 4px rgba(0,0,0,.2);">
-  <div class="card-head">
-    <span>📅</span>
-    <span class="card-title">Calendrier des réservations</span>
-    <div style="margin-left:auto;">
-      <button class="btn btn-primary btn-sm" id="openResaBtn">+ Nouvelle réservation</button>
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Confirmées</span>
+        <div class="kpi-icon-wrap">✅</div>
+      </div>
+      <div class="kpi-val">{{ actives|default:"0" }}</div>
+      <div class="kpi-sub">Actives</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}{% widthratio actives total 100 %}{% else %}5{% endif %}%"></div></div>
     </div>
-  </div>
-  <div style="padding:16px 18px;">
-    <!-- Navigation semaine -->
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-      <button class="btn btn-ghost btn-sm" id="prevWeekBtn">‹ Semaine précédente</button>
-      <span id="weekRange" style="font-size:15px; font-weight:600;"></span>
-      <div style="display:flex; gap:8px;">
-        <button class="btn btn-ghost btn-sm" id="nextWeekBtn">Semaine suivante ›</button>
-        <button class="btn btn-ghost btn-sm" id="todayWeekBtn">📅 Aujourd'hui</button>
+
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">À venir</span>
+        <div class="kpi-icon-wrap">⏰</div>
+      </div>
+      <div class="kpi-val">{{ a_venir|default:"0" }}</div>
+      <div class="kpi-sub">Prochainement</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}{% widthratio a_venir total 100 %}{% else %}5{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">En attente</span>
+        <div class="kpi-icon-wrap">⏳</div>
+      </div>
+      <div class="kpi-val">{{ en_attente|default:"0" }}</div>
+      <div class="kpi-sub">Validation</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}{% widthratio en_attente total 100 %}{% else %}5{% endif %}%"></div></div>
+    </div>
+  </div><!-- /kpi-grid -->
+
+  <!-- ══════════════════════════════════════════
+       CALENDRIER HEBDOMADAIRE
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">📅</div>
+      <span class="card-title">Calendrier des réservations</span>
+      <div style="margin-left:auto;">
+        <button class="btn-primary btn-sm" id="openResaBtn">+ Nouvelle réservation</button>
       </div>
     </div>
-    <!-- Grille calendrier -->
-    <div style="overflow-x:auto;">
-      <div id="weekCalendar"></div>
+    <div class="card-body">
+      <!-- Navigation semaine -->
+      <div class="week-nav">
+        <button class="btn-ghost btn-sm" id="prevWeekBtn">‹ Semaine précédente</button>
+        <span class="week-range" id="weekRange"></span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-ghost btn-sm" id="nextWeekBtn">Semaine suivante ›</button>
+          <button class="btn-ghost btn-sm" id="todayWeekBtn">📅 Aujourd'hui</button>
+        </div>
+      </div>
+      <!-- Grille calendrier -->
+      <div style="overflow-x:auto;">
+        <div id="weekCalendar"></div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Liste COMPLÈTE des réservations — PAS de max-height pour tout afficher -->
-<div style="background:var(--bg2); border:1px solid var(--border); border-radius:12px; overflow:visible; box-shadow:0 1px 4px rgba(0,0,0,.2);">
-  <div class="card-head">
-    <span>📋</span>
-    <span class="card-title">Mes réservations</span>
-    <span class="card-sub">{{ reservations|length }} réservation(s)</span>
-    <button class="btn btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
+  <!-- ══════════════════════════════════════════
+       LISTE DES RÉSERVATIONS
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📋</div>
+      <span class="card-title">Mes réservations</span>
+      <span class="card-badge status-pill status-ok">{{ reservations|length }} réservation(s)</span>
+      <button class="btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Titre</th>
+              <th>Salle</th>
+              <th>Début</th>
+              <th>Fin</th>
+              <th style="text-align:center;">Participants</th>
+              <th>Statut</th>
+              <th>QR</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in reservations %}
+            <tr>
+              <td>
+                <strong style="color:var(--text1);">{{ r.titre|default:"Sans titre" }}</strong>
+                {% if r.description %}<div style="font-size:10.5px; color:var(--text3); margin-top:3px;">{{ r.description|truncatechars:50 }}</div>{% endif %}
+              </td>
+              <td><span class="badge b-blue">{{ r.ressource_icon|default:"🚪" }} {{ r.bureau_nom|default:"—" }}</span></td>
+              <td style="font-family:var(--mono); font-size:12px; color:var(--text2);">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
+              <td style="font-family:var(--mono); font-size:12px; color:var(--text2);">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
+              <td style="text-align:center; color:var(--text2);">👥 {{ r.nb_participants|default:1 }}</td>
+              <td>
+                {% if r.statut == 'confirmee' %}<span class="badge b-green">✅ Confirmée</span>
+                {% elif r.statut == 'en_attente' %}<span class="badge b-amber">⏳ En attente</span>
+                {% elif r.statut == 'annulee' %}<span class="badge b-red">❌ Annulée</span>
+                {% else %}<span class="badge b-gray">{{ r.statut }}</span>{% endif %}
+              </td>
+              <td>
+                {% if r.statut == 'confirmee' %}
+                  {% if r.qr_code %}
+                    <button class="btn-primary btn-sm" onclick="showQRCodeModal('{{ r.id }}', '{{ r.titre|escapejs }}')">📱 QR Code</button>
+                  {% else %}
+                    <span class="badge b-amber">En génération...</span>
+                  {% endif %}
+                {% elif r.statut == 'en_attente' %}
+                  <span class="badge b-amber">En attente</span>
+                {% else %}
+                  <span class="badge b-gray">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.statut != 'annulee' and r.statut != 'terminee' %}
+                <form method="post" action="{% url 'employe_annuler_reservation' r.id %}"
+                      onsubmit="return confirm('Annuler cette réservation ?')" style="display:inline;">
+                  {% csrf_token %}
+                  <button type="submit" class="btn-del btn-sm">🗑️</button>
+                </form>
+                {% else %}<span style="color:var(--text3);">—</span>{% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="8" style="text-align:center; padding:60px;">
+                <div class="info-box">
+                  <div class="info-ico">📆</div>
+                  <div>Aucune réservation pour le moment</div>
+                  <br>
+                  <button class="btn-primary" id="emptyResaBtn">+ Créer ma première réservation</button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-  <div style="overflow-x:auto;">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Titre</th>
-          <th>Salle</th>
-          <th>Début</th>
-          <th>Fin</th>
-          <th>Participants</th>
-          <th>Statut</th>
-          <th>QR</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in reservations %}
-        <tr>
-          <td>
-            <strong>{{ r.titre|default:"Sans titre" }}</strong>
-            {% if r.description %}<div style="font-size:10.5px; color:var(--text3); margin-top:3px;">{{ r.description|truncatechars:50 }}</div>{% endif %}
-          </td>
-<td><span class="badge b-blue">{{ r.ressource_icon|default:"🚪" }} {{ r.bureau_nom|default:"—" }}</span></td>          <td style="font-family:var(--mono); font-size:12px;">{{ r.date_debut|date:"d/m/Y H:i" }}</td>
-          <td style="font-family:var(--mono); font-size:12px;">{{ r.date_fin|date:"d/m/Y H:i" }}</td>
-          <td style="text-align:center;">👥 {{ r.nb_participants|default:1 }}</td>
-          <td>
-            {% if r.statut == 'confirmee' %}<span class="badge b-green">✅ Confirmée</span>
-            {% elif r.statut == 'en_attente' %}<span class="badge b-amber">⏳ En attente</span>
-            {% elif r.statut == 'annulee' %}<span class="badge b-red">❌ Annulée</span>
-            {% else %}<span class="badge b-gray">{{ r.statut }}</span>{% endif %}
-          </td>
-         <!-- Colonne QR Code dans le tableau -->
-<td>
-    {% if r.statut == 'confirmee' %}
-        {% if r.qr_code %}
-            <button class="btn btn-sm btn-primary" onclick="showQRCodeModal('{{ r.id }}', '{{ r.titre|escapejs }}')">
-                📱 QR Code
-            </button>
-        {% else %}
-            <span class="badge b-amber">En génération...</span>
-        {% endif %}
-    {% elif r.statut == 'en_attente' %}
-        <span class="badge b-amber">En attente</span>
-    {% else %}
-        <span class="badge b-gray">—</span>
-    {% endif %}
-</td>
-          <td>
-            {% if r.statut != 'annulee' and r.statut != 'terminee' %}
-            <form method="post" action="{% url 'employe_annuler_reservation' r.id %}"
-                  onsubmit="return confirm('Annuler cette réservation ?')" style="display:inline;">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-del btn-sm">🗑️</button>
-            </form>
-            {% else %}<span style="color:var(--text3);">—</span>{% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="8" style="text-align:center; padding:60px; color:var(--text3);">
-            <div style="font-size:48px; margin-bottom:16px;">📆</div>
-            Aucune réservation pour le moment
-            <br><br>
-            <button class="btn btn-primary" id="emptyResaBtn">+ Créer ma première réservation</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
 
-<!-- Modal Réservation -->
+</div><!-- /resa-wrap -->
+
+<!-- ══════════════════════════════════════════
+     MODAL RÉSERVATION
+══════════════════════════════════════════ -->
 <div id="resaModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeResaModal()">
-  <div class="modal" style="width:600px; max-width:95vw;">
+  <div class="modal modal-wide">
     <div class="modal-title">📆 Nouvelle Réservation</div>
-    <div class="modal-sub">Réservez une salle pour votre activité</div>
+    <div class="modal-sub">Réservez une salle ou un équipement pour votre activité</div>
     <form method="post" action="{% url 'employe_mes_reservations' %}">
       {% csrf_token %}
 
@@ -197,11 +546,11 @@
         <input type="number" class="form-input" name="nb_participants" id="nbParticipants" value="1" min="1" max="100">
       </div>
 
-      <!-- ⭐ NOUVEAU : Bloc suggestions intelligentes -->
-      <div class="form-row" style="background:var(--bg3); padding:12px; border-radius:8px; border:1px dashed var(--border);">
+      <!-- ⭐ Bloc suggestions intelligentes -->
+      <div class="form-row suggestion-box">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
           <label class="form-label" style="margin:0;">🤖 Suggestions intelligentes</label>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="empShowSuggestions()">
+          <button type="button" class="btn-ghost btn-sm" onclick="empShowSuggestions()">
             ✨ Proposer des créneaux libres
           </button>
         </div>
@@ -220,95 +569,48 @@
       <div id="empDispoMsg" style="display:none; padding:10px; border-radius:6px; margin-top:10px; font-size:13px;"></div>
 
       <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick="closeResaModal()">Annuler</button>
-        <button type="submit" class="btn btn-primary" id="submitBtn">✅ Confirmer</button>
+        <button type="button" class="btn-ghost" onclick="closeResaModal()">Annuler</button>
+        <button type="submit" class="btn-primary" id="submitBtn">✅ Confirmer</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Modal QR Code -->
-<div id="qrModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeQRModal()">
-  <div class="modal" style="text-align:center; width:360px;">
+<!-- ══════════════════════════════════════════
+     MODAL QR CODE
+══════════════════════════════════════════ -->
+<div id="qrCodeModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQRCodeModal()">
+  <div class="modal" style="width:500px; text-align:center;">
     <div class="modal-title" style="margin-bottom:4px;">📱 QR Code d'accès</div>
-    <div class="modal-sub" id="qrTitle">—</div>
-    <div style="background:white; padding:20px; border-radius:12px; display:inline-block; margin:16px 0;">
-      <div id="qrContainer"></div>
+    <div class="modal-sub" id="qrTitre">—</div>
+    <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; margin:16px 0;">
+      <div id="qrCodeImage" style="width:200px; height:200px; display:flex; align-items:center; justify-content:center;">
+        <span style="color:var(--text3);">Chargement...</span>
+      </div>
     </div>
-    <div id="qrInfo" style="font-size:12px; color:var(--text2); margin-bottom:16px;"></div>
+    <div id="qrCodeInfo" style="font-size:12px; color:var(--text2); margin-bottom:16px;">
+      <div><strong>Salle:</strong> <span id="qrSalle">—</span></div>
+      <div><strong>Date:</strong> <span id="qrDate">—</span></div>
+    </div>
     <div style="display:flex; gap:8px; justify-content:center;">
-      <button class="btn btn-primary btn-sm" onclick="downloadQR()">⬇️ Télécharger</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeQRModal()">Fermer</button>
+      <button class="btn-primary btn-sm" onclick="downloadQRCode()">⬇️ Télécharger</button>
+      <button class="btn-secondary btn-sm" onclick="printQRCode()">🖨️ Imprimer</button>
+      <button class="btn-ghost btn-sm" onclick="closeQRCodeModal()">Fermer</button>
     </div>
   </div>
 </div>
-<!-- Modal QR Code -->
-<div id="qrCodeModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQRCodeModal()">
-    <div class="modal" style="width: 500px; text-align: center;">
-        <div class="modal-header">
-            <h3>📱 QR Code d'accès</h3>
-            <button class="modal-close" onclick="closeQRCodeModal()">✕</button>
-        </div>
-        <div class="modal-body" id="qrCodeModalBody">
-            <div style="text-align: center;">
-                <div id="qrCodeImage" style="background: white; padding: 20px; border-radius: 12px; display: inline-block;">
-                    <div style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
-                        <span>Chargement...</span>
-                    </div>
-                </div>
-                <div id="qrCodeInfo" style="margin-top: 16px;">
-                    <div><strong>Réservation:</strong> <span id="qrTitre">—</span></div>
-                    <div><strong>Salle:</strong> <span id="qrSalle">—</span></div>
-                    <div><strong>Date:</strong> <span id="qrDate">—</span></div>
-                </div>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-primary" onclick="downloadQRCode()">⬇️ Télécharger</button>
-            <button class="btn btn-secondary" onclick="printQRCode()">🖨️ Imprimer</button>
-            <button class="btn btn-ghost" onclick="closeQRCodeModal()">Fermer</button>
-        </div>
-    </div>
-</div>
-{% endblock %}
 
-{% block extra_js %}
+
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<style>
-.week-table { width:100%; border-collapse:collapse; min-width:750px; font-size:12px; }
-.week-table th { background:var(--bg3); padding:10px 6px; text-align:center; font-weight:600; border-bottom:1px solid var(--border); font-size:11px; }
-.week-table th.today-col { background:var(--blue3); color:var(--blue2); }
-.week-table td { border:1px solid var(--border2); vertical-align:top; padding:4px; height:44px; width:13%; }
-.week-table td.time-col { background:var(--bg3); font-weight:600; text-align:center; width:60px; font-family:var(--mono); font-size:11px; color:var(--text2); }
-.resa-block { background:var(--green2); border-left:3px solid var(--green); border-radius:4px; padding:3px 6px; font-size:10px; cursor:pointer; margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:all .15s; }
-.resa-block:hover { background:var(--green); color:white; }
-.resa-block.pending { background:var(--amber2); border-left-color:var(--amber); }
-.resa-block.cancelled { background:var(--red2); border-left-color:var(--red); opacity:.7; text-decoration:line-through; }
-.slot-empty { background:var(--bg3); border:1px dashed var(--border); border-radius:4px; padding:3px 6px; font-size:10px; text-align:center; cursor:pointer; color:var(--text3); transition:all .15s; }
-.slot-empty:hover { background:var(--blue3); border-color:var(--blue); color:var(--blue2); }
-/* Ajoutez ce style */
-.btn-secondary {
-    background: var(--bg3);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 8px 16px;
-    border-radius: 6px;
-    cursor: pointer;
-}
-.btn-secondary:hover {
-    background: var(--bg4);
-}
-</style>
 
 <script>
 // ═══════════════════════════════════════════
 // DONNÉES DJANGO → JS
-// Problème corrigé : on s'assure que les dates sont bien parsées
 // ═══════════════════════════════════════════
 var reservationsRaw = {{ reservations_json|safe|default:'[]' }};
 var currentWeekOffset = 0;
-var currentQRId = null;
-var currentQRObj = null;
+var currentQRCodeData = null;
+var currentQRCodeTitle = '';
 
 // Normaliser les données pour le calendrier
 var reservationsData = reservationsRaw.map(function(r) {
@@ -323,11 +625,6 @@ var reservationsData = reservationsRaw.map(function(r) {
   };
 });
 
-console.log("📊 Réservations chargées:", reservationsData.length);
-reservationsData.forEach(function(r) {
-  console.log("  →", r.titre, r.date_debut, r.statut);
-});
-
 // ═══════════════════════════════════════════
 // CALENDRIER HEBDOMADAIRE
 // ═══════════════════════════════════════════
@@ -336,11 +633,10 @@ var HOURS = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
              '16:00','16:30','17:00','17:30','18:00'];
 
 var DAYS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-var MONTHS_FR = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 
 function getMondayOfWeek(offset) {
   var today = new Date();
-  var dayOfWeek = today.getDay(); // 0=dim, 1=lun...
+  var dayOfWeek = today.getDay();
   var diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   var monday = new Date(today);
   monday.setDate(today.getDate() + diffToMonday + offset * 7);
@@ -360,7 +656,6 @@ function getWeekDays(offset) {
 }
 
 function toDateKey(dateObj) {
-  // Retourne "YYYY-MM-DD"
   return dateObj.getFullYear() + '-' +
          String(dateObj.getMonth() + 1).padStart(2, '0') + '-' +
          String(dateObj.getDate()).padStart(2, '0');
@@ -380,21 +675,17 @@ function renderWeekCalendar() {
   var index = {};
   reservationsData.forEach(function(r) {
     if (!r.date_debut) return;
-    // Essayer de parser la date
     var dt = new Date(r.date_debut);
     if (isNaN(dt.getTime())) return;
     var dayKey  = toDateKey(dt);
     var hh      = String(dt.getHours()).padStart(2, '0');
     var mm      = String(dt.getMinutes()).padStart(2, '0');
-    // Arrondir à la demi-heure la plus proche pour matcher les créneaux
     var roundMM = dt.getMinutes() < 15 ? '00' : (dt.getMinutes() < 45 ? '30' : '00');
     var roundHH = (dt.getMinutes() >= 45 ? String(dt.getHours() + 1).padStart(2,'0') : hh);
     var slotKey = dayKey + '_' + roundHH + ':' + roundMM;
     if (!index[slotKey]) index[slotKey] = [];
     index[slotKey].push(r);
   });
-
-  console.log("📅 Index calendrier:", Object.keys(index));
 
   // Construire le HTML
   var html = '<table class="week-table"><thead><tr><th style="width:60px;">Heure</th>';
@@ -463,7 +754,7 @@ function openResaModal() {
 
 function closeResaModal() {
   document.getElementById('resaModal').style.display = 'none';
-  var msg = document.getElementById('dispoMsg');
+  var msg = document.getElementById('empDispoMsg');
   if (msg) msg.style.display = 'none';
 }
 
@@ -477,44 +768,7 @@ function quickBook(date, hour) {
     end.setMinutes(end.getMinutes() + 30);
     df.value = date + 'T' + String(end.getHours()).padStart(2,'0') + ':' + String(end.getMinutes()).padStart(2,'0');
   }
-  checkDispo();
-}
-
-// ═══════════════════════════════════════════
-// VÉRIFICATION DISPONIBILITÉ
-// ═══════════════════════════════════════════
-var checkTimer = null;
-function checkDispo() {
-  var bureau  = document.getElementById('selBureau');
-  var debut   = document.getElementById('dateDebut');
-  var fin     = document.getElementById('dateFin');
-  var msg     = document.getElementById('dispoMsg');
-  var btn     = document.getElementById('submitBtn');
-  if (!bureau || !debut || !fin || !bureau.value || !debut.value || !fin.value) {
-    if (msg) msg.style.display = 'none';
-    return;
-  }
-  if (new Date(fin.value) <= new Date(debut.value)) {
-    if (msg) { msg.style.display='block'; msg.style.background='var(--red2)'; msg.style.color='var(--red)'; msg.textContent='⚠️ La date de fin doit être après la date de début'; }
-    if (btn) btn.disabled = true;
-    return;
-  }
-  clearTimeout(checkTimer);
-  checkTimer = setTimeout(function() {
-    if (msg) { msg.style.display='block'; msg.style.background='var(--blue3)'; msg.style.color='var(--blue2)'; msg.textContent='⏳ Vérification...'; }
-    fetch('/api/bureaux/' + bureau.value + '/disponibilite/?debut=' + encodeURIComponent(debut.value) + '&fin=' + encodeURIComponent(fin.value))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.disponible) {
-          if (msg) { msg.style.background='var(--green2)'; msg.style.color='var(--green)'; msg.textContent='✅ Salle disponible !'; }
-          if (btn) btn.disabled = false;
-        } else {
-          if (msg) { msg.style.background='var(--red2)'; msg.style.color='var(--red)'; msg.textContent='❌ Salle déjà réservée sur ce créneau'; }
-          if (btn) btn.disabled = true;
-        }
-      })
-      .catch(function() { if (btn) btn.disabled = false; });
-  }, 500);
+  empCheckDispo();
 }
 
 // ═══════════════════════════════════════════
@@ -529,47 +783,186 @@ function showResaDetails(id) {
 }
 
 // ═══════════════════════════════════════════
-// QR CODE
+// QR CODE MODAL
 // ═══════════════════════════════════════════
-function showQRCode(id, titre) {
-  currentQRId = id;
-  document.getElementById('qrModal').style.display = 'flex';
-  document.getElementById('qrTitle').textContent = titre;
-  document.getElementById('qrContainer').innerHTML = '';
-  document.getElementById('qrInfo').textContent = 'Génération du QR Code...';
+function showQRCodeModal(reservationId, titre) {
+  currentQRCodeTitle = titre;
+  var modal = document.getElementById('qrCodeModal');
+  modal.style.display = 'flex';
 
-  var r = reservationsData.find(function(x) { return String(x.id) === String(id); });
-  var qrText = JSON.stringify({ id: id, titre: titre, salle: r ? r.bureau_nom : '—', debut: r ? r.date_debut : '' });
+  document.getElementById('qrCodeImage').innerHTML = '<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;">⏳ Chargement...</div>';
+  document.getElementById('qrTitre').textContent = titre;
+  document.getElementById('qrSalle').textContent = 'Chargement...';
+  document.getElementById('qrDate').textContent = 'Chargement...';
 
-  currentQRObj = new QRCode(document.getElementById('qrContainer'), {
-    text: qrText,
-    width: 200, height: 200,
-    colorDark: '#000000', colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.H
-  });
+  fetch('/api/reservations/' + reservationId + '/qr/')
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      if (data.qr_code) {
+        currentQRCodeData = data.qr_code;
+        document.getElementById('qrCodeImage').innerHTML = '<img src="data:image/png;base64,' + data.qr_code + '" style="width:200px; height:200px; border-radius:8px;" alt="QR Code">';
+        document.getElementById('qrSalle').textContent = data.bureau_nom || '—';
+        if (data.date_debut) {
+          var date = new Date(data.date_debut);
+          document.getElementById('qrDate').textContent = date.toLocaleString('fr-FR');
+        }
+      } else {
+        document.getElementById('qrCodeImage').innerHTML = '<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:12px;">❌ QR code non disponible</div>';
+      }
+    })
+    .catch(function(error) {
+      console.error('Erreur:', error);
+      document.getElementById('qrCodeImage').innerHTML = '<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:12px;">❌ Erreur de chargement</div>';
+    });
+}
 
-  if (r) {
-    var debut = r.date_debut ? new Date(r.date_debut).toLocaleString('fr-FR') : '—';
-    document.getElementById('qrInfo').innerHTML = '🚪 ' + r.bureau_nom + '<br>📅 ' + debut;
+function closeQRCodeModal() {
+  document.getElementById('qrCodeModal').style.display = 'none';
+  currentQRCodeData = null;
+}
+
+function downloadQRCode() {
+  if (currentQRCodeData) {
+    var link = document.createElement('a');
+    link.download = 'qrcode_' + currentQRCodeTitle.replace(/\s/g, '_') + '.png';
+    link.href = 'data:image/png;base64,' + currentQRCodeData;
+    link.click();
+  } else {
+    alert('QR code non disponible');
   }
 }
 
-function closeQRModal() { document.getElementById('qrModal').style.display = 'none'; }
+function printQRCode() {
+  if (currentQRCodeData) {
+    var qrImage = '<img src="data:image/png;base64,' + currentQRCodeData + '" style="width:250px; height:250px;">';
+    var titre = document.getElementById('qrTitre').textContent;
+    var salle = document.getElementById('qrSalle').textContent;
+    var date = document.getElementById('qrDate').textContent;
 
-function downloadQR() {
-  var canvas = document.querySelector('#qrContainer canvas');
-  var img    = document.querySelector('#qrContainer img');
-  if (canvas) {
-    var a = document.createElement('a');
-    a.download = 'qrcode_' + currentQRId + '.png';
-    a.href = canvas.toDataURL();
-    a.click();
-  } else if (img) {
-    var a = document.createElement('a');
-    a.download = 'qrcode_' + currentQRId + '.png';
-    a.href = img.src;
-    a.click();
+    var win = window.open();
+    win.document.write('<!DOCTYPE html><html><head><title>QR Code - ' + titre + '</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:50px;background:#fff;}.qr-container{margin:20px auto;}.info{margin-top:20px;font-size:14px;}.info div{margin:5px 0;}</style></head><body><h2>🔐 QR Code d\'accès</h2><div class="qr-container">' + qrImage + '</div><div class="info"><div><strong>Réservation:</strong> ' + titre + '</div><div><strong>Salle:</strong> ' + salle + '</div><div><strong>Date:</strong> ' + date + '</div></div><p>Présentez ce code au lecteur</p></body></html>');
+    win.print();
+  } else {
+    alert('QR code non disponible');
   }
+}
+
+// ═══════════════════════════════════════════
+// RESOURCE CHANGE & SUGGESTIONS
+// ═══════════════════════════════════════════
+function onEmpResourceChange() {
+  var sel = document.getElementById('selResource');
+  if (!sel) return;
+  var opt  = sel.options[sel.selectedIndex];
+  var type = opt ? (opt.dataset.type || 'salle') : 'salle';
+  document.getElementById('empResourceType').value = type;
+  var hint = document.getElementById('empResourceHint');
+  if (hint) {
+    if (type === 'materiel') {
+      hint.innerHTML = '📦 Vous réservez un <strong>matériel</strong>.';
+    } else {
+      var cap = opt ? opt.dataset.capacite : '';
+      hint.innerHTML = '🚪 Vous réservez une <strong>salle</strong>' + (cap ? ' (capacité ' + cap + ')' : '') + '.';
+    }
+  }
+  empShowSuggestions();
+  empCheckDispo();
+}
+
+function empShowSuggestions() {
+  var sel        = document.getElementById('selResource');
+  var resourceId = sel ? sel.value : '';
+  var resourceType = document.getElementById('empResourceType').value || 'salle';
+  var dateInput  = document.getElementById('dateDebut').value;
+  var nbPart     = document.getElementById('nbParticipants').value || 1;
+  var container  = document.getElementById('empSuggestionsContainer');
+  if (!resourceId) {
+    container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ Choisissez d\'abord une salle ou une ressource.</div>';
+    return;
+  }
+  var date = dateInput ? dateInput.split('T')[0] : new Date().toISOString().split('T')[0];
+  container.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Recherche des meilleurs créneaux...</div>';
+  var url = '/api/suggestions-creneaux/?resource_id=' + encodeURIComponent(resourceId)
+          + '&resource_type=' + encodeURIComponent(resourceType)
+          + '&date=' + encodeURIComponent(date)
+          + '&duree=60'
+          + '&nb_participants=' + encodeURIComponent(nbPart);
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.warning) {
+        container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ ' + data.warning + '</div>';
+        return;
+      }
+      if (!data.suggestions || data.suggestions.length === 0) {
+        container.innerHTML = '<div style="color:var(--text3);font-size:12px">😕 Aucun créneau libre ce jour-là. Essayez une autre date.</div>';
+        return;
+      }
+      var html = '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✨ <strong>' + data.suggestions.length + ' créneaux libres</strong> le ' + new Date(date).toLocaleDateString('fr-FR') + ' :</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px">';
+      data.suggestions.forEach(function(s) {
+        html += '<button type="button" style="text-align:left;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);cursor:pointer;transition:.2s;color:var(--text2);" onmouseover="this.style.background=\'var(--bg4)\';this.style.borderColor=\'var(--blue2)\'" onmouseout="this.style.background=\'var(--bg3)\';this.style.borderColor=\'var(--border)\'" onclick="empApplySuggestion(\'' + s.debut + '\',\'' + s.fin + '\')"><div style="font-weight:600;color:var(--blue2);font-size:12px">🕐 ' + s.debut_label + ' → ' + s.fin_label + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">⭐ Score: ' + s.score + '</div></button>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    })
+    .catch(function(err) {
+      container.innerHTML = '<div style="color:var(--red);font-size:12px">❌ Erreur: ' + err + '</div>';
+    });
+}
+
+function empApplySuggestion(debut, fin) {
+  document.getElementById('dateDebut').value = debut.slice(0, 16);
+  document.getElementById('dateFin').value   = fin.slice(0, 16);
+  empCheckDispo();
+  var msg = document.getElementById('empDispoMsg');
+  msg.style.display = 'block';
+  msg.style.background = 'rgba(16,185,129,.1)';
+  msg.style.color      = 'var(--green)';
+  msg.innerHTML = '✅ Créneau appliqué : ' + debut.slice(11,16) + ' → ' + fin.slice(11,16);
+}
+
+function empCheckDispo() {
+  var sel        = document.getElementById('selResource');
+  var resourceId = sel ? sel.value : '';
+  var resourceType = document.getElementById('empResourceType').value || 'salle';
+  var debut      = document.getElementById('dateDebut').value;
+  var fin        = document.getElementById('dateFin').value;
+  var msg        = document.getElementById('empDispoMsg');
+  var btn        = document.getElementById('submitBtn');
+  if (!resourceId || !debut || !fin) {
+    msg.style.display = 'none';
+    btn.disabled = false;
+    return;
+  }
+  msg.style.display = 'block';
+  msg.style.background = 'rgba(59,130,246,.08)';
+  msg.style.color      = 'var(--blue2)';
+  msg.innerHTML = '⏳ Vérification...';
+  btn.disabled = true;
+
+  var endpoint = (resourceType === 'materiel')
+    ? '/api/materiel-disponibilite/' + resourceId + '/'
+    : '/api/bureau-disponibilite/'   + resourceId + '/';
+  fetch(endpoint + '?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      msg.style.display = 'block';
+      if (data.disponible) {
+        msg.style.background = 'rgba(16,185,129,.1)';
+        msg.style.color      = 'var(--green)';
+        msg.innerHTML = '✅ Créneau disponible';
+        btn.disabled = false;
+      } else {
+        msg.style.background = 'rgba(239,68,68,.08)';
+        msg.style.color      = 'var(--red)';
+        msg.innerHTML = '❌ ' + (data.motif || 'Créneau indisponible');
+        btn.disabled = true;
+      }
+    })
+    .catch(function() {
+      msg.style.display = 'none';
+      btn.disabled = false;
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -589,266 +982,13 @@ document.addEventListener('DOMContentLoaded', function() {
   var emptyBtn = document.getElementById('emptyResaBtn');
   if (emptyBtn) emptyBtn.onclick = openResaModal;
 
-  var selBureau = document.getElementById('selBureau');
+  // Vérification de disponibilité en temps réel
   var dateDebut = document.getElementById('dateDebut');
   var dateFin   = document.getElementById('dateFin');
-  if (selBureau) selBureau.addEventListener('change', checkDispo);
-  if (dateDebut) dateDebut.addEventListener('change', checkDispo);
-  if (dateFin)   dateFin.addEventListener('change', checkDispo);
-});
-// Dans le script de employe_mes_reservations.html
-let currentQRCodeData = null;
-let currentQRCodeTitle = '';
+  if (dateDebut) dateDebut.addEventListener('change', empCheckDispo);
+  if (dateFin)   dateFin.addEventListener('change', empCheckDispo);
 
-function showQRCodeModal(reservationId, titre) {
-    currentQRCodeTitle = titre;
-    const modal = document.getElementById('qrCodeModal');
-    modal.style.display = 'flex';
-    
-    // Afficher chargement
-    document.getElementById('qrCodeImage').innerHTML = '<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;">⏳ Chargement...</div>';
-    document.getElementById('qrTitre').textContent = titre;
-    document.getElementById('qrSalle').textContent = 'Chargement...';
-    document.getElementById('qrDate').textContent = 'Chargement...';
-    
-    // Récupérer le QR code via l'API
-    fetch(`/api/reservations/${reservationId}/qr/`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.qr_code) {
-                currentQRCodeData = data.qr_code;
-                // Afficher l'image QR code
-                document.getElementById('qrCodeImage').innerHTML = `
-                    <img src="data:image/png;base64,${data.qr_code}" 
-                         style="width:200px; height:200px; border-radius: 8px;" 
-                         alt="QR Code">
-                `;
-                document.getElementById('qrSalle').textContent = data.bureau_nom || '—';
-                if (data.date_debut) {
-                    const date = new Date(data.date_debut);
-                    document.getElementById('qrDate').textContent = date.toLocaleString('fr-FR');
-                }
-            } else {
-                document.getElementById('qrCodeImage').innerHTML = `
-                    <div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:12px;">
-                        ❌ QR code non disponible
-                    </div>
-                `;
-            }
-        })
-        .catch(error => {
-            console.error('Erreur:', error);
-            document.getElementById('qrCodeImage').innerHTML = `
-                <div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:12px;">
-                    ❌ Erreur de chargement
-                </div>
-            `;
-        });
-}
-
-function closeQRCodeModal() {
-    document.getElementById('qrCodeModal').style.display = 'none';
-    currentQRCodeData = null;
-}
-
-function downloadQRCode() {
-    if (currentQRCodeData) {
-        const link = document.createElement('a');
-        link.download = `qrcode_${currentQRCodeTitle.replace(/\s/g, '_')}.png`;
-        link.href = `data:image/png;base64,${currentQRCodeData}`;
-        link.click();
-    } else {
-        alert('QR code non disponible');
-    }
-}
-
-function onEmpResourceChange() {
-  var sel = document.getElementById('selResource');
-  if (!sel) return;
-  var opt = sel.options[sel.selectedIndex];
-  var type = opt ? (opt.dataset.type || 'salle') : 'salle';
-  document.getElementById('empResourceType').value = type;
-
-  var hint = document.getElementById('empResourceHint');
-  if (hint) {
-    if (type === 'materiel') {
-      hint.innerHTML = '📦 Vous réservez un <strong>matériel</strong>.';
-    } else {
-      var cap = opt ? opt.dataset.capacite : '';
-      hint.innerHTML = '🚪 Vous réservez une <strong>salle</strong>' + (cap ? ' (capacité ' + cap + ')' : '') + '.';
-    }
-  }
-}
-
-function printQRCode() {
-    if (currentQRCodeData) {
-        const qrImage = `<img src="data:image/png;base64,${currentQRCodeData}" style="width:250px; height:250px;">`;
-        const titre = document.getElementById('qrTitre').textContent;
-        const salle = document.getElementById('qrSalle').textContent;
-        const date = document.getElementById('qrDate').textContent;
-        
-        const win = window.open();
-        win.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>QR Code - ${titre}</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        text-align: center;
-                        padding: 50px;
-                    }
-                    .qr-container {
-                        margin: 20px auto;
-                    }
-                    .info {
-                        margin-top: 20px;
-                        font-size: 14px;
-                    }
-                    .info div {
-                        margin: 5px 0;
-                    }
-                </style>
-            </head>
-            <body>
-                <h2>🔐 QR Code d'accès</h2>
-                <div class="qr-container">${qrImage}</div>
-                <div class="info">
-                    <div><strong>Réservation:</strong> ${titre}</div>
-                    <div><strong>Salle:</strong> ${salle}</div>
-                    <div><strong>Date:</strong> ${date}</div>
-                </div>
-                <p>Présentez ce code au lecteur</p>
-            </body>
-            </html>
-        `);
-        win.print();
-    } else {
-        alert('QR code non disponible');
-    }
-}
-// =============== Suggestions IA + dispo en temps réel (côté employé) ===============
-function onEmpResourceChange() {
-  var sel = document.getElementById('selResource');
-  if (!sel) return;
-  var opt  = sel.options[sel.selectedIndex];
-  var type = opt ? (opt.dataset.type || 'salle') : 'salle';
-  document.getElementById('empResourceType').value = type;
-  var hint = document.getElementById('empResourceHint');
-  if (hint) {
-    if (type === 'materiel') {
-      hint.innerHTML = '📦 Vous réservez un <strong>matériel</strong>.';
-    } else {
-      var cap = opt ? opt.dataset.capacite : '';
-      hint.innerHTML = '🚪 Vous réservez une <strong>salle</strong>'
-                     + (cap ? ' (capacité ' + cap + ')' : '') + '.';
-    }
-  }
-  // Recharger automatiquement les suggestions et la dispo
-  empShowSuggestions();
-  empCheckDispo();
-}
-function empShowSuggestions() {
-  var sel        = document.getElementById('selResource');
-  var resourceId = sel ? sel.value : '';
-  var resourceType = document.getElementById('empResourceType').value || 'salle';
-  var dateInput  = document.getElementById('dateDebut').value;
-  var nbPart     = document.getElementById('nbParticipants').value || 1;
-  var container  = document.getElementById('empSuggestionsContainer');
-  if (!resourceId) {
-    container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ Choisissez d\'abord une salle ou une ressource.</div>';
-    return;
-  }
-  // Date cible : celle saisie, sinon aujourd'hui
-  var date = dateInput ? dateInput.split('T')[0] : new Date().toISOString().split('T')[0];
-  container.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Recherche des meilleurs créneaux...</div>';
-  var url = '/api/suggestions-creneaux/?resource_id=' + encodeURIComponent(resourceId)
-          + '&resource_type=' + encodeURIComponent(resourceType)
-          + '&date=' + encodeURIComponent(date)
-          + '&duree=60'
-          + '&nb_participants=' + encodeURIComponent(nbPart);
-  fetch(url)
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.warning) {
-        container.innerHTML = '<div style="color:var(--amber);font-size:12px">⚠️ ' + data.warning + '</div>';
-        return;
-      }
-      if (!data.suggestions || data.suggestions.length === 0) {
-        container.innerHTML = '<div style="color:var(--text3);font-size:12px">😕 Aucun créneau libre ce jour-là. Essayez une autre date.</div>';
-        return;
-      }
-      var html = '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">'
-               + '✨ <strong>' + data.suggestions.length + ' créneaux libres</strong> le '
-               + new Date(date).toLocaleDateString('fr-FR') + ' :</div>'
-               + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px">';
-      data.suggestions.forEach(function(s) {
-        html += '<button type="button" '
-              + 'style="text-align:left;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);cursor:pointer;transition:.2s" '
-              + 'onmouseover="this.style.background=\'var(--blue3)\';this.style.borderColor=\'var(--blue2)\'" '
-              + 'onmouseout="this.style.background=\'var(--bg2)\';this.style.borderColor=\'var(--border)\'" '
-              + 'onclick="empApplySuggestion(\'' + s.debut + '\',\'' + s.fin + '\')">'
-              + '<div style="font-weight:600;color:var(--blue2);font-size:12px">🕐 ' + s.debut_label + ' → ' + s.fin_label + '</div>'
-              + '<div style="font-size:10px;color:var(--text3);margin-top:2px">⭐ Score: ' + s.score + '</div>'
-              + '</button>';
-      });
-      html += '</div>';
-      container.innerHTML = html;
-    })
-    .catch(function(err) {
-      container.innerHTML = '<div style="color:var(--red);font-size:12px">❌ Erreur: ' + err + '</div>';
-    });
-}
-function empApplySuggestion(debut, fin) {
-  document.getElementById('dateDebut').value = debut.slice(0, 16);
-  document.getElementById('dateFin').value   = fin.slice(0, 16);
-  empCheckDispo();
-  // Petit retour visuel
-  var msg = document.getElementById('empDispoMsg');
-  msg.style.display = 'block';
-  msg.style.background = 'var(--green3)';
-  msg.style.color      = 'var(--green2)';
-  msg.innerHTML = '✅ Créneau appliqué : ' + debut.slice(11,16) + ' → ' + fin.slice(11,16);
-}
-function empCheckDispo() {
-  var sel        = document.getElementById('selResource');
-  var resourceId = sel ? sel.value : '';
-  var resourceType = document.getElementById('empResourceType').value || 'salle';
-  var debut      = document.getElementById('dateDebut').value;
-  var fin        = document.getElementById('dateFin').value;
-  var msg        = document.getElementById('empDispoMsg');
-  var btn        = document.getElementById('submitBtn');
-  if (!resourceId || !debut || !fin) {
-    msg.style.display = 'none';
-    btn.disabled = false;
-    return;
-  }
-  var endpoint = (resourceType === 'materiel')
-    ? '/api/materiel-disponibilite/' + resourceId + '/'
-    : '/api/bureau-disponibilite/'   + resourceId + '/';
-  fetch(endpoint + '?debut=' + encodeURIComponent(debut) + '&fin=' + encodeURIComponent(fin))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      msg.style.display = 'block';
-      if (data.disponible) {
-        msg.style.background = 'var(--green3)';
-        msg.style.color      = 'var(--green2)';
-        msg.innerHTML = '✅ Créneau disponible';
-        btn.disabled = false;
-      } else {
-        msg.style.background = 'var(--red3)';
-        msg.style.color      = 'var(--red2)';
-        msg.innerHTML = '❌ ' + (data.motif || 'Créneau indisponible');
-        btn.disabled = true;
-      }
-    })
-    .catch(function() {
-      msg.style.display = 'none';
-      btn.disabled = false;
-    });
-}
-document.addEventListener('DOMContentLoaded', function() {
+  // Paramètre URL pour pré-remplir
   var params = new URLSearchParams(window.location.search);
   var rid = params.get('resource_id');
   if (rid) {

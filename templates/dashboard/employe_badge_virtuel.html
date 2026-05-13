@@ -1,452 +1,634 @@
 {% extends "base.html" %}
 
-{% block title %}Mon Badge Virtuel - SIGR-CA{% endblock %}
-{% block page_title %}Badge virtuel{% endblock %}
+{% block title %}Mon Badge Virtuel · SIGR-CA{% endblock %}
+{% block page_title %}Badge Virtuel{% endblock %}
 {% block page_sub %}Votre identifiant d'accès sécurisé{% endblock %}
 {% block nav_emp_badge %}active{% endblock %}
 
+{% block topbar_actions %}
+<div style="display:flex; gap:10px; align-items:center;">
+  <div class="live-pill">
+    <span class="live-dot"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">BADGE ACTIF</span>
+  </div>
+  <button class="tb-action-btn" onclick="showFullQR()" title="Afficher QR Code">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/></svg>
+  </button>
+</div>
+{% endblock %}
+
 {% block content %}
-
 <style>
-.badge-container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-/* Carte badge principale */
-.badge-card {
-  background: linear-gradient(135deg, var(--bg2), var(--bg3));
-  border: 1px solid var(--border);
-  border-radius: 32px;
-  padding: 32px;
-  text-align: center;
-  margin-bottom: 28px;
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.badge-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-}
-.badge-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 5px;
-  background: linear-gradient(90deg, var(--blue), var(--cyan), var(--purple));
-  animation: shimmer 3s infinite;
-}
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.badge-card::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -50%;
-  width: 200%;
-  height: 100%;
-  background: linear-gradient(115deg, transparent, rgba(255,255,255,0.05), transparent);
-  transform: translateX(-100%);
-  transition: transform 0.6s;
-}
-.badge-card:hover::after {
-  transform: translateX(100%);
-}
-
-/* Zone QR Code */
-.badge-qr {
-  background: white;
-  padding: 16px;
-  border-radius: 24px;
-  display: inline-block;
-  margin-bottom: 24px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-}
-.badge-qr:hover {
-  transform: scale(1.05);
-  box-shadow: 0 12px 30px rgba(31,111,235,0.3);
-}
-.badge-qr canvas {
-  border-radius: 12px;
-}
-
-/* Informations badge */
-.badge-info {
-  margin-top: 20px;
-}
-.badge-name {
-  font-size: 28px;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--text), var(--blue2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  margin-bottom: 8px;
-}
-.badge-id {
-  font-family: var(--mono);
-  font-size: 20px;
-  letter-spacing: 2px;
-  background: linear-gradient(135deg, var(--bg4), var(--bg3));
-  padding: 10px 24px;
-  border-radius: 40px;
-  display: inline-block;
-  margin: 12px 0;
-  border: 1px solid var(--border);
-  font-weight: 600;
-}
-.badge-company {
-  font-size: 12px;
-  color: var(--text2);
-  letter-spacing: 1px;
-}
-.badge-status {
-  margin-top: 20px;
-  padding: 10px;
-  background: linear-gradient(135deg, rgba(45,186,111,0.12), rgba(45,186,111,0.05));
-  border-radius: 40px;
-  color: var(--green);
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.badge-status i {
-  animation: pulse 2s infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Zones accessibles */
-.zones-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-.zone-tag {
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 12px;
-  padding: 12px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-.zone-tag:hover {
-  transform: translateX(4px);
-  border-color: var(--blue2);
-  background: var(--blue3);
-}
-.zone-tag.active {
-  border-color: var(--green);
-  background: linear-gradient(135deg, rgba(45,186,111,0.12), rgba(45,186,111,0.05));
-}
-.zone-icon {
-  font-size: 18px;
-}
-.zone-name {
-  flex: 1;
-  font-weight: 500;
-}
-.zone-level {
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-}
-.level-critical {
-  background: rgba(239,68,68,0.2);
-  color: #ef4444;
-}
-.level-standard {
-  background: rgba(59,130,246,0.2);
-  color: #3b82f6;
-}
-.level-public {
-  background: rgba(16,185,129,0.2);
-  color: #10b981;
-}
-
-/* Tableau horaires */
-.horaire-table {
-  width: 100%;
-  margin-top: 16px;
-  border-collapse: collapse;
-}
-.horaire-table tr {
-  transition: all 0.2s ease;
-}
-.horaire-table tr:hover {
-  background: var(--bg3);
-}
-.horaire-table td {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border2);
-}
-.horaire-table td:first-child {
-  font-weight: 600;
-  width: 100px;
-}
-.horaire-table td:last-child {
-  text-align: right;
-  font-family: var(--mono);
-  font-weight: 500;
-}
-
-/* Simulation NFC */
-.nfc-simulator {
-  background: linear-gradient(135deg, var(--bg3), var(--bg4));
-  border-radius: 20px;
-  padding: 24px;
-  text-align: center;
-  margin-top: 16px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid var(--border);
-}
-.nfc-simulator:hover {
-  transform: scale(1.02);
-  border-color: var(--blue2);
-  box-shadow: 0 10px 30px rgba(31,111,235,0.2);
-}
-.nfc-icon {
-  font-size: 56px;
-  margin-bottom: 12px;
-  animation: nfcPulse 1.5s infinite;
-}
-@keyframes nfcPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); text-shadow: 0 0 10px var(--blue2); }
-}
-.nfc-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.nfc-desc {
-  font-size: 12px;
-  color: var(--text2);
-}
-
-/* Statistiques rapides */
-.stats-mini {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 28px;
-}
-.stat-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 16px;
-  text-align: center;
-  transition: all 0.2s ease;
-}
-.stat-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--blue2);
-}
-.stat-icon {
-  font-size: 28px;
-  margin-bottom: 8px;
-}
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  font-family: var(--mono);
-}
-.stat-label {
-  font-size: 11px;
-  color: var(--text2);
-  margin-top: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Modal QR amélioré */
-.modal-qr {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.3s ease;
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.modal-qr-content {
-  background: var(--bg2);
-  border-radius: 32px;
-  width: 450px;
-  max-width: 90%;
-  text-align: center;
-  border: 1px solid var(--border);
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-  animation: slideUp 0.3s ease;
-}
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
+  /* ═══ DESIGN TOKENS (Mirror employe_espace) ═══ */
+  :root {
+    --font: 'Space Grotesk', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+    --radius: 14px;
+    --radius-sm: 8px;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  body { font-family: var(--font) !important; }
+
+  /* ─── Topbar Extras ─── */
+  .tb-action-btn {
+    width:36px; height:36px; border-radius:10px;
+    border:1px solid var(--border2); background:var(--bg3);
+    color:var(--text2); cursor:pointer; display:inline-flex;
+    align-items:center; justify-content:center; transition:all .2s;
   }
-}
-.modal-qr-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
-}
-.modal-qr-header h3 {
-  font-size: 18px;
-  font-weight: 600;
-}
-.modal-qr-close {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 18px;
-  transition: all 0.2s;
-}
-.modal-qr-close:hover {
-  background: var(--red2);
-  color: var(--red);
-  border-color: var(--red);
-}
-.modal-qr-body {
-  padding: 32px;
-}
-.modal-qr-footer {
-  padding: 20px 24px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-.btn-download, .btn-print {
-  padding: 10px 20px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.btn-download {
-  background: var(--blue3);
-  color: var(--blue2);
-  border: 1px solid rgba(31,111,235,0.3);
-}
-.btn-download:hover {
-  background: var(--blue);
-  color: white;
-}
-.btn-print {
-  background: var(--bg3);
-  color: var(--text2);
-  border: 1px solid var(--border);
-}
-.btn-print:hover {
-  background: var(--bg4);
-  color: var(--text);
-}
+  .tb-action-btn:hover { background:var(--bg4); color:var(--text); border-color:var(--border3); }
+
+  .live-pill {
+    display:inline-flex; align-items:center; gap:7px;
+    padding:6px 14px; border-radius:20px;
+    background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3);
+    font-size:11px; font-weight:700; letter-spacing:1px; color:var(--green);
+    font-family:var(--mono); transition:all .2s;
+  }
+  .live-dot {
+    width:7px; height:7px; border-radius:50%; background:var(--green);
+    animation:pulse-dot 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(16,185,129,.5); }
+    50%      { opacity:.7; box-shadow:0 0 0 5px rgba(16,185,129,0); }
+  }
+
+  /* ─── Layout ─── */
+  .badge-wrap { display:flex; flex-direction:column; gap:20px; padding-bottom:32px; }
+
+  /* ─── KPI Grid (même système que employe_espace) ─── */
+  .kpi-grid {
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:14px;
+  }
+  @media (max-width:1000px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:600px)  { .kpi-grid { grid-template-columns:1fr; } }
+
+  .kpi {
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px 18px 16px;
+    position:relative; overflow:hidden;
+    transition:transform .25s, box-shadow .25s;
+    cursor:default;
+  }
+  .kpi::after {
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%);
+    pointer-events:none;
+  }
+  .kpi:hover { transform:translateY(-4px); box-shadow:var(--kpi-shadow, none); }
+  .kpi-accent {
+    position:absolute; top:0; left:0; right:0; height:2px;
+    background:var(--kpi-grad);
+    box-shadow:0 0 12px var(--kpi-color);
+  }
+  .kpi-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+  .kpi-label { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; color:var(--text3); }
+  .kpi-icon-wrap {
+    width:36px; height:36px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--kpi-color) 12%, transparent);
+    border:1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent);
+    font-size:18px; flex-shrink:0;
+  }
+  .kpi-val {
+    font-family:var(--mono); font-size:38px; font-weight:700;
+    color:var(--kpi-color); line-height:1;
+    margin-bottom:8px;
+    text-shadow:0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent);
+  }
+  .kpi-sub { font-size:11px; color:var(--text3); display:flex; align-items:center; gap:5px; }
+  .kpi-sub.up   { color:var(--green); }
+  .kpi-bar { margin-top:12px; height:3px; background:var(--bg4); border-radius:2px; overflow:hidden; }
+  .kpi-bar-fill { height:100%; background:var(--kpi-grad); border-radius:2px; transition:width 1.2s ease; }
+
+  .kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+  .kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+  .kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+  .kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+
+  /* ─── Cards ─── */
+  .card {
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .card-head {
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:10px;
+  }
+  .card-head-icon {
+    width:32px; height:32px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; flex-shrink:0;
+  }
+  .card-title { font-weight:700; font-size:14px; color:var(--text); flex:1; }
+  .card-badge {
+    font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px;
+    font-family:var(--mono); letter-spacing:.5px;
+  }
+  .card-body { padding:20px; }
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:900px) { .grid-2 { grid-template-columns:1fr; } }
+
+  .section-label {
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+    color:var(--text3); margin-bottom:12px; display:flex; align-items:center; gap:8px;
+  }
+  .section-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ─── Buttons ─── */
+  .btn-primary {
+    padding:8px 18px; border-radius:8px; border:none; cursor:pointer;
+    background:var(--blue); color:#fff; font-weight:600; font-size:13px;
+    font-family:var(--font); transition:all .18s; display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn-primary:hover { background:var(--blue2); transform:translateY(-1px); box-shadow:0 4px 14px rgba(59,130,246,.35); }
+  .btn-ghost {
+    padding:8px 18px; border-radius:8px; cursor:pointer;
+    background:transparent; color:var(--text2); font-weight:600; font-size:13px;
+    font-family:var(--font); transition:all .18s; display:inline-flex; align-items:center; gap:6px;
+    border:1px solid var(--border2);
+  }
+  .btn-ghost:hover { background:var(--bg4); color:var(--text); border-color:var(--border3); }
+  .btn-sm { padding:6px 13px; font-size:12px; }
+
+  /* ═══ BADGE CARD PREMIUM ═══ */
+  .badge-card-premium {
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+    position:relative;
+    transition:transform .25s, box-shadow .25s;
+  }
+  .badge-card-premium:hover {
+    transform:translateY(-4px);
+    box-shadow:0 24px 50px rgba(0,0,0,.4), 0 0 0 1px rgba(59,130,246,.15);
+  }
+
+  /* Gradient accent bar animé */
+  .badge-accent-bar {
+    height:3px;
+    background:linear-gradient(90deg, var(--blue), var(--cyan), var(--purple), var(--blue));
+    background-size:300% 100%;
+    animation:accent-flow 4s linear infinite;
+    box-shadow:0 0 16px rgba(59,130,246,.4);
+  }
+  @keyframes accent-flow {
+    0%   { background-position:0% 0%; }
+    100% { background-position:300% 0%; }
+  }
+
+  /* Glow ambiant de fond */
+  .badge-card-premium::before {
+    content:'';
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at 50% 0%, rgba(59,130,246,.07) 0%, transparent 60%);
+    pointer-events:none;
+  }
+
+  .badge-inner {
+    padding:32px 28px 28px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:20px;
+    position:relative;
+    z-index:1;
+  }
+
+  /* Avatar + QR */
+  .badge-qr-wrap {
+    background:#fff;
+    padding:14px;
+    border-radius:16px;
+    cursor:pointer;
+    transition:all .3s ease;
+    box-shadow:0 8px 28px rgba(0,0,0,.3);
+    position:relative;
+  }
+  .badge-qr-wrap:hover {
+    transform:scale(1.04);
+    box-shadow:0 16px 40px rgba(59,130,246,.35);
+  }
+  .badge-qr-wrap::after {
+    content:'🔍 Agrandir';
+    position:absolute;
+    inset:0;
+    background:rgba(59,130,246,.88);
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    font-weight:700;
+    color:#fff;
+    opacity:0;
+    transition:opacity .2s;
+  }
+  .badge-qr-wrap:hover::after { opacity:1; }
+  .badge-qr-wrap canvas { border-radius:8px; display:block; }
+
+  /* Identité */
+  .badge-identity { text-align:center; }
+  .badge-name-row {
+    font-size:26px;
+    font-weight:700;
+    color:var(--text);
+    margin-bottom:6px;
+    letter-spacing:-.3px;
+  }
+  .badge-poste {
+    font-size:12px;
+    color:var(--text3);
+    text-transform:uppercase;
+    letter-spacing:1px;
+    margin-bottom:16px;
+  }
+  .badge-id-chip {
+    font-family:var(--mono);
+    font-size:13px;
+    letter-spacing:2px;
+    font-weight:600;
+    padding:8px 20px;
+    border-radius:40px;
+    background:var(--bg3);
+    border:1px solid var(--border2);
+    color:var(--blue2);
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .badge-company-row {
+    font-size:11px;
+    color:var(--text3);
+    letter-spacing:.5px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+  }
+
+  /* Status actif */
+  .badge-status-pill {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 18px;
+    border-radius:40px;
+    background:rgba(16,185,129,.1);
+    border:1px solid rgba(16,185,129,.25);
+    color:var(--green);
+    font-size:12px;
+    font-weight:600;
+    font-family:var(--mono);
+    letter-spacing:.5px;
+  }
+  .badge-status-dot {
+    width:7px; height:7px; border-radius:50%; background:var(--green);
+    animation:pulse-dot 1.8s ease-in-out infinite;
+  }
+
+  /* Actions rapides badge */
+  .badge-actions {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    justify-content:center;
+    margin-top:4px;
+  }
+
+  /* ═══ ZONES GRID (style feed-row de employe_espace) ═══ */
+  .zones-feed { display:flex; flex-direction:column; gap:7px; }
+  .zone-row {
+    display:flex; align-items:center; gap:12px;
+    padding:11px 14px; border-radius:10px;
+    background:var(--bg3); border:1px solid var(--border);
+    transition:all .18s; cursor:default;
+  }
+  .zone-row:hover { border-color:var(--border3); background:var(--bg4); transform:translateX(3px); }
+
+  .zone-av {
+    width:38px; height:38px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:17px; flex-shrink:0;
+  }
+  .zone-av.critique { background:linear-gradient(135deg,#7f1d1d,#ef4444); box-shadow:0 3px 10px rgba(239,68,68,.3); }
+  .zone-av.standard { background:linear-gradient(135deg,#1d4ed8,#3b82f6); box-shadow:0 3px 10px rgba(59,130,246,.3); }
+  .zone-av.public   { background:linear-gradient(135deg,#059669,#10b981); box-shadow:0 3px 10px rgba(16,185,129,.3); }
+
+  .zone-name  { font-size:13px; font-weight:600; color:var(--text); margin-bottom:2px; }
+  .zone-desc  { font-size:11px; color:var(--text3); }
+
+  .zone-badge {
+    padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700;
+    letter-spacing:.5px; font-family:var(--mono); flex-shrink:0;
+  }
+  .zone-badge.critique { background:rgba(239,68,68,.1);  color:var(--red);   border:1px solid rgba(239,68,68,.2); }
+  .zone-badge.standard { background:rgba(59,130,246,.1); color:var(--blue2); border:1px solid rgba(59,130,246,.2); }
+  .zone-badge.public   { background:rgba(16,185,129,.1); color:var(--green); border:1px solid rgba(16,185,129,.2); }
+
+  /* ═══ HORAIRES TABLE ═══ */
+  .horaire-list { display:flex; flex-direction:column; gap:6px; }
+  .horaire-row {
+    display:flex; align-items:center; gap:12px;
+    padding:10px 14px;
+    border-radius:10px;
+    background:var(--bg3);
+    border:1px solid var(--border);
+    transition:all .18s;
+  }
+  .horaire-row:hover { border-color:var(--border3); background:var(--bg4); }
+  .horaire-day {
+    font-size:12px; font-weight:600; color:var(--text2);
+    text-transform:capitalize; min-width:90px;
+  }
+  .horaire-hours {
+    flex:1; font-family:var(--mono); font-size:12px;
+    color:var(--text); font-weight:500;
+    display:flex; align-items:center; gap:8px;
+  }
+  .horaire-dot {
+    width:6px; height:6px; border-radius:50%; flex-shrink:0;
+    background:var(--green);
+  }
+  .horaire-dot.closed { background:var(--red); }
+
+  /* Pill styles for horaires */
+  .h-pill {
+    padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700;
+    font-family:var(--mono);
+  }
+  .h-pill.open   { background:rgba(16,185,129,.1); color:var(--green); border:1px solid rgba(16,185,129,.2); }
+  .h-pill.closed { background:rgba(239,68,68,.1);  color:var(--red);   border:1px solid rgba(239,68,68,.2); }
+
+  /* ═══ NFC SIMULATOR PREMIUM ═══ */
+  .nfc-card {
+    background:var(--bg3);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:28px 24px;
+    text-align:center;
+    cursor:pointer;
+    transition:all .3s ease;
+    position:relative;
+    overflow:hidden;
+  }
+  .nfc-card::before {
+    content:'';
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at 50% 100%, rgba(139,92,246,.08) 0%, transparent 60%);
+    pointer-events:none;
+  }
+  .nfc-card:hover {
+    border-color:rgba(139,92,246,.4);
+    background:var(--bg4);
+    box-shadow:0 10px 30px rgba(139,92,246,.15);
+    transform:translateY(-2px);
+  }
+  .nfc-rings {
+    position:relative;
+    width:72px; height:72px;
+    margin:0 auto 16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .nfc-rings::before, .nfc-rings::after {
+    content:'';
+    position:absolute;
+    border-radius:50%;
+    border:2px solid rgba(139,92,246,.3);
+    animation:nfc-expand 2s ease-out infinite;
+  }
+  .nfc-rings::before { width:100%; height:100%; animation-delay:0s; }
+  .nfc-rings::after  { width:140%; height:140%; animation-delay:.5s; }
+  @keyframes nfc-expand {
+    0%   { transform:scale(.7); opacity:.7; }
+    100% { transform:scale(1.4); opacity:0; }
+  }
+  .nfc-icon-inner {
+    width:52px; height:52px; border-radius:14px;
+    background:linear-gradient(135deg, rgba(139,92,246,.2), rgba(139,92,246,.1));
+    border:1px solid rgba(139,92,246,.3);
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px;
+    position:relative; z-index:1;
+  }
+  .nfc-title  { font-size:15px; font-weight:700; color:var(--text); margin-bottom:6px; }
+  .nfc-desc   { font-size:12px; color:var(--text3); line-height:1.5; }
+  .nfc-tap-hint {
+    margin-top:14px;
+    font-size:10.5px; font-weight:700; letter-spacing:1px;
+    text-transform:uppercase; color:var(--purple);
+    font-family:var(--mono);
+  }
+
+  /* NFC Result Toast */
+  .nfc-result {
+    position:fixed; bottom:28px; left:50%; transform:translateX(-50%);
+    padding:14px 24px;
+    border-radius:14px;
+    display:flex; align-items:center; gap:12px;
+    z-index:9999;
+    animation:slide-up .35s cubic-bezier(.22,1,.36,1);
+    min-width:260px;
+    box-shadow:0 16px 40px rgba(0,0,0,.4);
+  }
+  .nfc-result.success {
+    background:rgba(16,185,129,.15);
+    border:1px solid rgba(16,185,129,.3);
+    color:var(--green);
+  }
+  .nfc-result.error {
+    background:rgba(239,68,68,.15);
+    border:1px solid rgba(239,68,68,.3);
+    color:var(--red);
+  }
+  .nfc-result-icon { font-size:22px; }
+  .nfc-result-text { font-size:13px; font-weight:600; font-family:var(--mono); }
+  @keyframes slide-up {
+    from { opacity:0; transform:translate(-50%, 20px); }
+    to   { opacity:1; transform:translate(-50%, 0); }
+  }
+
+  /* ═══ MODAL QR PREMIUM ═══ */
+  .modal-overlay {
+    display:none; position:fixed; inset:0; z-index:9999;
+    background:rgba(8,13,23,.88); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center;
+  }
+  .modal {
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:var(--radius); width:440px; max-width:95vw;
+    box-shadow:0 24px 64px rgba(0,0,0,.6);
+    animation:modal-in .25s cubic-bezier(.22,1,.36,1);
+    overflow:hidden;
+  }
+  @keyframes modal-in {
+    from { opacity:0; transform:translateY(24px) scale(.96); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+  }
+  .modal-accent { height:3px; background:linear-gradient(90deg,var(--blue),var(--cyan),var(--purple)); }
+  .modal-head {
+    padding:20px 24px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .modal-title { font-weight:700; font-size:16px; color:var(--text); }
+  .modal-close {
+    width:32px; height:32px; border-radius:8px;
+    border:1px solid var(--border2); background:var(--bg3);
+    color:var(--text2); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:14px;
+  }
+  .modal-close:hover { background:var(--bg4); color:var(--text); }
+  .modal-body { padding:28px; text-align:center; }
+  .modal-footer {
+    padding:16px 24px; border-top:1px solid var(--border);
+    display:flex; justify-content:flex-end; gap:8px;
+  }
+
+  .qr-container-modal {
+    background:#fff;
+    padding:18px; border-radius:16px;
+    display:inline-block;
+    box-shadow:0 8px 24px rgba(0,0,0,.2);
+  }
+  .qr-container-modal canvas { border-radius:8px; display:block; }
+
+  .info-box {
+    background:var(--bg3); border:1px solid var(--border);
+    border-radius:10px; padding:14px 16px;
+    text-align:center; color:var(--text3); font-size:13px;
+  }
+  .info-box .info-ico { font-size:36px; margin-bottom:8px; opacity:.5; }
 </style>
 
-<div class="badge-container">
-  
-  <!-- Statistiques rapides -->
-  <div class="stats-mini">
-    <div class="stat-card">
-      <div class="stat-icon">🔑</div>
-      <div class="stat-value">{{ total_acces|default:"0" }}</div>
-      <div class="stat-label">Accès totaux</div>
+<div class="badge-wrap">
+
+  <!-- ═══════════════ KPI GRID ═══════════════ -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Accès totaux</span><div class="kpi-icon-wrap">🔑</div></div>
+      <div class="kpi-val kpi-counter" data-target="{{ total_acces|default:0 }}">{{ total_acces|default:0 }}</div>
+      <div class="kpi-sub">Depuis création</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
     </div>
-    <div class="stat-card">
-      <div class="stat-icon">✅</div>
-      <div class="stat-value">{{ taux_succes|default:"0" }}%</div>
-      <div class="stat-label">Taux succès</div>
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Taux succès</span><div class="kpi-icon-wrap">✅</div></div>
+      <div class="kpi-val kpi-counter" data-target="{{ taux_succes|default:0 }}">{{ taux_succes|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
+      <div class="kpi-sub up">Accès autorisés</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:0 }}%"></div></div>
     </div>
-    <div class="stat-card">
-      <div class="stat-icon">🚪</div>
-      <div class="stat-value">{{ zones_accessibles|length }}</div>
-      <div class="stat-label">Zones accessibles</div>
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Zones</span><div class="kpi-icon-wrap">🚪</div></div>
+      <div class="kpi-val kpi-counter" data-target="{{ zones_accessibles|length }}">{{ zones_accessibles|length }}</div>
+      <div class="kpi-sub">Zones accessibles</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%"></div></div>
+    </div>
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Validité</span><div class="kpi-icon-wrap">📅</div></div>
+      <div class="kpi-val" style="font-size:22px;padding-top:6px;">{{ badge_validite|default:"2026" }}</div>
+      <div class="kpi-sub">Expire le {{ badge_expiration|default:"31/12/2026" }}</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ badge_validite_pct|default:75 }}%"></div></div>
     </div>
   </div>
 
-  <!-- Carte badge principale -->
-  <div class="badge-card">
-    <div class="badge-qr" onclick="showFullQR()">
-      <canvas id="badge-qr-canvas" width="200" height="200"></canvas>
-    </div>
-    <div class="badge-info">
-      <div class="badge-name">{{ employe.prenom }} {{ employe.nom }}</div>
-      <div class="badge-id">
-        <i class="fas fa-microchip" style="font-size: 14px;"></i> {{ employe.badge_id|default:"En attente" }}
+  <!-- ═══════════════ CARTE BADGE PRINCIPALE ═══════════════ -->
+  <div>
+    <div class="section-label">🪪 Badge d'identification</div>
+    <div class="badge-card-premium">
+      <div class="badge-accent-bar"></div>
+      <div class="badge-inner">
+
+        <!-- QR Code -->
+        <div class="badge-qr-wrap" onclick="showFullQR()" title="Cliquer pour agrandir">
+          <canvas id="badge-qr-canvas"></canvas>
+        </div>
+
+        <!-- Identité -->
+        <div class="badge-identity">
+          <div class="badge-name-row">{{ employe.prenom }} {{ employe.nom }}</div>
+          <div class="badge-poste">{{ employe.poste|default:"Employé" }} · {{ employe.departement|default:"SIGR-CA" }}</div>
+          <div class="badge-id-chip">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="4"/><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01M12 12h.01"/></svg>
+            {{ employe.badge_id|default:"En attente d'attribution" }}
+          </div>
+          <div class="badge-company-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            SIGR-CA — Système Intelligent de Gestion des Ressources
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="badge-status-pill">
+          <span class="badge-status-dot"></span>
+          BADGE ACTIF · ACCÈS AUTORISÉ
+        </div>
+
+        <!-- Actions -->
+        <div class="badge-actions">
+          <button class="btn-primary btn-sm" onclick="showFullQR()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/></svg>
+            QR Code
+          </button>
+          <button class="btn-ghost btn-sm" onclick="simulateNFC()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            Simuler NFC
+          </button>
+          <button class="btn-ghost btn-sm" onclick="downloadQRDirect()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Télécharger
+          </button>
+        </div>
+
       </div>
-      <div class="badge-company">
-        <i class="fas fa-building"></i> SIGR-CA - Système Intelligent de Gestion des Ressources
-      </div>
-    </div>
-    <div class="badge-status">
-      <i class="fas fa-circle"></i> Badge actif - Valide pour les accès
     </div>
   </div>
 
-  <div class="g2">
+  <!-- ═══════════════ ZONES + HORAIRES ═══════════════ -->
+  <div class="grid-2">
+
     <!-- Zones accessibles -->
     <div class="card">
       <div class="card-head">
-        <i class="fas fa-door-open" style="color: var(--blue2);"></i>
+        <div class="card-head-icon" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);">🚪</div>
         <span class="card-title">Zones accessibles</span>
-        <span class="card-sub">{{ zones_accessibles|length }} zone(s)</span>
+        <span class="card-badge" style="background:rgba(59,130,246,.1);color:var(--blue2);">{{ zones_accessibles|length }} zone(s)</span>
       </div>
-      <div class="card-body">
-        <div class="zones-grid">
+      <div class="card-body" style="padding:14px;">
+        <div class="zones-feed">
           {% for zone in zones_accessibles %}
-          <div class="zone-tag" title="Cliquez pour voir les détails">
-            <div class="zone-icon">
+          <div class="zone-row">
+            <div class="zone-av {{ zone.niveau_securite }}">
               {% if zone.niveau_securite == 'critique' %}🔒
               {% elif zone.niveau_securite == 'standard' %}🚪
               {% else %}🌐{% endif %}
             </div>
-            <div class="zone-name">{{ zone.nom }}</div>
-            <div class="zone-level level-{{ zone.niveau_securite }}">
-              {% if zone.niveau_securite == 'critique' %}Restreint
-              {% elif zone.niveau_securite == 'standard' %}Standard
-              {% else %}Public{% endif %}
+            <div style="flex:1;min-width:0;">
+              <div class="zone-name">{{ zone.nom }}</div>
+              <div class="zone-desc">{{ zone.description|default:"Zone de travail" }}</div>
             </div>
+            <span class="zone-badge {{ zone.niveau_securite }}">
+              {% if zone.niveau_securite == 'critique' %}RESTREINT
+              {% elif zone.niveau_securite == 'standard' %}STANDARD
+              {% else %}PUBLIC{% endif %}
+            </span>
+          </div>
+          {% empty %}
+          <div class="info-box">
+            <div class="info-ico">🔍</div>
+            <div>Aucune zone assignée</div>
           </div>
           {% endfor %}
         </div>
@@ -456,78 +638,109 @@
     <!-- Horaires d'accès -->
     <div class="card">
       <div class="card-head">
-        <i class="fas fa-clock" style="color: var(--cyan);"></i>
+        <div class="card-head-icon" style="background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.2);">🕐</div>
         <span class="card-title">Horaires d'accès</span>
-        <span class="card-sub">Semaine type</span>
+        <span class="card-badge" style="background:rgba(6,182,212,.1);color:var(--cyan);">Semaine type</span>
       </div>
-      <div class="card-body">
-        <table class="horaire-table">
+      <div class="card-body" style="padding:14px;">
+        <div class="horaire-list">
           {% for jour, horaire in horaires_acces.items %}
-          <tr>
-            <td>
-              <i class="fas fa-calendar-day" style="margin-right: 8px; color: var(--text3);"></i>
+          <div class="horaire-row">
+            <div class="horaire-day">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:5px;color:var(--text3)"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               {{ jour|capfirst }}
-            </td>
-            <td>
+            </div>
+            <div class="horaire-hours">
               {% if horaire.debut == 'Fermé' %}
-              <span class="badge b-red"><i class="fas fa-ban"></i> Fermé</span>
+                <span class="horaire-dot closed"></span>
+                <span class="h-pill closed">FERMÉ</span>
               {% else %}
-              <span class="badge b-green">
-                <i class="fas fa-hourglass-start"></i> {{ horaire.debut }} → <i class="fas fa-hourglass-end"></i> {{ horaire.fin }}
-              </span>
+                <span class="horaire-dot"></span>
+                <span style="font-family:var(--mono);font-size:12px;color:var(--text);">{{ horaire.debut }}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                <span style="font-family:var(--mono);font-size:12px;color:var(--text);">{{ horaire.fin }}</span>
+                <span class="h-pill open" style="margin-left:auto;">OUVERT</span>
               {% endif %}
-            </td>
-          </tr>
+            </div>
+          </div>
           {% endfor %}
-        </table>
+        </div>
       </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════ NFC VIRTUEL ═══════════════ -->
+  <div>
+    <div class="section-label">📡 Accès sans contact</div>
+    <div class="nfc-card" onclick="simulateNFC()">
+      <div class="nfc-rings">
+        <div class="nfc-icon-inner">📱</div>
+      </div>
+      <div class="nfc-title">Simulation NFC</div>
+      <div class="nfc-desc">
+        Cliquez pour simuler un passage de badge.<br>
+        En environnement réel, approchez votre téléphone du lecteur d'accès.
+      </div>
+      <div class="nfc-tap-hint">⬆ Appuyer pour simuler</div>
     </div>
   </div>
 
-  <!-- Simulation NFC -->
+  <!-- ═══════════════ STATS PERSONNELLES ═══════════════ -->
   <div class="card">
     <div class="card-head">
-      <i class="fas fa-wifi" style="color: var(--purple);"></i>
-      <span class="card-title">NFC Virtuel</span>
-      <span class="card-sub">Simulation d'accès</span>
+      <div class="card-head-icon" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.2);">📊</div>
+      <span class="card-title">Mes statistiques d'accès</span>
     </div>
-    <div class="card-body">
-      <div class="nfc-simulator" onclick="simulateNFC()">
-        <div class="nfc-icon">
-          <i class="fas fa-mobile-alt"></i>
-        </div>
-        <div class="nfc-title">📱 Simulation NFC</div>
-        <div class="nfc-desc">Tapez pour simuler un passage de badge</div>
-        <div class="nfc-desc" style="margin-top: 8px;">
-          <i class="fas fa-info-circle"></i> En environnement réel, approchez votre téléphone du lecteur
-        </div>
+    <div class="card-body" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;text-align:center;">
+      <div>
+        <div style="font-size:36px;font-weight:700;font-family:var(--mono);color:var(--blue);">{{ total_acces_mois|default:0 }}</div>
+        <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;margin-top:4px;letter-spacing:.5px;">Accès ce mois</div>
+      </div>
+      <div>
+        <div style="font-size:36px;font-weight:700;font-family:var(--mono);color:var(--green);">{{ jours_actifs|default:0 }}</div>
+        <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;margin-top:4px;letter-spacing:.5px;">Jours actifs</div>
+      </div>
+      <div>
+        <div style="font-size:36px;font-weight:700;font-family:var(--mono);color:var(--purple);">{{ heures_totales|default:0 }}h</div>
+        <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;margin-top:4px;letter-spacing:.5px;">Heures présence</div>
       </div>
     </div>
   </div>
+
 </div>
 
-<!-- Modal QR Code amélioré -->
-<div id="qrModal" class="modal-qr" style="display:none" onclick="if(event.target===this)closeQRModal()">
-  <div class="modal-qr-content">
-    <div class="modal-qr-header">
-      <h3><i class="fas fa-qrcode"></i> Mon QR Code d'accès</h3>
-      <button class="modal-qr-close" onclick="closeQRModal()">✕</button>
+<!-- ═══ MODAL QR PREMIUM ═══ -->
+<div class="modal-overlay" id="qrModal" onclick="if(event.target===this)closeQRModal()">
+  <div class="modal">
+    <div class="modal-accent"></div>
+    <div class="modal-head">
+      <span class="modal-title">📱 Mon QR Code d'accès</span>
+      <button class="modal-close" onclick="closeQRModal()">✕</button>
     </div>
-    <div class="modal-qr-body">
-      <div id="full-qr-container" style="display: flex; justify-content: center;"></div>
-      <div class="badge-id" style="margin-top: 20px; font-size: 14px;">
-        <i class="fas fa-id-card"></i> {{ employe.badge_id }}
+    <div class="modal-body">
+      <div style="margin-bottom:20px;">
+        <div class="qr-container-modal">
+          <canvas id="qr-modal-canvas"></canvas>
+        </div>
       </div>
-      <p style="margin-top: 16px; font-size: 12px; color: var(--text2);">
-        <i class="fas fa-info-circle"></i> Présentez ce code au lecteur pour accéder aux zones autorisées
-      </p>
+      <div style="font-family:var(--mono);font-size:12px;background:var(--bg3);padding:10px 16px;border-radius:10px;color:var(--blue2);border:1px solid var(--border2);display:inline-block;letter-spacing:1.5px;">
+        {{ employe.badge_id|default:"—" }}
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--text3);line-height:1.6;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Présentez ce code au lecteur pour accéder aux zones autorisées.
+      </div>
     </div>
-    <div class="modal-qr-footer">
-      <button class="btn-download" onclick="downloadQR()">
-        <i class="fas fa-download"></i> Télécharger
+    <div class="modal-footer">
+      <button class="btn-ghost btn-sm" onclick="closeQRModal()">Fermer</button>
+      <button class="btn-ghost btn-sm" onclick="printQR()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Imprimer
       </button>
-      <button class="btn-print" onclick="printQR()">
-        <i class="fas fa-print"></i> Imprimer
+      <button class="btn-primary btn-sm" onclick="downloadQR()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Télécharger
       </button>
     </div>
   </div>
@@ -535,118 +748,133 @@
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-let qrCode = null;
-let fullQR = null;
+  var qrInline = null;
+  var qrModal  = null;
 
-// Données du QR Code
-const badgeData = JSON.stringify({
-  badge_id: "{{ employe.badge_id }}",
-  nom: "{{ employe.prenom }} {{ employe.nom }}",
-  entreprise: "SIGR-CA",
-  niveau: "{{ employe.niveau|default:'employe' }}",
-  timestamp: new Date().toISOString()
-});
+  // ─── Données du badge ───
+  const badgeData = JSON.stringify({
+    badge_id:   "{{ employe.badge_id }}",
+    nom:        "{{ employe.prenom }} {{ employe.nom }}",
+    entreprise: "SIGR-CA",
+    niveau:     "{{ employe.niveau|default:'employe' }}",
+    timestamp:  new Date().toISOString()
+  });
 
-// Génération du QR Code
-qrCode = new QRCode(document.getElementById("badge-qr-canvas"), {
-  text: badgeData,
-  width: 200,
-  height: 200,
-  colorDark: "#1a1a2e",
-  colorLight: "#ffffff",
-  correctLevel: QRCode.CorrectLevel.H
-});
-
-// Afficher le QR Code en grand
-function showFullQR() {
-  const modal = document.getElementById('qrModal');
-  modal.style.display = 'flex';
-  
-  const container = document.getElementById('full-qr-container');
-  container.innerHTML = '';
-  fullQR = new QRCode(container, {
-    text: badgeData,
-    width: 280,
-    height: 280,
-    colorDark: "#1a1a2e",
-    colorLight: "#ffffff",
+  // ─── Générer QR inline ───
+  qrInline = new QRCode(document.getElementById("badge-qr-canvas"), {
+    text:         badgeData,
+    width:        180,
+    height:       180,
+    colorDark:    "#0d1320",
+    colorLight:   "#ffffff",
     correctLevel: QRCode.CorrectLevel.H
   });
-}
 
-// Fermer le modal QR
-function closeQRModal() {
-  document.getElementById('qrModal').style.display = 'none';
-}
+  // ─── Modal QR ───
+  function showFullQR() {
+    const modal = document.getElementById('qrModal');
+    modal.style.display = 'flex';
+    if (!qrModal) {
+      qrModal = new QRCode(document.getElementById("qr-modal-canvas"), {
+        text:         badgeData,
+        width:        240,
+        height:       240,
+        colorDark:    "#0d1320",
+        colorLight:   "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+  }
+  function closeQRModal() {
+    document.getElementById('qrModal').style.display = 'none';
+  }
 
-// Télécharger le QR Code
-function downloadQR() {
-  const canvas = document.querySelector('#full-qr-container canvas');
-  const link = document.createElement('a');
-  link.download = 'badge_qr_{{ employe.badge_id }}.png';
-  link.href = canvas.toDataURL();
-  link.click();
-}
+  // ─── Télécharger (modal) ───
+  function downloadQR() {
+    const canvas = document.querySelector('#qr-modal-canvas canvas');
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = 'badge_{{ employe.badge_id }}.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  }
 
-// Imprimer le QR Code
-function printQR() {
-  const canvas = document.querySelector('#full-qr-container canvas');
-  const win = window.open();
-  win.document.write(`
-    <html>
-      <head>
-        <title>Badge QR - {{ employe.prenom }} {{ employe.nom }}</title>
-        <style>
-          body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: Arial, sans-serif;
-          }
-          .print-container {
-            text-align: center;
-          }
-          img {
-            width: 250px;
-            height: 250px;
-          }
-          h3 {
-            margin-top: 20px;
-            margin-bottom: 5px;
-          }
-          p {
-            margin: 5px 0;
-            color: #666;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="print-container">
-          <img src="${canvas.toDataURL()}" />
-          <h3>{{ employe.prenom }} {{ employe.nom }}</h3>
-          <p><strong>{{ employe.badge_id }}</strong></p>
-          <p>SIGR-CA - Contrôle d'accès</p>
-        </div>
-        <script>window.print();<\/script>
-      </body>
-    </html>
-  `);
-  win.print();
-}
+  // ─── Télécharger direct (inline) ───
+  function downloadQRDirect() {
+    showFullQR();
+    setTimeout(function() {
+      downloadQR();
+    }, 300);
+  }
 
-// Simulation NFC
-function simulateNFC() {
-  alert(`📱 SIMULATION NFC\n\n━━━━━━━━━━━━━━━━━━━━━━\n🔑 Badge: {{ employe.badge_id }}\n👤 Nom: {{ employe.prenom }} {{ employe.nom }}\n🏢 Entreprise: SIGR-CA\n━━━━━━━━━━━━━━━━━━━━━━\n\n✅ Accès autorisé\n\nEn environnement réel, approchez votre téléphone du lecteur.`);
-}
+  // ─── Imprimer ───
+  function printQR() {
+    const canvas = document.querySelector('#qr-modal-canvas canvas');
+    if (!canvas) return;
+    const win = window.open();
+    win.document.write(`
+      <html>
+        <head>
+          <title>Badge · {{ employe.prenom }} {{ employe.nom }}</title>
+          <style>
+            body { display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:'Segoe UI',sans-serif; background:#fff; margin:0; }
+            .wrap { text-align:center; padding:40px; border:2px solid #e2e8f0; border-radius:20px; }
+            img { width:220px; height:220px; border-radius:12px; }
+            h2 { margin:20px 0 4px; font-size:20px; color:#0f172a; }
+            .id { font-family:monospace; font-size:14px; color:#3b82f6; background:#eff6ff; padding:6px 16px; border-radius:20px; display:inline-block; margin:8px 0; letter-spacing:2px; }
+            p  { color:#64748b; font-size:12px; margin:4px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="wrap">
+            <img src="${canvas.toDataURL()}" />
+            <h2>{{ employe.prenom }} {{ employe.nom }}</h2>
+            <div class="id">{{ employe.badge_id }}</div>
+            <p>SIGR-CA — Contrôle d'accès</p>
+            <p style="color:#94a3b8;font-size:11px;">Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
+          </div>
+          <script>window.print();<\/script>
+        </body>
+      </html>
+    `);
+  }
 
-// Animation d'entrée
-document.addEventListener('DOMContentLoaded', function() {
-  const cards = document.querySelectorAll('.card, .badge-card, .stat-card');
-  cards.forEach((card, index) => {
-    card.style.animation = `fadeIn 0.5s ease ${index * 0.1}s both`;
+  // ─── Simulation NFC ───
+  function simulateNFC() {
+    // Toast résultat
+    var toast = document.createElement('div');
+    toast.className = 'nfc-result success';
+    toast.innerHTML = '<span class="nfc-result-icon">✅</span><div class="nfc-result-text">Accès autorisé · {{ employe.badge_id }}</div>';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3500);
+  }
+
+  // ─── KPI counter animation ───
+  document.querySelectorAll('.kpi-counter').forEach(function(el) {
+    var target = parseInt(el.dataset.target || '0', 10);
+    if (isNaN(target) || target === 0) return;
+    var duration = 900, step = target / duration * 16, current = 0;
+    var suffix = el.innerHTML.includes('%') ? '<span style="font-size:18px;color:var(--text3);">%</span>' : '';
+    var timer = setInterval(function() {
+      current = Math.min(current + step, target);
+      el.innerHTML = Math.round(current) + suffix;
+      if (current >= target) clearInterval(timer);
+    }, 16);
   });
-});
+
+  // ─── Entry animations ───
+  document.addEventListener('DOMContentLoaded', function() {
+    var items = document.querySelectorAll('.kpi, .badge-card-premium, .card, .nfc-card');
+    items.forEach(function(el, i) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(16px)';
+      el.style.transition = 'opacity .4s ease, transform .4s ease';
+      setTimeout(function() {
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
+      }, i * 70);
+    });
+  });
 </script>
 
 {% endblock %}

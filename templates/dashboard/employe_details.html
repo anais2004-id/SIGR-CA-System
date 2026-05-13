@@ -1,289 +1,434 @@
 {% extends "base.html" %}
-{% block title %}Fiche Employé - {{ employe.prenom }} {{ employe.nom }}{% endblock %}
+{% block title %}Fiche Employé · {{ employe.prenom }} {{ employe.nom }}{% endblock %}
 {% block nav_employes %}active{% endblock %}
 {% block page_title %}Fiche Employé{% endblock %}
 {% block page_sub %}{{ employe.prenom }} {{ employe.nom }}{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:8px; align-items:center;">
-  <a href="{% url 'employe_list' %}" class="btn btn-ghost btn-sm">
-    ← Retour à la liste
+<div style="display:flex; gap:10px; align-items:center;">
+  
+  <!-- Bouton Retour -->
+  <a href="{% url 'employe_list' %}" 
+     style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
+     onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+     onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    Retour
   </a>
-  <a href="{% url 'employe_modifier' employe.id %}" class="btn btn-primary btn-sm">
-    ✏️ Modifier
+  
+  <!-- Bouton Modifier -->
+  <a href="{% url 'employe_modifier' employe.id %}" 
+     style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
+     onmouseover="this.style.background='var(--blue2)';this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 14px rgba(59,130,246,.35)'"
+     onmouseout="this.style.background='var(--blue)';this.style.transform='none';this.style.boxShadow='none'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    Modifier
   </a>
-  <button class="btn btn-ghost btn-sm" onclick="exportEmployeeData()">
-    📥 Exporter CSV
+  
+  <!-- Bouton Export CSV -->
+  <button onclick="exportEmployeeData()"
+          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
+          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
   </button>
+  
+  <!-- Badge -->
+  <div class="live-pill" style="background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:var(--blue2);">
+    <span class="live-dot" style="background:var(--blue2);"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">{{ employe.badge_id|default:"SANS BADGE" }}</span>
+  </div>
+  
 </div>
 {% endblock %}
 
 {% block content %}
-<!-- En-tête avec photo -->
-<div class="profile-hdr">
-  <div class="profile-av">
-    {{ employe.prenom|first|upper }}{{ employe.nom|first|upper }}
-  </div>
-  <div>
-    <h1 style="font-size: 20px; margin-bottom: 4px;">{{ employe.prenom }} {{ employe.nom }}</h1>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-      <span class="badge {% if employe.statut == 'actif' %}b-green{% else %}b-red{% endif %}">
-        {% if employe.statut == 'actif' %}● Actif{% else %}○ Inactif{% endif %}
-      </span>
-      <span class="badge b-blue">🪪 {{ employe.badge_id|default:"Non assigné" }}</span>
-      <span class="badge b-purple">🔐 {{ employe.niveau_acces|default:"Staff" }}</span>
-    </div>
-  </div>
-</div>
+<style>
+/* ═══════════════════════════════════════
+   FONTS & TOKENS
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-<!-- Statistiques rapides -->
-<div class="g4">
-  <div class="kpi k-blue">
-    <div class="kpi-header">
-      <div class="kpi-label">Total accès</div>
-      <div class="kpi-icon">🔑</div>
-    </div>
-    <div class="kpi-value">{{ total_acces|default:0 }}</div>
-  </div>
-  <div class="kpi k-green">
-    <div class="kpi-header">
-      <div class="kpi-label">Accès autorisés</div>
-      <div class="kpi-icon">✅</div>
-    </div>
-    <div class="kpi-value">{{ acces_autorises|default:0 }}</div>
-  </div>
-  <div class="kpi k-red">
-    <div class="kpi-header">
-      <div class="kpi-label">Accès refusés</div>
-      <div class="kpi-icon">🚫</div>
-    </div>
-    <div class="kpi-value">{{ acces_refuses|default:0 }}</div>
-  </div>
-  <div class="kpi k-amber">
-    <div class="kpi-header">
-      <div class="kpi-label">Taux de succès</div>
-      <div class="kpi-icon">📊</div>
-    </div>
-    <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
-  </div>
-</div>
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
+  --border: rgba(99,140,185,.12); --border2: rgba(99,140,185,.18); --border3: rgba(99,140,185,.28);
+  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
+  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6;
+  --glow-blue: 0 0 20px rgba(59,130,246,.25); --glow-green: 0 0 20px rgba(16,185,129,.25);
+  --glow-red: 0 0 20px rgba(239,68,68,.25); --glow-amber: 0 0 20px rgba(245,158,11,.25);
+  --glow-purple: 0 0 20px rgba(139,92,246,.25); --glow-cyan: 0 0 20px rgba(6,182,212,.25);
+  --radius: 14px; --radius-sm: 8px;
+}
 
-<!-- Informations personnelles -->
-<div class="card">
-  <div class="card-head">
-    <span>📋</span>
-    <span class="card-title">Informations personnelles</span>
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font) !important; background: var(--bg0) !important; }
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; max-width: 1000px; margin: 0 auto; }
+
+/* ═══ PROFILE HEADER ═══ */
+.profile-header {
+  display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px;
+}
+.profile-avatar {
+  width: 80px; height: 80px; border-radius: 20px;
+  background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 800; color: #fff;
+  font-family: var(--mono); flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(59,130,246,.4);
+}
+.profile-avatar.inactive {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
+  box-shadow: 0 4px 20px rgba(107,114,128,.3);
+}
+.profile-info { flex: 1; min-width: 200px; }
+.profile-name { font-size: 22px; font-weight: 700; color: var(--text1); margin-bottom: 4px; }
+.profile-subtitle { font-size: 12px; color: var(--text3); margin-bottom: 10px; }
+.profile-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ═══ KPI GRID ═══ */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width:768px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+.kpi {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 18px 16px;
+  position: relative; overflow: hidden; transition: transform .25s, box-shadow .25s; cursor: default;
+}
+.kpi::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%); pointer-events: none; }
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+.kpi-accent { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--kpi-grad); box-shadow: 0 0 12px var(--kpi-color); }
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.kpi-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); }
+.kpi-icon-wrap { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--kpi-color) 12%, transparent); border: 1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent); font-size: 18px; flex-shrink: 0; }
+.kpi-val { font-family: var(--mono); font-size: 38px; font-weight: 700; color: var(--kpi-color); line-height: 1; margin-bottom: 8px; text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent); }
+.kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
+.kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+
+/* ═══ CARD ═══ */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.card-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.card-head-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+
+/* ═══ INFO GRID ═══ */
+.info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 20px 24px; }
+.info-item { padding: 12px 14px; background: var(--bg3); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.info-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text3); margin-bottom: 4px; }
+.info-value { font-size: 13px; font-weight: 600; color: var(--text1); word-break: break-word; }
+
+/* ═══ BADGES ═══ */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 10.5px; font-weight: 700; font-family: var(--mono); letter-spacing: .5px;
+}
+.badge-green  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.badge-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+.badge-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.2); }
+.badge-purple { background: rgba(139,92,246,.12); color: var(--purple); border: 1px solid rgba(139,92,246,.2); }
+
+/* ═══ TABLE ═══ */
+.tbl-wrap { overflow-x: auto; max-height: 380px; overflow-y: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tbl thead th { padding: 12px 14px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text3); border-bottom: 1px solid var(--border); background: var(--bg3); position: sticky; top: 0; z-index: 2; }
+.tbl tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
+.tbl tbody tr:hover { background: var(--bg3); }
+
+/* ═══ FILTER TABS ═══ */
+.filter-tab {
+  padding: 5px 12px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  cursor: pointer; font-size: 11px; font-weight: 600;
+  color: var(--text2); font-family: var(--font); transition: all .15s;
+}
+.filter-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
+</style>
+
+<div class="dash-wrap">
+
+  <!-- ═══════════════ PROFIL HEADER ═══════════════ -->
+  <div class="profile-header">
+    <div class="profile-avatar {% if employe.statut != 'actif' %}inactive{% endif %}">
+      {% if employe.photo_url %}
+      <img src="{{ employe.photo_url }}" alt="{{ employe.nom }}" style="width:100%;height:100%;object-fit:cover;border-radius:20px;">
+      {% else %}
+      {{ employe.prenom|first|upper }}{{ employe.nom|first|upper }}
+      {% endif %}
+    </div>
+    <div class="profile-info">
+      <div class="profile-name">{{ employe.prenom }} {{ employe.nom }}</div>
+      <div class="profile-subtitle">{{ employe.email|default:"—" }} · {{ employe.telephone|default:"—" }}</div>
+      <div class="profile-badges">
+        <span class="badge {% if employe.statut == 'actif' %}badge-green{% else %}badge-red{% endif %}">
+          {% if employe.statut == 'actif' %}● Actif{% else %}○ Inactif{% endif %}
+        </span>
+        <span class="badge badge-blue">🪪 {{ employe.badge_id|default:"Non assigné" }}</span>
+        <span class="badge badge-purple">🔐 {{ employe.niveau_acces|default:"Staff" }}</span>
+      </div>
+    </div>
   </div>
-  <div class="card-body">
-    <div class="field-grid">
-      <div class="field-box">
-        <div class="field-lbl">Nom complet</div>
-        <div class="field-val">{{ employe.nom|default:"—" }} {{ employe.prenom|default:"—" }}</div>
+
+  <!-- ═══════════════ KPIs ═══════════════ -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Total accès</span><div class="kpi-icon-wrap">🔑</div></div>
+      <div class="kpi-val">{{ total_acces|default:0 }}</div>
+      <div class="kpi-sub">Depuis le début</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Autorisés</span><div class="kpi-icon-wrap">✅</div></div>
+      <div class="kpi-val">{{ acces_autorises|default:0 }}</div>
+      <div class="kpi-sub">Accès réussis</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_autorises total_acces 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Refusés</span><div class="kpi-icon-wrap">🚫</div></div>
+      <div class="kpi-val">{{ acces_refuses|default:0 }}</div>
+      <div class="kpi-sub">Accès bloqués</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_refuses total_acces 100 %}{% else %}0{% endif %}%"></div></div>
+    </div>
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Taux succès</span><div class="kpi-icon-wrap">📊</div></div>
+      <div class="kpi-val">{{ taux_succes|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
+      <div class="kpi-sub">Performance</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:0 }}%"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ INFORMATIONS PERSONNELLES ═══════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">📋</div>
+      <span class="card-title">Informations personnelles</span>
+    </div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">👤 Nom complet</div>
+        <div class="info-value">{{ employe.nom|default:"—" }} {{ employe.prenom|default:"—" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Email</div>
-        <div class="field-val">{{ employe.email|default:"—" }}</div>
+      <div class="info-item">
+        <div class="info-label">📧 Email</div>
+        <div class="info-value" style="font-family:var(--mono);font-size:12px;">{{ employe.email|default:"—" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Téléphone</div>
-        <div class="field-val">{{ employe.telephone|default:"—" }}</div>
+      <div class="info-item">
+        <div class="info-label">📱 Téléphone</div>
+        <div class="info-value">{{ employe.telephone|default:"—" }}</div>
       </div>
       {% if employe.date_naissance %}
-      <div class="field-box">
-        <div class="field-lbl">Date de naissance</div>
-        <div class="field-val">{{ employe.date_naissance|date:"d/m/Y" }}</div>
+      <div class="info-item">
+        <div class="info-label">🎂 Date de naissance</div>
+        <div class="info-value">{{ employe.date_naissance|date:"d/m/Y" }}</div>
       </div>
       {% endif %}
       {% if employe.adresse %}
-      <div class="field-box">
-        <div class="field-lbl">Adresse</div>
-        <div class="field-val">{{ employe.adresse }}</div>
+      <div class="info-item">
+        <div class="info-label">📍 Adresse</div>
+        <div class="info-value">{{ employe.adresse }}</div>
       </div>
       {% endif %}
     </div>
   </div>
-</div>
 
-<!-- Informations professionnelles -->
-<div class="card">
-  <div class="card-head">
-    <span>🏢</span>
-    <span class="card-title">Informations professionnelles</span>
-  </div>
-  <div class="card-body">
-    <div class="field-grid">
-      <div class="field-box">
-        <div class="field-lbl">Département</div>
-        <div class="field-val">{{ employe.departement|default:"—" }}</div>
+  <!-- ═══════════════ INFORMATIONS PROFESSIONNELLES ═══════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">🏢</div>
+      <span class="card-title">Informations professionnelles</span>
+    </div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">🏢 Département</div>
+        <div class="info-value">{{ employe.departement|default:"—" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Poste</div>
-        <div class="field-val">{{ employe.poste|default:"—" }}</div>
+      <div class="info-item">
+        <div class="info-label">💼 Poste</div>
+        <div class="info-value">{{ employe.poste|default:"—" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Date d'embauche</div>
-        <div class="field-val">{{ employe.date_embauche|date:"d/m/Y"|default:"—" }}</div>
+      <div class="info-item">
+        <div class="info-label">📅 Date d'embauche</div>
+        <div class="info-value">{{ employe.date_embauche|date:"d/m/Y"|default:"—" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Type de contrat</div>
-        <div class="field-val">{{ employe.type_contrat|default:"CDI" }}</div>
+      <div class="info-item">
+        <div class="info-label">📝 Type de contrat</div>
+        <div class="info-value">{{ employe.type_contrat|default:"CDI" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Manager</div>
-        <div class="field-val">{{ employe.manager|default:"—" }}</div>
+      <div class="info-item">
+        <div class="info-label">👔 Manager</div>
+        <div class="info-value">{{ employe.manager|default:"—" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Heures hebdo</div>
-        <div class="field-val">{{ employe.heures_hebdo|default:"35" }}h</div>
+      <div class="info-item">
+        <div class="info-label">⏱️ Heures hebdo</div>
+        <div class="info-value">{{ employe.heures_hebdo|default:"35" }}h</div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Badge et accès -->
-<div class="card">
-  <div class="card-head">
-    <span>🪪</span>
-    <span class="card-title">Badge et droits d'accès</span>
-  </div>
-  <div class="card-body">
-    <div class="field-grid">
-      <div class="field-box">
-        <div class="field-lbl">Numéro de badge</div>
-        <div class="field-val"><code>{{ employe.badge_id|default:"Non assigné" }}</code></div>
+  <!-- ═══════════════ BADGE & ACCÈS ═══════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">🪪</div>
+      <span class="card-title">Badge et droits d'accès</span>
+    </div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">🔢 Numéro de badge</div>
+        <div class="info-value" style="font-family:var(--mono);color:var(--cyan);">{{ employe.badge_id|default:"Non assigné" }}</div>
       </div>
-      <div class="field-box">
-        <div class="field-lbl">Niveau d'accès</div>
-        <div class="field-val">{{ employe.niveau_acces|default:"Staff" }}</div>
+      <div class="info-item">
+        <div class="info-label">🔐 Niveau d'accès</div>
+        <div class="info-value">{{ employe.niveau_acces|default:"Staff" }}</div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Historique des accès -->
-<div class="card">
-  <div class="card-head">
-    <span>📊</span>
-    <span class="card-title">Historique des accès ({{ total_acces|default:0 }} entrées)</span>
-    <div style="margin-left: auto; display: flex; gap: 4px;">
-      <button class="btn btn-ghost btn-sm" onclick="filterAccess('all')">Tous</button>
-      <button class="btn btn-ghost btn-sm" onclick="filterAccess('autorise')">Autorisés</button>
-      <button class="btn btn-ghost btn-sm" onclick="filterAccess('refuse')">Refusés</button>
+  <!-- ═══════════════ HISTORIQUE DES ACCÈS ═══════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.2);">📊</div>
+      <span class="card-title">Historique des accès ({{ total_acces|default:0 }} entrées)</span>
+      <div style="display:flex;gap:4px;margin-left:auto;">
+        <button class="filter-tab active" onclick="filterAccess('all', this)">Tous</button>
+        <button class="filter-tab" onclick="filterAccess('autorise', this)">Autorisés</button>
+        <button class="filter-tab" onclick="filterAccess('refuse', this)">Refusés</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Date et heure</th>
+            <th>Zone / Bureau</th>
+            <th>Type d'accès</th>
+            <th>Résultat</th>
+          </tr>
+        </thead>
+        <tbody id="accessTableBody">
+          {% for acces in acces_list %}
+          <tr class="access-row" data-status="{{ acces.resultat|lower }}">
+            <td style="font-family:var(--mono);font-size:11px;">{{ acces.timestamp|date:"d/m/Y H:i:s" }}</td>
+            <td>{{ acces.bureau_nom|default:acces.zone|default:"Zone inconnue" }}</td>
+            <td><span class="badge badge-blue">{{ acces.type_acces|default:"RFID" }}</span></td>
+            <td>
+              {% if acces.resultat == 'AUTORISE' or acces.resultat == 'AUTORISED' %}
+              <span class="badge badge-green">✓ AUTORISÉ</span>
+              {% else %}
+              <span class="badge badge-red">✗ REFUSÉ</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="4">
+              <div style="text-align:center;padding:50px;color:var(--text3);">
+                <div style="font-size:44px;margin-bottom:10px;opacity:.4;">📭</div>
+                <div>Aucun accès enregistré</div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
-  <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Date et heure</th>
-          <th>Zone / Bureau</th>
-          <th>Type d'accès</th>
-          <th>Résultat</th>
-        </tr>
-      </thead>
-      <tbody id="accessTableBody">
-        {% for acces in acces_list %}
-        <tr class="access-row" data-status="{{ acces.resultat|lower }}">
-          <td style="font-family: monospace;">{{ acces.timestamp|date:"d/m/Y H:i:s" }}</td>
-          <td>{{ acces.bureau_nom|default:acces.zone|default:"Zone inconnue" }}</td>
-          <td>{{ acces.type_acces|default:"RFID" }}</td>
-          <td>
-            {% if acces.resultat == 'AUTORISE' or acces.resultat == 'AUTORISED' %}
-              <span class="badge b-green">✓ AUTORISÉ</span>
-            {% else %}
-              <span class="badge b-red">✗ REFUSÉ</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="4" style="text-align: center; padding: 40px; color: var(--text3);">
-            🔍 Aucun accès enregistré pour cet employé
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
 
-<!-- Réservations de l'employé -->
-<div class="card">
-  <div class="card-head">
-    <span>📅</span>
-    <span class="card-title">Réservations</span>
+  <!-- ═══════════════ RÉSERVATIONS ═══════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">📅</div>
+      <span class="card-title">Réservations</span>
+    </div>
+    <div class="tbl-wrap" style="max-height:300px;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Titre</th>
+            <th>Salle</th>
+            <th>Début</th>
+            <th>Fin</th>
+            <th>Participants</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reservation in reservations_list %}
+          <tr>
+            <td style="font-weight:600;color:var(--text1);">{{ reservation.titre|default:"Sans titre" }}</td>
+            <td>{{ reservation.bureau_nom|default:"Salle inconnue" }}</td>
+            <td style="font-family:var(--mono);font-size:11px;">{{ reservation.date_debut|date:"d/m/Y H:i" }}</td>
+            <td style="font-family:var(--mono);font-size:11px;">{{ reservation.date_fin|date:"d/m/Y H:i" }}</td>
+            <td style="text-align:center;">👥 {{ reservation.nb_participants|default:1 }}</td>
+            <td>
+              <span class="badge {% if reservation.statut == 'confirmee' or reservation.statut == 'CONFIRMEE' %}badge-green{% else %}badge-red{% endif %}">
+                {{ reservation.statut|default:"EN ATTENTE" }}
+              </span>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6">
+              <div style="text-align:center;padding:40px;color:var(--text3);">📭 Aucune réservation trouvée</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
-  <div style="overflow-x: auto;">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Titre</th>
-          <th>Salle</th>
-          <th>Date début</th>
-          <th>Date fin</th>
-          <th>Participants</th>
-          <th>Statut</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for reservation in reservations_list %}
-        <tr>
-          <td>{{ reservation.titre|default:"Sans titre" }}</td>
-          <td>{{ reservation.bureau_nom|default:"Salle inconnue" }}</td>
-          <td>{{ reservation.date_debut|date:"d/m/Y H:i" }}</td>
-          <td>{{ reservation.date_fin|date:"d/m/Y H:i" }}</td>
-          <td>{{ reservation.nb_participants|default:1 }}</td>
-          <td>
-            <span class="badge {% if reservation.statut == 'CONFIRMEE' %}b-green{% else %}b-red{% endif %}">
-              {{ reservation.statut|default:"EN ATTENTE" }}
-            </span>
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="6" style="text-align: center; padding: 40px; color: var(--text3);">
-            📭 Aucune réservation trouvée
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+
+</div><!-- /dash-wrap -->
 
 <script>
-// Filtrer les accès
-function filterAccess(status) {
-  const rows = document.querySelectorAll('.access-row');
-  rows.forEach(row => {
-    if (status === 'all') {
-      row.style.display = '';
-    } else {
-      const rowStatus = row.dataset.status;
-      row.style.display = rowStatus === status ? '' : 'none';
-    }
+/* ─── Filtre accès ─── */
+function filterAccess(status, btn) {
+  document.querySelectorAll('.filter-tab').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.access-row').forEach(function(row) {
+    row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
   });
 }
 
-// Exporter les données en CSV
+/* ─── Export CSV ─── */
 function exportEmployeeData() {
-  let csv = "Date,Zone,Type,Resultat\n";
-  document.querySelectorAll('.access-row').forEach(row => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length >= 4 && cells[0].innerText !== 'Aucun accès enregistré pour cet employé') {
-      csv += `"${cells[0].innerText}","${cells[1].innerText}","${cells[2].innerText}","${cells[3].innerText}"\n`;
+  var csv = 'Date,Zone,Type,Résultat\n';
+  document.querySelectorAll('.access-row').forEach(function(row) {
+    var cells = row.querySelectorAll('td');
+    if (cells.length >= 4) {
+      csv += '"' + cells[0].textContent.trim() + '","' + cells[1].textContent.trim() + '","' + cells[2].textContent.trim() + '","' + cells[3].textContent.trim() + '"\n';
     }
   });
-  
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  link.href = url;
-  link.setAttribute("download", "employe_{{ employe.nom }}_{{ employe.prenom }}_acces.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'employe_{{ employe.nom }}_{{ employe.prenom }}_acces.csv';
+  a.click();
 }
+
+/* ─── KPI counter ─── */
+document.querySelectorAll('.kpi-val').forEach(function(el) {
+  var text = el.textContent.replace(/\s/g,' ');
+  var num = parseInt(text.replace(/[^0-9]/g,''),10);
+  if (isNaN(num)||num===0)return;
+  var duration=900, step=num/duration*16, current=0;
+  var timer=setInterval(function(){current=Math.min(current+step,num);el.textContent=Math.round(current)+(text.includes('%')?'%':'');if(current>=num)clearInterval(timer);},16);
+});
 </script>
 {% endblock %}

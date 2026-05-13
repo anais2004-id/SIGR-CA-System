@@ -1,623 +1,530 @@
 {% extends "base.html" %}
 
-{% block title %}Mon Historique d'Accès - SIGR-CA{% endblock %}
+{% block title %}Mon Historique d'Accès · SIGR-CA{% endblock %}
 {% block page_title %}Mon Historique d'Accès{% endblock %}
 {% block page_sub %}Traçabilité complète de vos accès{% endblock %}
 {% block nav_emp_hist %}active{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:8px">
-  <button class="btn btn-ghost btn-sm" onclick="refreshData()">↻ Actualiser</button>
-  <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇️ Exporter CSV</button>
-  <button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 Exporter PDF</button>
+<div style="display:flex; gap:10px; align-items:center;">
+  <button class="tb-action-btn theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Basculer mode sombre/clair">
+    <span id="themeIcon">🌙</span>
+  </button>
+  <button class="tb-action-btn" onclick="refreshData()" title="Actualiser">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  </button>
+  <button class="tb-action-btn" onclick="exportCSV()" title="Exporter CSV">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  </button>
+  <button class="tb-action-btn" onclick="exportPDF()" title="Imprimer">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 12H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+  </button>
 </div>
 {% endblock %}
 
 {% block content %}
-
-{% if messages %}
-  {% for message in messages %}
-    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-      <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-      <div class="alert-text">{{ message }}</div>
-    </div>
-  {% endfor %}
-{% endif %}
-
-<!-- KPIs améliorés -->
-<div class="stats-grid">
-  <div class="stat-card blue">
-    <div class="stat-header">
-      <span class="stat-label">Total Accès</span>
-      <span class="stat-icon">🔑</span>
-    </div>
-    <div class="stat-value">{{ total_acces|default:0 }}</div>
-    <div class="stat-footer">Tous temps</div>
-  </div>
-  <div class="stat-card green">
-    <div class="stat-header">
-      <span class="stat-label">Accès Autorisés</span>
-      <span class="stat-icon">✅</span>
-    </div>
-    <div class="stat-value">{{ acces_autorises|default:0 }}</div>
-    <div class="stat-footer">Succès</div>
-  </div>
-  <div class="stat-card red">
-    <div class="stat-header">
-      <span class="stat-label">Accès Refusés</span>
-      <span class="stat-icon">🚫</span>
-    </div>
-    <div class="stat-value">{{ acces_refuses|default:0 }}</div>
-    <div class="stat-footer">Échecs</div>
-  </div>
-  <div class="stat-card purple">
-    <div class="stat-header">
-      <span class="stat-label">Taux de Succès</span>
-      <span class="stat-icon">📊</span>
-    </div>
-    <div class="stat-value">{{ taux_succes|default:0 }}%</div>
-    <div class="stat-footer">Performance</div>
-  </div>
-</div>
-
-<!-- Graphique d'activité -->
-<div class="card">
-  <div class="card-header">
-    <span class="card-icon">📈</span>
-    <span class="card-title">Activité mensuelle</span>
-    <div class="card-actions">
-      <button class="btn-small" onclick="changeChartPeriod('week')">Semaine</button>
-      <button class="btn-small active" onclick="changeChartPeriod('month')">Mois</button>
-      <button class="btn-small" onclick="changeChartPeriod('year')">Année</button>
-    </div>
-  </div>
-  <div class="card-body">
-    <canvas id="activity-chart" height="200" style="width:100%; max-height:250px"></canvas>
-  </div>
-</div>
-
-<div class="stats-row">
-  <!-- Statistiques par zone -->
-  <div class="card half">
-    <div class="card-header">
-      <span class="card-icon">🚪</span>
-      <span class="card-title">Fréquentation par zone</span>
-    </div>
-    <div class="card-body">
-      <div id="zone-stats"></div>
-    </div>
-  </div>
-
-  <!-- Statistiques par jour -->
-  <div class="card half">
-    <div class="card-header">
-      <span class="card-icon">📅</span>
-      <span class="card-title">Activité par jour</span>
-    </div>
-    <div class="card-body">
-      <div id="day-stats"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Filtres avancés -->
-<div class="filters-bar">
-  <div class="filter-group">
-    <button class="filter-btn active" onclick="filterLogs('all')">📋 Tous</button>
-    <button class="filter-btn" onclick="filterLogs('autorise')">✅ Autorisés</button>
-    <button class="filter-btn" onclick="filterLogs('refuse')">❌ Refusés</button>
-  </div>
-  <div class="filter-group">
-    <button class="filter-btn" onclick="filterLogs('today')">📅 Aujourd'hui</button>
-    <button class="filter-btn" onclick="filterLogs('week')">📆 7 jours</button>
-    <button class="filter-btn" onclick="filterLogs('month')">📅 30 jours</button>
-    <button class="filter-btn" onclick="filterLogs('custom')">📅 Personnalisé</button>
-  </div>
-  <div class="search-box">
-    <input type="text" id="searchInput" class="search-input" placeholder="🔍 Rechercher une zone..." onkeyup="searchLogs()">
-  </div>
-</div>
-
-<!-- Date picker personnalisé -->
-<div id="dateRangePicker" class="date-range" style="display:none">
-  <input type="date" id="dateStart" class="date-input">
-  <span>→</span>
-  <input type="date" id="dateEnd" class="date-input">
-  <button class="btn-small" onclick="applyCustomDate()">Appliquer</button>
-  <button class="btn-small" onclick="closeDatePicker()">Annuler</button>
-</div>
-
-<!-- Tableau des logs -->
-<div class="card">
-  <div class="card-header">
-    <span class="card-icon">📋</span>
-    <span class="card-title">Historique détaillé</span>
-    <span class="badge-count" id="log-count">{{ total_acces|default:0 }} entrées</span>
-  </div>
-  <div class="table-wrapper">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Date & Heure</th>
-          <th>Zone / Bureau</th>
-          <th>Méthode</th>
-          <th>Résultat</th>
-          <th>Détails</th>
-        </tr>
-      </thead>
-      <tbody id="logs-table-body">
-        {% for a in acces %}
-        <tr class="log-row" 
-            data-resultat="{{ a.resultat|lower }}" 
-            data-timestamp="{{ a.timestamp|date:'Y-m-d' }}"
-            data-datetime="{{ a.timestamp|date:'Y-m-d H:i:s' }}">
-          <td class="date-cell">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
-          <td>
-            <strong>{{ a.bureau_nom|default:"—" }}</strong>
-            <div class="method-badge">{{ a.type_acces|default:"RFID" }}</div>
-          </td>
-          <td><span class="badge badge-blue">{{ a.type_acces|default:"RFID" }}</span></td>
-          <td>
-            {% if a.resultat == 'AUTORISE' %}
-              <span class="badge badge-green">✅ AUTORISÉ</span>
-            {% else %}
-              <span class="badge badge-red">❌ REFUSÉ</span>
-            {% endif %}
-          </td>
-          <td class="details-cell">
-            {% if a.resultat == 'AUTORISE' %}
-              Accès validé avec succès
-            {% else %}
-              Tentative d'accès non autorisé
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr class="empty-row">
-          <td colspan="5">
-            <div class="empty-state">
-              <div class="empty-icon">🔍</div>
-              <div>Aucun historique d'accès disponible</div>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <!-- Pagination -->
-  <div class="pagination" id="pagination"></div>
-</div>
-
 <style>
-/* Layout */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.stat-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-}
-.stat-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.stat-label {
-  font-size: 11px;
-  color: var(--text2);
-  text-transform: uppercase;
-}
-.stat-icon {
-  font-size: 20px;
-}
-.stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--text);
-}
-.stat-footer {
-  font-size: 11px;
-  color: var(--text3);
-  margin-top: 8px;
-}
-.blue .stat-value { color: #1f6feb; }
-.green .stat-value { color: #2dba6f; }
-.red .stat-value { color: #f85149; }
-.purple .stat-value { color: #a371f7; }
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-.stats-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 24px;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.card-icon { font-size: 18px; }
-.card-title { font-size: 14px; font-weight: 600; flex: 1; }
-.card-actions { display: flex; gap: 8px; }
-.card-body { padding: 18px; }
-.half { margin-bottom: 0; }
-
-/* Filters */
-.filters-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 20px;
-  background: var(--bg2);
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-}
-.filter-group {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.filter-btn {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.filter-btn:hover {
-  background: var(--bg4);
-  border-color: var(--blue);
-}
-.filter-btn.active {
-  background: var(--blue);
-  color: white;
-  border-color: var(--blue);
-}
-.search-box {
-  display: flex;
-  align-items: center;
-}
-.search-input {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 6px 12px;
-  color: var(--text);
-  font-size: 12px;
-  width: 200px;
-}
-.search-input:focus {
-  outline: none;
-  border-color: var(--blue);
+/* ═══ MODE SOMBRE (défaut) ═══ */
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
+  --border:  rgba(99,140,185,.12);
+  --border2: rgba(99,140,185,.18);
+  --border3: rgba(99,140,185,.28);
+  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
+  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4;
+  --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+  --purple: #8b5cf6; --pink: #ec4899;
+  --glow-blue:   0 0 20px rgba(59,130,246,.25);
+  --glow-green:  0 0 20px rgba(16,185,129,.25);
+  --glow-red:    0 0 20px rgba(239,68,68,.25);
+  --glow-amber:  0 0 20px rgba(245,158,11,.25);
+  --glow-purple: 0 0 20px rgba(139,92,246,.25);
+  --glow-cyan:   0 0 20px rgba(6,182,212,.25);
+  --radius: 14px; --radius-sm: 8px;
+  --shadow-card: 0 4px 24px rgba(0,0,0,.3);
 }
 
-/* Date Range */
-.date-range {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  background: var(--bg2);
-  padding: 12px;
-  border-radius: 8px;
-}
-.date-input {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  color: var(--text);
+/* ═══ MODE CLAIR ═══ */
+[data-theme="light"] {
+  --bg0: #f0f4f8; --bg1: #e8eef5; --bg2: #ffffff; --bg3: #f5f8fb; --bg4: #eaf0f7; --bg5: #dde6f0;
+  --border:  rgba(59,100,160,.10);
+  --border2: rgba(59,100,160,.16);
+  --border3: rgba(59,100,160,.26);
+  --text1: #0f1c2e; --text2: #3a5272; --text3: #7a96b3;
+  --glow-blue:   0 0 20px rgba(59,130,246,.12);
+  --glow-green:  0 0 20px rgba(16,185,129,.12);
+  --glow-red:    0 0 20px rgba(239,68,68,.12);
+  --glow-amber:  0 0 20px rgba(245,158,11,.12);
+  --glow-purple: 0 0 20px rgba(139,92,246,.12);
+  --glow-cyan:   0 0 20px rgba(6,182,212,.12);
+  --shadow-card: 0 2px 16px rgba(59,100,160,.08);
 }
 
-/* Table */
-.table-wrapper {
-  overflow-x: auto;
-  max-height: 500px;
-  overflow-y: auto;
+*, *::before, *::after { box-sizing: border-box; }
+body, .dashboard-body { font-family: var(--font) !important; background: var(--bg0) !important; transition: background .3s, color .3s; }
+
+.tb-action-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: 1px solid var(--border2); background: var(--bg3);
+  color: var(--text2); cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; transition: all .2s;
 }
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
+.tb-action-btn:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+/* ═══ LAYOUT ═══ */
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══ KPI GRID ═══ */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width:768px)  { .kpi-grid { grid-template-columns: 1fr; } }
+
+.kpi {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 18px 16px; position: relative; overflow: hidden;
+  transition: transform .25s, box-shadow .25s, background .3s, border-color .3s;
+  cursor: default; box-shadow: var(--shadow-card);
 }
-.data-table th {
-  text-align: left;
-  padding: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text2);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  background: var(--bg2);
-}
-.data-table td {
-  padding: 12px;
-  border-bottom: 1px solid var(--border2);
-}
-.data-table .date-cell {
-  font-family: monospace;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.data-table .details-cell {
-  font-size: 11.5px;
-  color: var(--text3);
-}
-.method-badge {
-  font-size: 10px;
-  color: var(--text3);
-  margin-top: 2px;
-}
-.empty-row td {
-  text-align: center;
-  padding: 60px;
-}
-.empty-state {
-  color: var(--text3);
-}
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
+.kpi::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%); pointer-events:none; }
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+.kpi-accent { position:absolute; top:0; left:0; right:0; height:3px; background:var(--kpi-grad); box-shadow:0 0 12px var(--kpi-color); }
+.kpi-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+.kpi-label { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; color:var(--text3); }
+.kpi-icon-wrap { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:color-mix(in srgb, var(--kpi-color) 12%, transparent); border:1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent); font-size:18px; flex-shrink:0; }
+.kpi-val { font-family:var(--mono); font-size:38px; font-weight:700; color:var(--kpi-color); line-height:1; margin-bottom:8px; text-shadow:0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent); }
+.kpi-sub { font-size:11px; color:var(--text3); display:flex; align-items:center; gap:5px; }
+.kpi-sub.up   { color: var(--green); }
+.kpi-sub.down { color: var(--red); }
+.kpi-bar { margin-top:12px; height:3px; background:var(--bg4); border-radius:2px; overflow:hidden; }
+.kpi-bar-fill { height:100%; background:var(--kpi-grad); border-radius:2px; transition:width 1s ease; }
+
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+
+/* ═══ CARDS ═══ */
+.card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-card); transition:background .3s, border-color .3s; }
+.card-head { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+.card-head-icon { width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+.card-title { font-weight:700; font-size:14px; color:var(--text1); flex:1; }
+.card-badge { font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px; font-family:var(--mono); letter-spacing:.5px; }
+.card-body { padding:20px; }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+@media (max-width:900px) { .grid-2 { grid-template-columns:1fr; } }
+
+/* ═══ FILTER BAR ═══ */
+.filter-bar {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 20px; display: flex; justify-content: space-between;
+  align-items: center; flex-wrap: wrap; gap: 12px;
+  box-shadow: var(--shadow-card); transition: background .3s;
 }
 
-/* Badges */
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-}
-.badge-green { background: rgba(45,186,111,0.12); color: #2dba6f; border: 1px solid rgba(45,186,111,0.25); }
-.badge-red { background: rgba(248,81,73,0.12); color: #f85149; border: 1px solid rgba(248,81,73,0.25); }
-.badge-blue { background: rgba(31,111,235,0.12); color: #1f6feb; border: 1px solid rgba(31,111,235,0.25); }
-.badge-count {
-  font-size: 11px;
-  color: var(--text3);
-  margin-left: auto;
-}
+/* ═══ BUTTONS ═══ */
+.btn-primary { padding:8px 18px; border-radius:8px; border:none; cursor:pointer; background:var(--blue); color:#fff; font-weight:600; font-size:13px; font-family:var(--font); transition:all .18s; display:inline-flex; align-items:center; gap:6px; }
+.btn-primary:hover { background:var(--blue2); transform:translateY(-1px); box-shadow:0 4px 14px rgba(59,130,246,.35); }
+.btn-ghost { padding:8px 18px; border-radius:8px; cursor:pointer; background:transparent; color:var(--text2); font-weight:600; font-size:13px; font-family:var(--font); transition:all .18s; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border2); }
+.btn-ghost:hover { background:var(--bg4); color:var(--text1); border-color:var(--border3); }
+.btn-sm { padding:6px 13px; font-size:12px; }
+.btn-ghost.active, .btn-primary { background:var(--blue); color:#fff; border-color:var(--blue); }
 
-/* Progress bar */
-.progress-bar {
-  background: var(--bg4);
-  border-radius: 4px;
-  height: 6px;
-  overflow: hidden;
-  margin-top: 6px;
-}
-.progress-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s;
-}
-.stat-bar-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-.day-stat {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border2);
-}
-.day-name {
-  font-weight: 500;
-}
-.day-bar {
-  flex: 1;
-  margin: 0 12px;
-}
-.day-value {
-  font-family: monospace;
-  font-size: 11px;
-  min-width: 40px;
-  text-align: right;
-}
+/* Search */
+.search-inp { background:var(--bg3); border:1px solid var(--border2); color:var(--text1); border-radius:20px; padding:7px 14px; font-size:12px; font-family:var(--font); outline:none; width:220px; transition:all .18s; }
+.search-inp:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(59,130,246,.1); }
 
-/* Buttons */
-.btn-small {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  cursor: pointer;
-}
-.btn-small.active {
-  background: var(--blue);
-  color: white;
-  border-color: var(--blue);
-}
-.pagination {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 16px;
-  border-top: 1px solid var(--border);
-}
-.page-btn {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  padding: 4px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.page-btn.active {
-  background: var(--blue);
-  color: white;
-}
+/* Date input */
+.date-inp { background:var(--bg3); border:1px solid var(--border); color:var(--text1); border-radius:var(--radius-sm); padding:8px 12px; font-size:13px; font-family:var(--font); outline:none; }
+
+/* ═══ TABLE ═══ */
+.tbl-wrap { overflow-x:auto; }
+.tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.tbl th { padding:12px 14px; text-align:left; font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; color:var(--text3); border-bottom:1px solid var(--border); background:var(--bg3); position:sticky; top:0; z-index:1; transition:background .3s; }
+.tbl td { padding:11px 14px; border-bottom:1px solid var(--border2); color:var(--text2); vertical-align:middle; transition:background .15s; }
+.tbl tr:hover td { background:var(--bg3); }
+.tbl tr:last-child td { border-bottom:none; }
+
+/* ═══ BADGES ═══ */
+.badge { font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px; font-family:var(--mono); letter-spacing:.5px; display:inline-flex; align-items:center; gap:4px; }
+.b-blue   { background:rgba(59,130,246,.12); color:var(--blue2); border:1px solid rgba(59,130,246,.25); }
+.b-green  { background:rgba(16,185,129,.1);  color:var(--green); border:1px solid rgba(16,185,129,.2); }
+.b-red    { background:rgba(239,68,68,.1);   color:var(--red);   border:1px solid rgba(239,68,68,.15); }
+.b-amber  { background:rgba(245,158,11,.1);  color:var(--amber); border:1px solid rgba(245,158,11,.2); }
+.b-purple { background:rgba(139,92,246,.12); color:var(--purple);border:1px solid rgba(139,92,246,.25); }
+
+/* ═══ PAGINATION ═══ */
+.page-btn { background:var(--bg3); border:1px solid var(--border); color:var(--text2); padding:5px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-family:var(--font); transition:all .18s; }
+.page-btn:hover { background:var(--bg4); color:var(--text1); }
+.page-btn.active { background:var(--blue); color:#fff; border-color:var(--blue); }
+
+/* ═══ STATS BARS ═══ */
+.zone-stat-item { margin-bottom:14px; }
+.zone-stat-item:last-child { margin-bottom:0; }
+.zone-stat-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; font-size:12px; }
+.zone-stat-name { font-weight:500; color:var(--text1); }
+.zone-stat-count { font-family:var(--mono); font-size:11px; color:var(--text2); }
+.day-stat-item { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--border2); }
+.day-stat-item:last-child { border-bottom:none; }
+.day-stat-name { font-weight:500; font-size:12px; width:35px; color:var(--text1); }
+.day-stat-bar-wrap { flex:1; margin:0 12px; }
+.day-stat-value { font-family:var(--mono); font-size:11px; color:var(--text2); min-width:50px; text-align:right; }
+
+/* ═══ EMPTY ═══ */
+.empty-state { text-align:center; padding:60px 20px; color:var(--text3); }
+.empty-state-icon { font-size:48px; margin-bottom:16px; opacity:.5; }
+.info-box { background:var(--bg3); border:1px solid var(--border); border-radius:10px; padding:40px 20px; text-align:center; color:var(--text3); font-size:13px; }
+
+/* ═══ ALERT ═══ */
+.alert-box { display:flex; align-items:flex-start; gap:12px; padding:12px 14px; border-radius:var(--radius-sm); margin-bottom:8px; font-size:12.5px; }
+.alert-box.danger { background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.2); color:var(--red); }
+.alert-box.info   { background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.2); color:var(--blue2); }
+.alert-ico { font-size:18px; flex-shrink:0; }
+.alert-text { font-weight:500; }
+
+/* ═══ LOG ROW HOVER ═══ */
+.log-row-ok:hover td { background:rgba(16,185,129,.04) !important; }
+.log-row-nok:hover td { background:rgba(239,68,68,.04) !important; }
+
+* { scrollbar-width:thin; scrollbar-color:var(--bg5) transparent; }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-let activityChart = null;
-let currentChartPeriod = 'month';
-let currentPage = 1;
-let rowsPerPage = 15;
-let allRows = [];
+<div class="dash-wrap">
 
-// === Zone Stats ===
-const zoneStats = {};
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+        <div class="alert-text">{{ message }}</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- ══════════ KPI STRIP ══════════ -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Total Accès</span><div class="kpi-icon-wrap">🔑</div></div>
+      <div class="kpi-val kpi-animated">{{ total_acces|default:"0" }}</div>
+      <div class="kpi-sub">Tous temps</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Autorisés</span><div class="kpi-icon-wrap">✅</div></div>
+      <div class="kpi-val kpi-animated">{{ acces_autorises|default:"0" }}</div>
+      <div class="kpi-sub up">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+        Succès
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_autorises total_acces 100 %}{% else %}5{% endif %}%"></div></div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Refusés</span><div class="kpi-icon-wrap">🚫</div></div>
+      <div class="kpi-val kpi-animated">{{ acces_refuses|default:"0" }}</div>
+      <div class="kpi-sub down">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/></svg>
+        Échecs
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_acces %}{% widthratio acces_refuses total_acces 100 %}{% else %}5{% endif %}%"></div></div>
+    </div>
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top"><span class="kpi-label">Taux de Succès</span><div class="kpi-icon-wrap">📊</div></div>
+      <div class="kpi-val kpi-animated">{{ taux_succes|default:"0" }}</div>
+      <div class="kpi-sub">Performance %</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:'0' }}%"></div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ GRAPHIQUE ══════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">📈</div>
+      <span class="card-title">Activité mensuelle</span>
+      <div style="display:flex; gap:8px; margin-left:auto;">
+        <button class="btn-ghost btn-sm period-btn" onclick="changeChartPeriod('week')">Semaine</button>
+        <button class="btn-primary btn-sm period-btn active" onclick="changeChartPeriod('month')">Mois</button>
+        <button class="btn-ghost btn-sm period-btn" onclick="changeChartPeriod('year')">Année</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="activity-chart" height="200" style="width:100%; max-height:250px;"></canvas>
+    </div>
+  </div>
+
+  <!-- ══════════ STATS ZONE & JOUR ══════════ -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.2);">🚪</div>
+        <span class="card-title">Fréquentation par zone</span>
+        <span class="card-badge" style="background:rgba(16,185,129,.1); color:var(--green); border:1px solid rgba(16,185,129,.2);">Top 5</span>
+      </div>
+      <div class="card-body" id="zone-stats"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.2);">📅</div>
+        <span class="card-title">Activité par jour</span>
+      </div>
+      <div class="card-body" id="day-stats"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ FILTRES ══════════ -->
+  <div class="filter-bar">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn-primary btn-sm filter-main-btn" onclick="filterLogs('all')">📋 Tous</button>
+      <button class="btn-ghost btn-sm filter-main-btn" onclick="filterLogs('autorise')">✅ Autorisés</button>
+      <button class="btn-ghost btn-sm filter-main-btn" onclick="filterLogs('refuse')">❌ Refusés</button>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn-ghost btn-sm filter-period-btn" onclick="filterLogs('today')">📅 Aujourd'hui</button>
+      <button class="btn-ghost btn-sm filter-period-btn" onclick="filterLogs('week')">📆 7 jours</button>
+      <button class="btn-ghost btn-sm filter-period-btn" onclick="filterLogs('month')">📅 30 jours</button>
+      <button class="btn-ghost btn-sm filter-period-btn" onclick="filterLogs('custom')">🗓 Personnalisé</button>
+    </div>
+    <div>
+      <input type="text" id="searchInput" class="search-inp" placeholder="🔍 Rechercher une zone..." onkeyup="searchLogs()">
+    </div>
+  </div>
+
+  <!-- Date picker -->
+  <div id="dateRangePicker" style="display:none; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; align-items:center; gap:10px; flex-wrap:wrap;">
+    <input type="date" id="dateStart" class="date-inp">
+    <span style="color:var(--text3);">→</span>
+    <input type="date" id="dateEnd" class="date-inp">
+    <button class="btn-primary btn-sm" onclick="applyCustomDate()">Appliquer</button>
+    <button class="btn-ghost btn-sm" onclick="closeDatePicker()">Annuler</button>
+  </div>
+
+  <!-- ══════════ TABLEAU LOGS ══════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📋</div>
+      <span class="card-title">Historique détaillé</span>
+      <span class="card-badge" style="background:rgba(59,130,246,.12); color:var(--blue2); border:1px solid rgba(59,130,246,.25);" id="log-count">{{ total_acces|default:"0" }} entrées</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <div class="tbl-wrap" style="max-height:500px; overflow-y:auto;">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Date & Heure</th>
+              <th>Zone / Bureau</th>
+              <th>Méthode</th>
+              <th>Résultat</th>
+              <th>Détails</th>
+            </tr>
+          </thead>
+          <tbody id="logs-table-body">
+            {% for a in acces %}
+            <tr class="log-row {% if a.resultat == 'AUTORISE' %}log-row-ok{% else %}log-row-nok{% endif %}"
+                data-resultat="{{ a.resultat|lower }}"
+                data-timestamp="{{ a.timestamp|date:'Y-m-d' }}"
+                data-datetime="{{ a.timestamp|date:'Y-m-d H:i:s' }}">
+              <td style="font-family:var(--mono); font-size:12px; white-space:nowrap; color:var(--text2);">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
+              <td>
+                <strong style="color:var(--text1);">{{ a.bureau_nom|default:"—" }}</strong>
+                <div style="font-size:10px; color:var(--text3); margin-top:2px;">{{ a.type_acces|default:"RFID" }}</div>
+              </td>
+              <td><span class="badge b-blue">{{ a.type_acces|default:"RFID" }}</span></td>
+              <td>
+                {% if a.resultat == 'AUTORISE' %}
+                  <span class="badge b-green">✅ AUTORISÉ</span>
+                {% else %}
+                  <span class="badge b-red">❌ REFUSÉ</span>
+                {% endif %}
+              </td>
+              <td style="font-size:11.5px; color:var(--text3);">
+                {% if a.resultat == 'AUTORISE' %}Accès validé avec succès{% else %}Tentative d'accès non autorisé{% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5">
+                <div class="empty-state">
+                  <div class="empty-state-icon">🔍</div>
+                  <div>Aucun historique d'accès disponible</div>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex; justify-content:center; gap:8px; padding:16px; border-top:1px solid var(--border);" id="pagination"></div>
+    </div>
+  </div>
+
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ═══════════════════════════════════════════
+// THEME TOGGLE
+// ═══════════════════════════════════════════
+(function() {
+  var saved = localStorage.getItem('sigr-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  document.body.setAttribute('data-theme', saved);
+})();
+
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme') || 'dark';
+  var next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  document.body.setAttribute('data-theme', next);
+  localStorage.setItem('sigr-theme', next);
+  var icon = document.getElementById('themeIcon');
+  if (icon) icon.textContent = next === 'dark' ? '🌙' : '☀️';
+  // Mettre à jour le graphique
+  if (activityChart) {
+    var textColor = next === 'dark' ? '#56708a' : '#7a96b3';
+    var gridColor = next === 'dark' ? 'rgba(99,140,185,.12)' : 'rgba(59,100,160,.10)';
+    activityChart.options.scales.x.grid.color = gridColor;
+    activityChart.options.scales.y.grid.color = gridColor;
+    activityChart.options.scales.x.ticks.color = textColor;
+    activityChart.options.scales.y.ticks.color = textColor;
+    activityChart.options.plugins.legend.labels.color = next === 'dark' ? '#8fa3bc' : '#3a5272';
+    activityChart.update();
+  }
+}
+
+// ═══════════════════════════════════════════
+// VARIABLES GLOBALES
+// ═══════════════════════════════════════════
+var activityChart = null;
+var currentChartPeriod = 'month';
+var currentPage = 1;
+var rowsPerPage = 15;
+var currentFilter = 'all';
+var customDateStart = null;
+var customDateEnd = null;
+
+// ═══════════════════════════════════════════
+// ZONE STATS
+// ═══════════════════════════════════════════
+var zoneStats = {};
 {% for a in acces %}
   {% if a.bureau_nom %}
-    if (!zoneStats['{{ a.bureau_nom|escapejs }}']) {
-      zoneStats['{{ a.bureau_nom|escapejs }}'] = { total: 0, autorises: 0 };
-    }
+    if (!zoneStats['{{ a.bureau_nom|escapejs }}']) { zoneStats['{{ a.bureau_nom|escapejs }}'] = { total: 0, autorises: 0 }; }
     zoneStats['{{ a.bureau_nom|escapejs }}'].total++;
-    if ('{{ a.resultat|escapejs }}' === 'AUTORISE') {
-      zoneStats['{{ a.bureau_nom|escapejs }}'].autorises++;
-    }
+    if ('{{ a.resultat|escapejs }}' === 'AUTORISE') { zoneStats['{{ a.bureau_nom|escapejs }}'].autorises++; }
   {% endif %}
 {% endfor %}
 
 function renderZoneStats() {
-  const container = document.getElementById('zone-stats');
-  const zones = Object.keys(zoneStats).sort((a, b) => zoneStats[b].total - zoneStats[a].total);
-  
-  if (zones.length === 0) {
-    container.innerHTML = '<div class="empty-state">Aucune donnée</div>';
-    return;
-  }
-  
-  let html = '';
-  zones.slice(0, 5).forEach(zone => {
-    const data = zoneStats[zone];
-    const pct = data.total > 0 ? Math.round((data.autorises / data.total) * 100) : 0;
-    html += `
-      <div class="stat-bar">
-        <div class="stat-bar-label">
-          <span>🚪 ${zone}</span>
-          <span>${data.autorises}/${data.total} (${pct}%)</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${pct}%; background: var(--green)"></div>
-        </div>
-      </div>
-    `;
+  var container = document.getElementById('zone-stats');
+  var zones = Object.keys(zoneStats).sort(function(a, b) { return zoneStats[b].total - zoneStats[a].total; });
+  if (zones.length === 0) { container.innerHTML = '<div class="info-box">🚪 Aucune donnée de zone</div>'; return; }
+  var html = '';
+  zones.slice(0, 5).forEach(function(zone) {
+    var data = zoneStats[zone];
+    var pct = data.total > 0 ? Math.round((data.autorises / data.total) * 100) : 0;
+    html += '<div class="zone-stat-item"><div class="zone-stat-header"><span class="zone-stat-name">🚪 ' + zone.replace(/</g,'&lt;') + '</span><span class="zone-stat-count">' + data.autorises + '/' + data.total + ' (' + pct + '%)</span></div><div class="kpi-bar" style="margin-top:0;"><div class="kpi-bar-fill" style="width:' + pct + '%; background:linear-gradient(90deg,#059669,#10b981);"></div></div></div>';
   });
   container.innerHTML = html;
 }
 
-// === Day Stats ===
 function renderDayStats() {
-  const dayCounts = { Lun: 0, Mar: 0, Mer: 0, Jeu: 0, Ven: 0, Sam: 0, Dim: 0 };
-  const rows = document.querySelectorAll('.log-row');
-  rows.forEach(row => {
-    const dateStr = row.dataset.datetime;
+  var dayCounts = { 'Lun':0, 'Mar':0, 'Mer':0, 'Jeu':0, 'Ven':0, 'Sam':0, 'Dim':0 };
+  document.querySelectorAll('.log-row').forEach(function(row) {
+    var dateStr = row.dataset.datetime;
     if (dateStr) {
-      const date = new Date(dateStr);
-      const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-      const dayName = days[date.getDay()];
+      var date = new Date(dateStr);
+      var days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+      var dayName = days[date.getDay()];
       if (dayCounts[dayName] !== undefined) dayCounts[dayName]++;
     }
   });
-  
-  const maxCount = Math.max(...Object.values(dayCounts));
-  let html = '';
-  for (const [day, count] of Object.entries(dayCounts)) {
-    const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
-    html += `
-      <div class="day-stat">
-        <span class="day-name">${day}</span>
-        <div class="day-bar">
-          <div class="progress-bar"><div class="progress-fill" style="width: ${pct}%; background: var(--blue)"></div></div>
-        </div>
-        <span class="day-value">${count} accès</span>
-      </div>
-    `;
+  var maxCount = Math.max.apply(null, Object.values(dayCounts));
+  var html = '';
+  for (var day in dayCounts) {
+    var count = dayCounts[day];
+    var pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+    html += '<div class="day-stat-item"><span class="day-stat-name">' + day + '</span><div class="day-stat-bar-wrap"><div class="kpi-bar" style="margin-top:0;"><div class="kpi-bar-fill" style="width:' + pct + '%; background:linear-gradient(90deg,#1d4ed8,#3b82f6);"></div></div></div><span class="day-stat-value">' + count + ' accès</span></div>';
   }
   document.getElementById('day-stats').innerHTML = html;
 }
 
-// === Graphique d'activité ===
+// ═══════════════════════════════════════════
+// GRAPHIQUE
+// ═══════════════════════════════════════════
 function initChart() {
-  const ctx = document.getElementById('activity-chart').getContext('2d');
-  const labels = [];
-  const data = [];
-  
-  {% for a in acces|slice:":30" %}
-    labels.push('{{ a.timestamp|date:"d/m" }}');
-    data.push(1);
+  var ctx = document.getElementById('activity-chart').getContext('2d');
+  var dailyStats = {};
+  {% for a in acces %}
+    var dateKey = '{{ a.timestamp|date:"d/m" }}';
+    if (!dailyStats[dateKey]) dailyStats[dateKey] = { autorise:0, refuse:0 };
+    if ('{{ a.resultat }}' === 'AUTORISE') dailyStats[dateKey].autorise++;
+    else dailyStats[dateKey].refuse++;
   {% endfor %}
-  
+  var labels = [], autoriseData = [], refuseData = [];
+  Object.keys(dailyStats).sort().forEach(function(key) {
+    labels.push(key);
+    autoriseData.push(dailyStats[key].autorise);
+    refuseData.push(dailyStats[key].refuse);
+  });
+  var isDark = (localStorage.getItem('sigr-theme') || 'dark') === 'dark';
+  var textColor = isDark ? '#56708a' : '#7a96b3';
+  var gridColor = isDark ? 'rgba(99,140,185,.12)' : 'rgba(59,100,160,.10)';
+  var legendColor = isDark ? '#8fa3bc' : '#3a5272';
   if (activityChart) activityChart.destroy();
   activityChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: labels.reverse(),
-      datasets: [{
-        label: 'Accès',
-        data: data.reverse(),
-        borderColor: '#1f6feb',
-        backgroundColor: 'rgba(31,111,235,0.1)',
-        tension: 0.3,
-        fill: true
-      }]
+      labels: labels.length > 0 ? labels : ['Aucune donnée'],
+      datasets: [
+        { label:'Autorisés', data:autoriseData.length>0?autoriseData:[0], borderColor:'#10b981', backgroundColor:'rgba(16,185,129,.08)', tension:.35, fill:true, borderWidth:2, pointRadius:3, pointBackgroundColor:'#10b981' },
+        { label:'Refusés',   data:refuseData.length>0?refuseData:[0],     borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.05)',  tension:.35, fill:true, borderWidth:2, pointRadius:3, pointBackgroundColor:'#ef4444' }
+      ]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'accès' } } }
+      responsive:true, maintainAspectRatio:true,
+      interaction:{ intersect:false, mode:'index' },
+      plugins: {
+        legend: { position:'top', labels:{ color:legendColor, usePointStyle:true, padding:20, font:{ family:"'Space Grotesk', sans-serif", size:11 } } }
+      },
+      scales: {
+        x: { grid:{ color:gridColor }, ticks:{ color:textColor, font:{ size:10 } } },
+        y: { beginAtZero:true, grid:{ color:gridColor }, ticks:{ color:textColor, font:{ size:10 }, stepSize:1 } }
+      }
     }
   });
 }
 
 function changeChartPeriod(period) {
   currentChartPeriod = period;
-  document.querySelectorAll('#activity-chart').forEach(el => el.parentElement?.parentElement?.querySelectorAll('.btn-small').forEach(btn => btn.classList.remove('active')));
-  event.target.classList.add('active');
-  // Recharger les données
-  fetch(`/api/employee/stats/?period=${period}`)
-    .then(r => r.json())
-    .then(data => {
-      if (activityChart) {
+  document.querySelectorAll('.period-btn').forEach(function(btn) { btn.classList.remove('active','btn-primary'); btn.classList.add('btn-ghost'); });
+  var activeBtn = document.querySelector('.period-btn[onclick*="' + period + '"]');
+  if (activeBtn) { activeBtn.classList.add('active','btn-primary'); activeBtn.classList.remove('btn-ghost'); }
+  fetch('/api/employee/stats/?period=' + period)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (activityChart && data.labels) {
         activityChart.data.labels = data.labels;
-        activityChart.data.datasets[0].data = data.values;
+        activityChart.data.datasets[0].data = data.autorises || data.values || [];
+        activityChart.data.datasets[1].data = data.refuses || [];
         activityChart.update();
       }
-    });
+    }).catch(function() {});
 }
 
-// === Filtres ===
-let currentFilter = 'all';
-let customDateStart = null;
-let customDateEnd = null;
-
+// ═══════════════════════════════════════════
+// FILTRES
+// ═══════════════════════════════════════════
 function filterLogs(filter) {
   currentFilter = filter;
-  if (filter === 'custom') {
-    document.getElementById('dateRangePicker').style.display = 'flex';
-    return;
-  }
-  document.getElementById('dateRangePicker').style.display = 'none';
+  var datePicker = document.getElementById('dateRangePicker');
+  if (filter === 'custom') { datePicker.style.display = 'flex'; return; }
+  datePicker.style.display = 'none';
   applyFilter();
 }
 
@@ -628,149 +535,137 @@ function applyCustomDate() {
   applyFilter();
 }
 
-function closeDatePicker() {
-  document.getElementById('dateRangePicker').style.display = 'none';
-}
+function closeDatePicker() { document.getElementById('dateRangePicker').style.display = 'none'; }
 
 function applyFilter() {
-  const rows = document.querySelectorAll('.log-row');
-  const now = new Date();
-  let visibleCount = 0;
-  
-  rows.forEach(row => {
-    let show = true;
-    const resultat = row.dataset.resultat;
-    const timestampStr = row.dataset.timestamp;
-    const logDate = new Date(timestampStr);
-    
+  var rows = document.querySelectorAll('.log-row');
+  var now = new Date();
+  var visibleCount = 0;
+  rows.forEach(function(row) {
+    var show = true;
+    var resultat = row.dataset.resultat;
+    var logDate = new Date(row.dataset.timestamp + 'T00:00:00');
     if (currentFilter === 'autorise') show = resultat === 'autorise';
     else if (currentFilter === 'refuse') show = resultat === 'refuse';
-    else if (currentFilter === 'today') {
-      const today = new Date();
-      show = logDate.toDateString() === today.toDateString();
-    }
-    else if (currentFilter === 'week') {
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      show = logDate >= weekAgo;
-    }
-    else if (currentFilter === 'month') {
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      show = logDate >= monthAgo;
-    }
+    else if (currentFilter === 'today') { var today = new Date(); show = logDate.toDateString() === today.toDateString(); }
+    else if (currentFilter === 'week') { var weekAgo = new Date(now.getTime() - 7*24*60*60*1000); show = logDate >= weekAgo; }
+    else if (currentFilter === 'month') { var monthAgo = new Date(now.getTime() - 30*24*60*60*1000); show = logDate >= monthAgo; }
     else if (currentFilter === 'custom' && customDateStart && customDateEnd) {
-      const start = new Date(customDateStart);
-      const end = new Date(customDateEnd);
+      var start = new Date(customDateStart + 'T00:00:00');
+      var end   = new Date(customDateEnd   + 'T23:59:59');
       show = logDate >= start && logDate <= end;
     }
-    
     row.style.display = show ? '' : 'none';
     if (show) visibleCount++;
   });
-  
-  document.getElementById('log-count').textContent = `${visibleCount} entrées`;
+  document.getElementById('log-count').textContent = visibleCount + ' entrées';
+  currentPage = 1;
   updatePagination();
   updateFilterButtons();
 }
 
 function searchLogs() {
-  const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-  const rows = document.querySelectorAll('.log-row');
-  let visibleCount = 0;
-  
-  rows.forEach(row => {
-    const zone = row.querySelector('td:nth-child(2) strong')?.textContent.toLowerCase() || '';
-    const show = zone.includes(searchTerm);
-    if (row.style.display !== 'none') {
-      row.style.display = show ? '' : 'none';
-      if (show) visibleCount++;
-    }
+  var searchTerm = document.getElementById('searchInput').value.toLowerCase();
+  var rows = document.querySelectorAll('.log-row');
+  var visibleCount = 0;
+  rows.forEach(function(row) {
+    if (row.style.display === 'none') return;
+    var zoneEl = row.querySelector('td:nth-child(2) strong');
+    var zone = zoneEl ? zoneEl.textContent.toLowerCase() : '';
+    var show = zone.includes(searchTerm);
+    row.style.display = show ? '' : 'none';
+    if (show) visibleCount++;
   });
-  
-  document.getElementById('log-count').textContent = `${visibleCount} entrées`;
+  document.getElementById('log-count').textContent = visibleCount + ' entrées';
+  currentPage = 1;
   updatePagination();
 }
 
 function updateFilterButtons() {
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.classList.remove('active');
-    if ((currentFilter === 'all' && btn.textContent.includes('Tous')) ||
-        (currentFilter === 'autorise' && btn.textContent.includes('Autorisés')) ||
-        (currentFilter === 'refuse' && btn.textContent.includes('Refusés')) ||
-        (currentFilter === 'today' && btn.textContent.includes('Aujourd\'hui')) ||
-        (currentFilter === 'week' && btn.textContent.includes('7 jours')) ||
-        (currentFilter === 'month' && btn.textContent.includes('30 jours'))) {
-      btn.classList.add('active');
-    }
-  });
+  document.querySelectorAll('.filter-main-btn').forEach(function(btn) { btn.classList.remove('active','btn-primary'); btn.classList.add('btn-ghost'); });
+  var activeBtn = document.querySelector('.filter-main-btn[onclick*="' + currentFilter + '"]');
+  if (activeBtn) { activeBtn.classList.add('active','btn-primary'); activeBtn.classList.remove('btn-ghost'); }
 }
 
-// === Pagination ===
+// ═══════════════════════════════════════════
+// PAGINATION
+// ═══════════════════════════════════════════
 function updatePagination() {
-  allRows = Array.from(document.querySelectorAll('.log-row')).filter(row => row.style.display !== 'none');
-  const totalPages = Math.ceil(allRows.length / rowsPerPage);
-  const start = (currentPage - 1) * rowsPerPage;
-  const end = start + rowsPerPage;
-  
-  allRows.forEach(row => row.style.display = 'none');
-  allRows.slice(start, end).forEach(row => row.style.display = '');
-  
-  const paginationDiv = document.getElementById('pagination');
+  var allRows = Array.from(document.querySelectorAll('.log-row')).filter(function(row) { return row.style.display !== 'none'; });
+  var totalPages = Math.ceil(allRows.length / rowsPerPage);
+  var start = (currentPage - 1) * rowsPerPage;
+  var end = start + rowsPerPage;
+  document.querySelectorAll('.log-row').forEach(function(row) { row.style.display = 'none'; });
+  allRows.slice(start, end).forEach(function(row) { row.style.display = ''; });
+  var paginationDiv = document.getElementById('pagination');
   if (paginationDiv && totalPages > 1) {
-    let html = '';
-    for (let i = 1; i <= Math.min(totalPages, 10); i++) {
-      html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+    var html = '';
+    for (var i = 1; i <= Math.min(totalPages, 10); i++) {
+      html += '<button class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goToPage(' + i + ')">' + i + '</button>';
     }
+    if (totalPages > 10) html += '<span style="color:var(--text3); padding:5px;">...' + totalPages + '</span>';
     paginationDiv.innerHTML = html;
-  } else if (paginationDiv) {
-    paginationDiv.innerHTML = '';
-  }
+  } else if (paginationDiv) { paginationDiv.innerHTML = ''; }
 }
 
-function goToPage(page) {
-  currentPage = page;
-  updatePagination();
-}
+function goToPage(page) { currentPage = page; updatePagination(); }
 
-// === Export ===
+// ═══════════════════════════════════════════
+// EXPORT & UTILS
+// ═══════════════════════════════════════════
 function exportCSV() {
-  let csv = "Date & Heure;Zone;Méthode;Résultat;Détails\n";
-  const visibleRows = document.querySelectorAll('.log-row[style=""]');
-  
-  visibleRows.forEach(row => {
-    const cells = row.querySelectorAll('td');
+  var csv = "Date & Heure;Zone;Méthode;Résultat;Détails\n";
+  Array.from(document.querySelectorAll('.log-row')).filter(function(r) { return r.style.display !== 'none'; }).forEach(function(row) {
+    var cells = row.querySelectorAll('td');
     if (cells.length >= 5) {
-      const date = cells[0].textContent.trim();
-      const zone = cells[1].querySelector('strong')?.textContent.trim() || '';
-      const methode = cells[2].textContent.trim();
-      const resultat = cells[3].textContent.trim();
-      const details = cells[4].textContent.trim();
-      csv += `"${date}";"${zone}";"${methode}";"${resultat}";"${details}"\n`;
+      csv += '"' + cells[0].textContent.trim() + '";"' + (cells[1].querySelector('strong') ? cells[1].querySelector('strong').textContent.trim() : '') + '";"' + (cells[2].querySelector('.badge') ? cells[2].querySelector('.badge').textContent.trim() : '') + '";"' + (cells[3].querySelector('.badge') ? cells[3].querySelector('.badge').textContent.trim() : '') + '";"' + cells[4].textContent.trim() + '"\n';
     }
   });
-  
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement('a');
+  var blob = new Blob(["\uFEFF" + csv], { type:"text/csv;charset=utf-8" });
+  var link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `historique_acces_${new Date().toISOString().slice(0,10)}.csv`;
+  link.download = 'historique_acces_' + new Date().toISOString().slice(0,10) + '.csv';
   link.click();
 }
 
-function exportPDF() {
-  window.print();
-}
+function exportPDF() { window.print(); }
 
 function refreshData() {
-  location.reload();
+  document.querySelectorAll('.kpi-val').forEach(function(el) { el.style.opacity = '0.3'; });
+  setTimeout(function() { location.reload(); }, 200);
 }
 
-// === Initialisation ===
+function animateKPIs() {
+  document.querySelectorAll('.kpi-animated').forEach(function(el) {
+    var text = el.textContent.replace('%','').trim();
+    var target = parseInt(text, 10);
+    if (isNaN(target) || target === 0) return;
+    var isPercent = el.textContent.includes('%');
+    var current = 0;
+    var step = target / 60;
+    var timer = setInterval(function() {
+      current = Math.min(current + step, target);
+      el.textContent = Math.round(current) + (isPercent ? '%' : '');
+      if (current >= target) clearInterval(timer);
+    }, 16);
+  });
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function() {
+  var saved = localStorage.getItem('sigr-theme') || 'dark';
+  var icon = document.getElementById('themeIcon');
+  if (icon) icon.textContent = saved === 'dark' ? '🌙' : '☀️';
+
   renderZoneStats();
   renderDayStats();
   initChart();
   filterLogs('all');
   updatePagination();
+  animateKPIs();
+  document.getElementById('dateRangePicker').style.display = 'none';
 });
 </script>
-
 {% endblock %}

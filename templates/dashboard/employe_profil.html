@@ -2,261 +2,305 @@
 
 {% block title %}Mon Profil - SIGR-CA{% endblock %}
 {% block page_title %}Mon Profil{% endblock %}
-{% block page_sub %}Gérer mes informations personnelles{% endblock %}
+{% block page_sub %}Gérer mes informations personnelles et préférences{% endblock %}
 {% block nav_emp_profil %}active{% endblock %}
 
+{% block topbar_actions %}
+<button class="tb-action-btn" onclick="document.getElementById('info-form').submit()" title="Enregistrer">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+</button>
+<button class="tb-action-btn" onclick="window.print()" title="Imprimer">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 12H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+</button>
+{% endblock %}
+
 {% block content %}
-
-<!-- Messages -->
-{% if messages %}
-  {% for message in messages %}
-    <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
-      <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
-      <div class="alert-text">{{ message }}</div>
-    </div>
-  {% endfor %}
-{% endif %}
-
-<div class="g2">
-  <!-- Colonne gauche : Informations personnelles -->
-  <div class="card">
-    <div class="card-head">
-      <div class="card-title">👤 Informations personnelles</div>
-    </div>
-    <div class="card-body">
-      <form method="post">
-        {% csrf_token %}
-
-        <div class="form-row">
-          <label class="form-label">Prénom</label>
-          <input type="text" class="form-input" name="prenom" value="{{ employe.prenom|default:user.first_name }}">
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Nom</label>
-          <input type="text" class="form-input" name="nom" value="{{ employe.nom|default:user.last_name }}">
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Email professionnel</label>
-          <input type="email" class="form-input" name="email" value="{{ employe.email|default:user.email }}">
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Téléphone</label>
-          <input type="tel" class="form-input" name="telephone" value="{{ employe.telephone|default:'' }}">
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Poste / Fonction</label>
-          <input type="text" class="form-input" name="poste" value="{{ employe.poste|default:'' }}">
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Département</label>
-          <select class="form-select" name="departement">
-            <option value="">— Sélectionner —</option>
-            <option value="Informatique" {% if employe.departement == "Informatique" %}selected{% endif %}>Informatique</option>
-            <option value="Ressources Humaines" {% if employe.departement == "Ressources Humaines" %}selected{% endif %}>Ressources Humaines</option>
-            <option value="Commercial" {% if employe.departement == "Commercial" %}selected{% endif %}>Commercial</option>
-            <option value="Production" {% if employe.departement == "Production" %}selected{% endif %}>Production</option>
-            <option value="Logistique" {% if employe.departement == "Logistique" %}selected{% endif %}>Logistique</option>
-            <option value="Direction" {% if employe.departement == "Direction" %}selected{% endif %}>Direction</option>
-          </select>
-        </div>
-
-        <div class="form-row">
-          <label class="form-label">Badge RFID</label>
-          <input type="text" class="form-input" value="{{ employe.badge_id|default:'—' }}" readonly>
-          <small style="color:var(--text3); font-size:10px;">(Modifiable uniquement par un administrateur)</small>
-        </div>
-
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Colonne droite -->
-  <div>
-    <!-- Préférences -->
-    <div class="card">
-      <div class="card-head">
-        <div class="card-title">📧 Préférences de notification</div>
-      </div>
-      <div class="card-body">
-        <form method="post">
-          {% csrf_token %}
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-name">Recevoir les rappels par email</div>
-              <div class="toggle-desc">30 minutes avant chaque réservation</div>
-            </div>
-            <div class="toggle-right">
-              <label class="tswitch">
-                <input type="checkbox" name="notif_email" {% if preferences.email %}checked{% endif %}>
-                <span class="tslider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-name">Recevoir les rappels avant réservation</div>
-              <div class="toggle-desc">Notification pour les rappels</div>
-            </div>
-            <div class="toggle-right">
-              <label class="tswitch">
-                <input type="checkbox" name="notif_rappel" {% if preferences.rappel %}checked{% endif %}>
-                <span class="tslider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="modal-actions" style="margin-top: 16px;">
-            <button type="submit" name="update_preferences" value="1" class="btn btn-primary">💾 Sauvegarder préférences</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Changement mot de passe -->
-    <div class="card" style="margin-top:16px;">
-      <div class="card-head">
-        <div class="card-title">🔑 Changer mon mot de passe</div>
-      </div>
-      <div class="card-body">
-        <form method="post">
-          {% csrf_token %}
-          <div class="form-row">
-            <label class="form-label">Mot de passe actuel</label>
-            <input type="password" class="form-input" name="old_password" required>
-          </div>
-          <div class="form-row">
-            <label class="form-label">Nouveau mot de passe</label>
-            <input type="password" class="form-input" name="new_password1" required>
-            <small style="color:var(--text3); font-size:10px;">Minimum 6 caractères</small>
-          </div>
-          <div class="form-row">
-            <label class="form-label">Confirmer le nouveau mot de passe</label>
-            <input type="password" class="form-input" name="new_password2" required>
-          </div>
-          <button type="submit" name="change_password" value="1" class="btn btn-primary">🔒 Changer le mot de passe</button>
-        </form>
-      </div>
-    </div>
-
-    <!-- Sessions actives -->
-    <div class="card" style="margin-top:16px;">
-      <div class="card-head">
-        <div class="card-title">🖥️ Mes sessions actives</div>
-      </div>
-      <div class="card-body">
-        {% if active_sessions %}
-          {% for session in active_sessions %}
-          <div class="session-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border2);">
-            <div>
-              <div style="font-weight: 500;">
-                {% if session.device_type == 'desktop' %}💻 Ordinateur
-                {% elif session.device_type == 'mobile' %}📱 Mobile
-                {% else %}🖥️ Appareil{% endif %}
-              </div>
-              <div style="font-size: 11px; color: var(--text3);">
-                IP: {{ session.ip_address }} • Connecté: {{ session.login_time }}
-              </div>
-            </div>
-            <div>
-              {% if session.is_current %}
-                <span class="badge b-green">Session actuelle</span>
-              {% else %}
-                <form method="post" action="{% url 'terminate_session' session.id %}" style="display: inline;" onsubmit="return confirm('Terminer cette session ?')">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-del btn-sm">🔒 Terminer</button>
-                </form>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        {% else %}
-          <div style="text-align: center; padding: 20px; color: var(--text3);">
-            Aucune session active
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Statistiques -->
-<div class="card">
-  <div class="card-head">
-    <div class="card-title">📊 Mes statistiques</div>
-  </div>
-  <div class="card-body">
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px;">
-      <div class="kpi k-blue">
-        <div class="kpi-header">
-          <div class="kpi-label">Total des accès</div>
-          <div class="kpi-value">{{ total_acces|default:0 }}</div>
-        </div>
-      </div>
-      <div class="kpi k-green">
-        <div class="kpi-header">
-          <div class="kpi-label">Taux de succès</div>
-          <div class="kpi-value">{{ taux_succes|default:0 }}%</div>
-        </div>
-      </div>
-      <div class="kpi k-purple">
-        <div class="kpi-header">
-          <div class="kpi-label">Réservations</div>
-          <div class="kpi-value">{{ reservations_count|default:0 }}</div>
-        </div>
-      </div>
-      <div class="kpi k-amber">
-        <div class="kpi-header">
-          <div class="kpi-label">Jours actifs</div>
-          <div class="kpi-value">{{ jours_actifs|default:0 }}</div>
-        </div>
-      </div>
-    </div>
-    
-    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-top: 16px;">
-      <div class="stat-item" style="background: var(--bg3); border-radius: 8px; padding: 12px;">
-        <div style="font-size: 11px; color: var(--text3);">Accès ce mois</div>
-        <div style="font-size: 24px; font-weight: 600;">{{ acces_mois|default:0 }}</div>
-      </div>
-      <div class="stat-item" style="background: var(--bg3); border-radius: 8px; padding: 12px;">
-        <div style="font-size: 11px; color: var(--text3);">Dernier accès</div>
-        <div style="font-size: 14px; font-weight: 600;">{{ dernier_acces|date:"d/m/Y H:i"|default:"Jamais" }}</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <style>
+/* ═══════════════════════════════════════
+   FONTS & TOKENS (Premium Dashboard)
+═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+
+  --bg0: #080d17;
+  --bg1: #0d1320;
+  --bg2: #111827;
+  --bg3: #162032;
+  --bg4: #1c2b40;
+  --bg5: #243347;
+
+  --border:  rgba(99,140,185,.12);
+  --border2: rgba(99,140,185,.18);
+  --border3: rgba(99,140,185,.28);
+
+  --text1: #e8edf5;
+  --text2: #8fa3bc;
+  --text3: #56708a;
+
+  --blue:   #3b82f6;
+  --blue2:  #60a5fa;
+  --cyan:   #06b6d4;
+  --green:  #10b981;
+  --amber:  #f59e0b;
+  --red:    #ef4444;
+  --purple: #8b5cf6;
+  --pink:   #ec4899;
+
+  --glow-blue:   0 0 20px rgba(59,130,246,.25);
+  --glow-green:  0 0 20px rgba(16,185,129,.25);
+  --glow-red:    0 0 20px rgba(239,68,68,.25);
+  --glow-amber:  0 0 20px rgba(245,158,11,.25);
+  --glow-purple: 0 0 20px rgba(139,92,246,.25);
+  --glow-cyan:   0 0 20px rgba(6,182,212,.25);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body, .dashboard-body { font-family: var(--font) !important; background: var(--bg0) !important; }
+
+/* Topbar action buttons */
+.tb-action-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: 1px solid var(--border2); background: var(--bg3);
+  color: var(--text2); cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; transition: all .2s;
+}
+.tb-action-btn:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+/* ═══════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════ */
+.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+/* ═══════════════════════════════════════
+   PROFILE HEADER
+═══════════════════════════════════════ */
+.profile-hdr {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 28px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+}
+.profile-hdr::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top right, rgba(59,130,246,.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.profile-av {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  box-shadow: 0 0 28px rgba(59,130,246,.35);
+  font-family: var(--mono);
+}
+.profile-info { flex: 1; min-width: 180px; }
+.profile-name { font-size: 20px; font-weight: 700; color: var(--text1); margin-bottom: 4px; letter-spacing: -.3px; }
+.profile-email { font-size: 13px; color: var(--text2); margin-bottom: 2px; font-family: var(--mono); }
+.profile-badge-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.profile-pill {
+  font-size: 10px; font-weight: 700; padding: 4px 12px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+.pill-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.25); }
+.pill-green  { background: rgba(16,185,129,.1);  color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.pill-purple { background: rgba(139,92,246,.12); color: var(--purple);border: 1px solid rgba(139,92,246,.25); }
+
+.profile-actions { display: flex; gap: 10px; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width:768px)  { .kpi-grid { grid-template-columns: 1fr; } }
+
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 18px 16px;
+  position: relative; overflow: hidden;
+  transition: transform .25s, box-shadow .25s;
+  cursor: default;
+}
+.kpi::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top left, var(--kpi-glow,.05) 0%, transparent 65%);
+  pointer-events: none;
+}
+.kpi:hover { transform: translateY(-4px); box-shadow: var(--kpi-shadow, none); }
+
+.kpi-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--kpi-grad);
+  box-shadow: 0 0 12px var(--kpi-color);
+}
+
+.kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.kpi-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); }
+.kpi-icon-wrap {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--kpi-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-color) 22%, transparent);
+  font-size: 18px; flex-shrink: 0;
+}
+.kpi-val {
+  font-family: var(--mono); font-size: 38px; font-weight: 700;
+  color: var(--kpi-color); line-height: 1;
+  margin-bottom: 8px;
+  text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent);
+}
+.kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
+.kpi-sub.up   { color: var(--green); }
+.kpi-sub.down { color: var(--red); }
+
+.kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+
+.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+.kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
+
+/* ═══════════════════════════════════════
+   CARDS
+═══════════════════════════════════════ */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-head-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+.card-badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px;
+}
+.card-body { padding: 20px; }
+
+/* ═══════════════════════════════════════
+   2-COL LAYOUT
+═══════════════════════════════════════ */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════ */
+.btn-primary {
+  padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+  background: var(--blue); color: #fff; font-weight: 600; font-size: 13px;
+  font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.btn-ghost {
+  padding: 8px 18px; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--text2); font-weight: 600; font-size: 13px;
+  font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+
+.btn-sm { padding: 6px 13px; font-size: 12px; }
+
+.btn-del {
+  background: rgba(239,68,68,.1); color: var(--red);
+  border: 1px solid rgba(239,68,68,.2); padding: 5px 12px;
+  border-radius: 6px; cursor: pointer; font-weight: 600; font-family: var(--font);
+  transition: all .18s; display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-del:hover { background: rgba(239,68,68,.2); transform: translateY(-1px); }
+
+/* ═══════════════════════════════════════
+   FORM
+═══════════════════════════════════════ */
+.form-row { margin-bottom: 16px; }
+.form-label {
+  font-size: 11px; font-weight: 700; color: var(--text2);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 7px; display: block;
+}
+.form-input, .form-select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px;
+  color: var(--text1); font-family: var(--font); outline: none;
+  transition: all .18s;
+}
+.form-input:focus, .form-select:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+.form-input[readonly] {
+  opacity: .6; cursor: not-allowed;
+}
+
+.modal-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════
+   TOGGLE SWITCH
+═══════════════════════════════════════ */
 .toggle-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border2);
+  padding: 14px 16px;
+  background: var(--bg3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  margin-bottom: 10px;
+  transition: all .18s;
 }
-.toggle-info {
-  flex: 1;
-}
-.toggle-name {
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-.toggle-desc {
-  font-size: 11px;
-  color: var(--text3);
-}
+.toggle-row:hover { border-color: var(--border3); }
+.toggle-info { flex: 1; }
+.toggle-name { font-size: 13px; font-weight: 600; color: var(--text1); margin-bottom: 4px; }
+.toggle-desc { font-size: 11px; color: var(--text3); }
+.toggle-right { display: flex; align-items: center; gap: 10px; }
+
 .tswitch {
   position: relative;
   display: inline-block;
-  width: 50px;
+  width: 48px;
   height: 24px;
 }
 .tswitch input {
@@ -267,31 +311,452 @@
 .tslider {
   position: absolute;
   cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--bg4);
-  transition: 0.3s;
+  inset: 0;
+  background: var(--bg5);
+  transition: .25s;
   border-radius: 24px;
+  border: 1px solid var(--border);
 }
-.tslider:before {
+.tslider::before {
   position: absolute;
   content: "";
   height: 18px;
   width: 18px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: 0.3s;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text3);
+  transition: .25s;
   border-radius: 50%;
 }
 input:checked + .tslider {
-  background-color: #1f6feb;
+  background: var(--blue);
+  border-color: var(--blue);
 }
-input:checked + .tslider:before {
-  transform: translateX(26px);
+input:checked + .tslider::before {
+  transform: translateX(22px);
+  background: white;
 }
+
+/* ═══════════════════════════════════════
+   SESSIONS
+═══════════════════════════════════════ */
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border2);
+  gap: 12px;
+}
+.session-item:last-child { border-bottom: none; }
+.session-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.session-info { flex: 1; min-width: 0; }
+.session-device { font-weight: 600; font-size: 13px; color: var(--text1); margin-bottom: 3px; }
+.session-meta { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+
+/* ═══════════════════════════════════════
+   STATS CARDS
+═══════════════════════════════════════ */
+.stat-card-mini {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  transition: all .18s;
+}
+.stat-card-mini:hover { border-color: var(--blue); background: var(--bg4); }
+.stat-mini-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; font-weight: 600; margin-bottom: 8px; }
+.stat-mini-val { font-size: 24px; font-weight: 700; color: var(--text1); font-family: var(--mono); }
+.stat-mini-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+/* ═══════════════════════════════════════
+   ALERT BOX
+═══════════════════════════════════════ */
+.alert-box {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  margin-bottom: 8px; font-size: 12.5px;
+}
+.alert-box.danger { background: rgba(239,68,68,.08);  border: 1px solid rgba(239,68,68,.2); color: var(--red); }
+.alert-box.info   { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); color: var(--blue2); }
+.alert-ico { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.alert-text { font-weight: 500; }
+
+/* Badges */
+.badge {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  font-family: var(--mono); letter-spacing: .5px; display: inline-flex; align-items: center; gap: 4px;
+}
+.b-green  { background: rgba(16,185,129,.1);  color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+.b-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
+.b-blue   { background: rgba(59,130,246,.12); color: var(--blue2); border: 1px solid rgba(59,130,246,.25); }
+
+/* Divider */
+.divider { border-top: 1px solid var(--border); margin: 20px 0; }
+
+/* Section label */
+.section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text3); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
 
+<div class="dash-wrap">
+
+  <!-- Messages -->
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-box {% if message.tags == 'error' %}danger{% else %}info{% endif %}">
+        <div class="alert-ico">{% if message.tags == 'error' %}⚠️{% else %}✅{% endif %}</div>
+        <div class="alert-text">{{ message }}</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- ══════════════════════════════════════════
+       PROFILE HEADER
+  ══════════════════════════════════════════ -->
+  <div class="profile-hdr">
+    <div class="profile-av">{{ user.username|slice:":2"|upper }}</div>
+    <div class="profile-info">
+      <div class="profile-name">{{ employe.prenom|default:user.first_name }} {{ employe.nom|default:user.last_name }}</div>
+      <div class="profile-email">{{ employe.email|default:user.email }}</div>
+      <div class="profile-badge-row">
+        <span class="profile-pill pill-blue">🆔 {{ employe.badge_id|default:"RFID non assigné" }}</span>
+        <span class="profile-pill pill-green">{{ employe.departement|default:"Département" }}</span>
+        <span class="profile-pill pill-purple">💼 {{ employe.poste|default:"Poste" }}</span>
+      </div>
+    </div>
+    <div class="profile-actions">
+      <button class="btn-primary btn-sm" onclick="document.getElementById('info-form').submit()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+        Enregistrer
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       KPI STRIP
+  ══════════════════════════════════════════ -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Total Accès</span>
+        <div class="kpi-icon-wrap">🔑</div>
+      </div>
+      <div class="kpi-val">{{ total_acces|default:"0" }}</div>
+      <div class="kpi-sub">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Historique complet
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+    </div>
+
+    <div class="kpi green">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Taux de Succès</span>
+        <div class="kpi-icon-wrap">✅</div>
+      </div>
+      <div class="kpi-val">{{ taux_succes|default:"0" }}%</div>
+      <div class="kpi-sub up">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+        Performance
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:'0' }}%"></div></div>
+    </div>
+
+    <div class="kpi purple">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Réservations</span>
+        <div class="kpi-icon-wrap">📆</div>
+      </div>
+      <div class="kpi-val">{{ reservations_count|default:"0" }}</div>
+      <div class="kpi-sub">Total</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if reservations_count %}60{% else %}5{% endif %}%"></div></div>
+    </div>
+
+    <div class="kpi amber">
+      <div class="kpi-accent"></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Jours Actifs</span>
+        <div class="kpi-icon-wrap">📅</div>
+      </div>
+      <div class="kpi-val">{{ jours_actifs|default:"0" }}</div>
+      <div class="kpi-sub">Présence</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if jours_actifs %}50{% else %}5{% endif %}%"></div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       CONTENU PRINCIPAL
+  ══════════════════════════════════════════ -->
+  <div class="grid-2">
+    <!-- Colonne gauche : Informations personnelles -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">👤</div>
+        <span class="card-title">Informations personnelles</span>
+        <span class="card-badge" style="background:rgba(59,130,246,.12); color:var(--blue2); border:1px solid rgba(59,130,246,.25);">Profil</span>
+      </div>
+      <div class="card-body">
+        <form method="post" id="info-form">
+          {% csrf_token %}
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-row">
+              <label class="form-label">Prénom</label>
+              <input type="text" class="form-input" name="prenom" value="{{ employe.prenom|default:user.first_name }}" placeholder="Votre prénom">
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Nom</label>
+              <input type="text" class="form-input" name="nom" value="{{ employe.nom|default:user.last_name }}" placeholder="Votre nom">
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-row">
+              <label class="form-label">Email professionnel</label>
+              <input type="email" class="form-input" name="email" value="{{ employe.email|default:user.email }}" placeholder="email@entreprise.com">
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Téléphone</label>
+              <input type="tel" class="form-input" name="telephone" value="{{ employe.telephone|default:'' }}" placeholder="+33 ...">
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-row">
+              <label class="form-label">Poste / Fonction</label>
+              <input type="text" class="form-input" name="poste" value="{{ employe.poste|default:'' }}" placeholder="Votre poste">
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Département</label>
+              <select class="form-select" name="departement">
+                <option value="">— Sélectionner —</option>
+                <option value="Informatique" {% if employe.departement == "Informatique" %}selected{% endif %}>Informatique</option>
+                <option value="Ressources Humaines" {% if employe.departement == "Ressources Humaines" %}selected{% endif %}>Ressources Humaines</option>
+                <option value="Commercial" {% if employe.departement == "Commercial" %}selected{% endif %}>Commercial</option>
+                <option value="Production" {% if employe.departement == "Production" %}selected{% endif %}>Production</option>
+                <option value="Logistique" {% if employe.departement == "Logistique" %}selected{% endif %}>Logistique</option>
+                <option value="Direction" {% if employe.departement == "Direction" %}selected{% endif %}>Direction</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">Badge RFID</label>
+            <input type="text" class="form-input" value="{{ employe.badge_id|default:'—' }}" readonly>
+            <div style="font-size:10px; color:var(--text3); margin-top:6px;">🔒 Modifiable uniquement par un administrateur</div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Colonne droite -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <!-- Préférences -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon" style="background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.2);">📧</div>
+          <span class="card-title">Préférences de notification</span>
+        </div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-name">Rappels par email</div>
+                <div class="toggle-desc">30 minutes avant chaque réservation</div>
+              </div>
+              <div class="toggle-right">
+                <label class="tswitch">
+                  <input type="checkbox" name="notif_email" {% if preferences.email %}checked{% endif %}>
+                  <span class="tslider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-name">Rappels avant réservation</div>
+                <div class="toggle-desc">Notification pour les rappels</div>
+              </div>
+              <div class="toggle-right">
+                <label class="tswitch">
+                  <input type="checkbox" name="notif_rappel" {% if preferences.rappel %}checked{% endif %}>
+                  <span class="tslider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+              <button type="submit" name="update_preferences" value="1" class="btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>
+                Sauvegarder
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Changement mot de passe -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon" style="background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.15);">🔑</div>
+          <span class="card-title">Changer mon mot de passe</span>
+        </div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            <div class="form-row">
+              <label class="form-label">Mot de passe actuel</label>
+              <input type="password" class="form-input" name="old_password" required placeholder="••••••••">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+              <div class="form-row">
+                <label class="form-label">Nouveau mot de passe</label>
+                <input type="password" class="form-input" name="new_password1" required placeholder="Min. 6 caractères">
+              </div>
+              <div class="form-row">
+                <label class="form-label">Confirmer</label>
+                <input type="password" class="form-input" name="new_password2" required placeholder="Répéter le mot de passe">
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button type="submit" name="change_password" value="1" class="btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Changer le mot de passe
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       STATISTIQUES DÉTAILLÉES
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📊</div>
+      <span class="card-title">Statistiques détaillées</span>
+    </div>
+    <div class="card-body">
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+        <div class="stat-card-mini">
+          <div class="stat-mini-label">📅 Accès ce mois</div>
+          <div class="stat-mini-val">{{ acces_mois|default:"0" }}</div>
+          <div class="stat-mini-sub">Depuis le 1er</div>
+        </div>
+        <div class="stat-card-mini">
+          <div class="stat-mini-label">🕐 Dernier accès</div>
+          <div class="stat-mini-val" style="font-size:16px; font-family:var(--mono);">{{ dernier_acces|date:"d/m/Y H:i"|default:"Jamais" }}</div>
+          <div class="stat-mini-sub">Horodatage</div>
+        </div>
+        <div class="stat-card-mini">
+          <div class="stat-mini-label">🚪 Zones visitées</div>
+          <div class="stat-mini-val">{{ zones_visitees|default:"0" }}</div>
+          <div class="stat-mini-sub">Uniques</div>
+        </div>
+        <div class="stat-card-mini">
+          <div class="stat-mini-label">📆 Réservations actives</div>
+          <div class="stat-mini-val">{{ reservations_actives|default:"0" }}</div>
+          <div class="stat-mini-sub">En cours</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       SESSIONS ACTIVES
+  ══════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(6,182,212,.1); border:1px solid rgba(6,182,212,.2);">🖥️</div>
+      <span class="card-title">Mes sessions actives</span>
+      <span class="card-badge" style="background:rgba(16,185,129,.1); color:var(--green); border:1px solid rgba(16,185,129,.2);">
+        {{ active_sessions|length|default:"0" }} session(s)
+      </span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if active_sessions %}
+        {% for session in active_sessions %}
+        <div class="session-item" style="padding:14px 20px;">
+          <div class="session-icon" style="background:{% if session.is_current %}rgba(16,185,129,.1){% else %}var(--bg3){% endif %};">
+            {% if session.device_type == 'desktop' %}💻
+            {% elif session.device_type == 'mobile' %}📱
+            {% else %}🖥️{% endif %}
+          </div>
+          <div class="session-info">
+            <div class="session-device">
+              {% if session.device_type == 'desktop' %}Ordinateur
+              {% elif session.device_type == 'mobile' %}Mobile
+              {% else %}Appareil{% endif %}
+              {% if session.is_current %}<span style="color:var(--green); margin-left:6px;">● Actuelle</span>{% endif %}
+            </div>
+            <div class="session-meta">
+              IP: {{ session.ip_address }} • {{ session.login_time }}
+            </div>
+          </div>
+          <div>
+            {% if session.is_current %}
+              <span class="badge b-green">Session active</span>
+            {% else %}
+              <form method="post" action="{% url 'terminate_session' session.id %}" style="display:inline;" onsubmit="return confirm('Terminer cette session ?')">
+                {% csrf_token %}
+                <button type="submit" class="btn-del btn-sm">🔒 Terminer</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="padding:40px 20px; text-align:center; color:var(--text3);">
+          <div style="font-size:42px; margin-bottom:12px; opacity:.5;">🖥️</div>
+          <div>Aucune session active</div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div><!-- /dash-wrap -->
+
+
+<script>
+// ═══════════════════════════════════════════
+// KPI COUNTER ANIMATION
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.kpi-val').forEach(function(el) {
+    var text = el.textContent.replace('%', '').trim();
+    var target = parseInt(text.replace(/\D/g, ''), 10);
+    if (isNaN(target) || target === 0) return;
+    var isPercent = el.textContent.includes('%');
+    var start = 0;
+    var duration = 900;
+    var step = target / duration * 16;
+    var current = 0;
+    var timer = setInterval(function() {
+      current = Math.min(current + step, target);
+      el.textContent = Math.round(current) + (isPercent ? '%' : '');
+      if (current >= target) clearInterval(timer);
+    }, 16);
+  });
+});
+</script>
 {% endblock %}

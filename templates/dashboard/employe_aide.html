@@ -1,249 +1,489 @@
 {% extends "base.html" %}
 
-{% block title %}Centre d'aide - SIGR-CA{% endblock %}
+{% block title %}Centre d'aide · SIGR-CA{% endblock %}
 {% block page_title %}Centre d'information et d'aide{% endblock %}
 {% block page_sub %}Trouvez des réponses à vos questions{% endblock %}
 {% block nav_emp_aide %}active{% endblock %}
 
-{% block content %}
+{% block topbar_actions %}
+<div style="display:flex; gap:10px; align-items:center;">
+  <div class="live-pill">
+    <span class="live-dot"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">AIDE</span>
+  </div>
+</div>
+{% endblock %}
 
+{% block content %}
 <style>
-.help-search {
-  background: linear-gradient(135deg, var(--blue3), var(--purple2));
-  border-radius: 16px;
-  padding: 32px;
-  text-align: center;
-  margin-bottom: 32px;
-}
-.help-search h2 {
-  margin: 0 0 8px 0;
-  font-size: 24px;
-}
-.search-bar {
-  max-width: 500px;
-  margin: 20px auto 0;
-  display: flex;
-  gap: 12px;
-}
-.search-input-large {
-  flex: 1;
-  padding: 12px 16px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text);
-  font-size: 14px;
-}
-.faq-item {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 12px;
-  overflow: hidden;
-}
-.faq-question {
-  padding: 16px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 500;
-  transition: background 0.2s;
-}
-.faq-question:hover {
-  background: var(--bg3);
-}
-.faq-answer {
-  padding: 0 16px;
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-  color: var(--text2);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.faq-answer.open {
-  padding: 0 16px 16px;
-  max-height: 200px;
-}
-.faq-icon {
-  transition: transform 0.2s;
-}
-.faq-icon.open {
-  transform: rotate(180deg);
-}
-.contact-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-}
-.contact-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-.quick-links {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 32px;
-}
-.quick-link {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-decoration: none;
-  color: var(--text);
-}
-.quick-link:hover {
-  transform: translateY(-4px);
-  border-color: var(--blue);
-}
-.quick-link-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
+  /* ═══════════════════════════════════════
+     FONTS & TOKENS
+  ═══════════════════════════════════════ */
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --font: 'Space Grotesk', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+    --bg0: #080d17;
+    --bg1: #0d1320;
+    --bg2: #111827;
+    --bg3: #162032;
+    --bg4: #1c2b40;
+    --bg5: #243347;
+    --border:  rgba(99,140,185,.12);
+    --border2: rgba(99,140,185,.18);
+    --border3: rgba(99,140,185,.28);
+    --text1: #e8edf5;
+    --text2: #8fa3bc;
+    --text3: #56708a;
+    --blue:   #3b82f6;
+    --blue2:  #60a5fa;
+    --cyan:   #06b6d4;
+    --green:  #10b981;
+    --amber:  #f59e0b;
+    --red:    #ef4444;
+    --purple: #8b5cf6;
+    --pink:   #ec4899;
+    --glow-blue:   0 0 20px rgba(59,130,246,.25);
+    --glow-green:  0 0 20px rgba(16,185,129,.25);
+    --glow-purple: 0 0 20px rgba(139,92,246,.25);
+    --glow-cyan:   0 0 20px rgba(6,182,212,.25);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  body, .dashboard-body { font-family: var(--font) !important; background: var(--bg0) !important; }
+
+  .live-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 14px; border-radius: 20px; cursor: default;
+    background: rgba(6,182,212,.1); border: 1px solid rgba(6,182,212,.3);
+    font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--cyan);
+    font-family: var(--mono);
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--cyan);
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; box-shadow: 0 0 0 0 rgba(6,182,212,.5); }
+    50%      { opacity:.7; box-shadow: 0 0 0 5px rgba(6,182,212,0); }
+  }
+
+  /* ═══════════════════════════════════════
+     LAYOUT
+  ═══════════════════════════════════════ */
+  .dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+
+  /* ═══════════════════════════════════════
+     CARDS
+  ═══════════════════════════════════════ */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .card-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card-head-icon {
+    width: 32px; height: 32px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+  .card-body { padding: 20px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text3); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  .info-box {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    text-align: center; color: var(--text3); font-size: 13px;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+    background: var(--blue); color: #fff; font-weight: 600; font-size: 13px;
+    font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
+    text-decoration: none;
+  }
+  .btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+
+  .btn-ghost {
+    padding: 8px 18px; border-radius: 8px; cursor: pointer;
+    background: transparent; color: var(--text2); font-weight: 600; font-size: 13px;
+    font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border2); text-decoration: none;
+  }
+  .btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
+  .btn-sm { padding: 6px 13px; font-size: 12px; }
+
+  /* ═══════════════════════════════════════
+     HERO SEARCH
+  ═══════════════════════════════════════ */
+  .help-hero {
+    background: linear-gradient(135deg, rgba(59,130,246,.06), rgba(139,92,246,.06));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .help-hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .help-hero-title {
+    font-size: 24px; font-weight: 700; color: var(--text1); margin-bottom: 8px;
+  }
+  .help-hero-sub { font-size: 13px; color: var(--text3); margin-bottom: 22px; }
+  .search-row {
+    max-width: 520px; margin: 0 auto;
+    display: flex; gap: 10px;
+  }
+  .search-input-large {
+    flex: 1; padding: 12px 16px;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); color: var(--text1);
+    font-size: 13px; font-family: var(--font); outline: none;
+    transition: border-color .2s;
+  }
+  .search-input-large:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+  .search-input-large::placeholder { color: var(--text3); }
+
+  /* ═══════════════════════════════════════
+     QUICK LINKS
+  ═══════════════════════════════════════ */
+  .quick-links-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  @media (max-width:900px) { .quick-links-grid { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width:500px) { .quick-links-grid { grid-template-columns: 1fr 1fr; } }
+
+  .quick-link {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 14px;
+    text-align: center; cursor: pointer;
+    transition: all .2s; text-decoration: none; color: var(--text1);
+    display: block;
+  }
+  .quick-link:hover {
+    transform: translateY(-4px);
+    border-color: var(--blue);
+    box-shadow: var(--glow-blue);
+    background: var(--bg3);
+  }
+  .quick-link-icon { font-size: 28px; margin-bottom: 8px; }
+  .quick-link-label { font-size: 12px; font-weight: 600; color: var(--text1); }
+  .quick-link-sub { font-size: 10.5px; color: var(--text3); margin-top: 3px; }
+
+  /* ═══════════════════════════════════════
+     FAQ
+  ═══════════════════════════════════════ */
+  .faq-item {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); margin-bottom: 8px; overflow: hidden;
+    transition: border-color .2s;
+  }
+  .faq-item:hover { border-color: var(--border2); }
+  .faq-question {
+    padding: 14px 16px; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    font-weight: 500; font-size: 13px; color: var(--text1);
+    transition: background .2s; gap: 12px;
+  }
+  .faq-question:hover { background: var(--bg4); }
+  .faq-answer {
+    padding: 0 16px; max-height: 0; overflow: hidden;
+    transition: max-height .35s ease, padding .2s ease;
+    color: var(--text2); font-size: 12.5px; line-height: 1.6;
+  }
+  .faq-answer.open { padding: 0 16px 14px; max-height: 300px; }
+  .faq-icon { transition: transform .25s; color: var(--text3); font-size: 12px; flex-shrink: 0; }
+  .faq-icon.open { transform: rotate(180deg); color: var(--blue2); }
+
+  /* ═══════════════════════════════════════
+     CONTACT CARDS
+  ═══════════════════════════════════════ */
+  .contact-card {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 18px 16px;
+    display: flex; align-items: center; gap: 14px;
+    transition: all .2s; margin-bottom: 10px;
+  }
+  .contact-card:last-child { margin-bottom: 0; }
+  .contact-card:hover { border-color: var(--border3); background: var(--bg4); }
+  .contact-icon-wrap {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .contact-card-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--text3); margin-bottom: 3px; }
+  .contact-card-value { font-family: var(--mono); font-size: 13px; color: var(--text1); font-weight: 600; }
+  .contact-card-value.normal { font-family: var(--font); font-weight: 400; color: var(--text2); }
+
+  /* ═══════════════════════════════════════
+     TUTORIELS
+  ═══════════════════════════════════════ */
+  .tuto-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  @media (max-width:700px) { .tuto-grid { grid-template-columns: 1fr; } }
+
+  .tuto-card {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 20px 16px;
+    cursor: pointer; transition: all .2s; text-align: center;
+  }
+  .tuto-card:hover {
+    transform: translateY(-3px); border-color: var(--cyan);
+    box-shadow: var(--glow-cyan); background: var(--bg4);
+  }
+  .tuto-icon { font-size: 30px; margin-bottom: 10px; }
+  .tuto-title { font-size: 13px; font-weight: 600; color: var(--text1); margin-bottom: 6px; }
+  .tuto-duration {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10.5px; color: var(--text3);
+    font-family: var(--mono);
+    background: var(--bg5); padding: 3px 9px; border-radius: 20px;
+  }
+  .tuto-play-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 12px; padding: 7px 16px;
+    background: rgba(6,182,212,.1); border: 1px solid rgba(6,182,212,.25);
+    border-radius: 20px; font-size: 11px; font-weight: 600; color: var(--cyan);
+    font-family: var(--font); cursor: pointer; transition: all .18s;
+  }
+  .tuto-play-btn:hover { background: rgba(6,182,212,.2); }
 </style>
 
-<!-- Barre de recherche -->
-<div class="help-search">
-  <h2>👋 Comment pouvons-nous vous aider ?</h2>
-  <p>Recherchez une réponse ou parcourez les FAQ</p>
-  <div class="search-bar">
-    <input type="text" class="search-input-large" id="faqSearch" placeholder="Rechercher..." onkeyup="searchFAQ()">
-  </div>
-</div>
+<div class="dash-wrap">
 
-<!-- Liens rapides -->
-<div class="quick-links">
-  <a href="{% url 'employe_mes_reservations' %}" class="quick-link">
-    <div class="quick-link-icon">📅</div>
-    <div>Réservations</div>
-    <div style="font-size: 11px; color: var(--text3);">Gérer mes créneaux</div>
-  </a>
-  <a href="{% url 'employe_badge_virtuel' %}" class="quick-link">
-    <div class="quick-link-icon">📱</div>
-    <div>Badge virtuel</div>
-    <div style="font-size: 11px; color: var(--text3);">Mon QR code d'accès</div>
-  </a>
-  <a href="{% url 'employe_profil' %}" class="quick-link">
-    <div class="quick-link-icon">👤</div>
-    <div>Mon profil</div>
-    <div style="font-size: 11px; color: var(--text3);">Modifier mes infos</div>
-  </a>
-  <a href="{% url 'employe_plan_zones' %}" class="quick-link">
-    <div class="quick-link-icon">🗺️</div>
-    <div>Plan des zones</div>
-    <div style="font-size: 11px; color: var(--text3);">Voir les salles</div>
-  </a>
-</div>
-
-<div class="g2">
-  <!-- FAQ -->
-  <div class="card">
-    <div class="card-head">
-      <div class="card-title">❓ Foire aux questions</div>
+  <!-- ═══ HERO SEARCH ═══ -->
+  <div class="help-hero">
+    <div class="help-hero-title">👋 Comment pouvons-nous vous aider ?</div>
+    <div class="help-hero-sub">Recherchez une réponse ou parcourez les sections ci-dessous</div>
+    <div class="search-row">
+      <input type="text" class="search-input-large" id="faqSearch" placeholder="🔍  Rechercher dans la FAQ..." onkeyup="searchFAQ()">
     </div>
-    <div class="card-body" id="faq-container">
-      {% for faq in faqs %}
-      <div class="faq-item" data-question="{{ faq.question|lower }}">
-        <div class="faq-question" onclick="toggleFAQ(this)">
-          <span>{{ faq.question }}</span>
-          <span class="faq-icon">▼</span>
+  </div>
+
+  <!-- ═══ QUICK LINKS ═══ -->
+  <div>
+    <div class="section-label">⚡ Accès rapide</div>
+    <div class="quick-links-grid">
+      <a href="{% url 'employe_mes_reservations' %}" class="quick-link">
+        <div class="quick-link-icon">📅</div>
+        <div class="quick-link-label">Réservations</div>
+        <div class="quick-link-sub">Gérer mes créneaux</div>
+      </a>
+      <a href="{% url 'employe_badge_virtuel' %}" class="quick-link">
+        <div class="quick-link-icon">📱</div>
+        <div class="quick-link-label">Badge virtuel</div>
+        <div class="quick-link-sub">Mon QR code d'accès</div>
+      </a>
+      <a href="{% url 'employe_profil' %}" class="quick-link">
+        <div class="quick-link-icon">👤</div>
+        <div class="quick-link-label">Mon profil</div>
+        <div class="quick-link-sub">Modifier mes infos</div>
+      </a>
+      <a href="{% url 'employe_plan_zones' %}" class="quick-link">
+        <div class="quick-link-icon">🗺️</div>
+        <div class="quick-link-label">Plan des zones</div>
+        <div class="quick-link-sub">Voir les salles</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- ═══ FAQ + CONTACT ═══ -->
+  <div class="grid-2">
+
+    <!-- FAQ -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);">❓</div>
+        <span class="card-title">Foire aux questions</span>
+        <span style="font-size:10.5px;font-family:var(--mono);color:var(--text3);">{{ faqs|length }} questions</span>
+      </div>
+      <div class="card-body" id="faq-container" style="padding:14px 16px;">
+        {% for faq in faqs %}
+        <div class="faq-item" data-question="{{ faq.question|lower }}">
+          <div class="faq-question" onclick="toggleFAQ(this)">
+            <span>{{ faq.question }}</span>
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            {{ faq.reponse }}
+          </div>
         </div>
-        <div class="faq-answer">
-          {{ faq.reponse }}
+        {% empty %}
+        <div class="info-box">Aucune question disponible pour le moment.</div>
+        {% endfor %}
+        <div id="faq-empty" style="display:none;">
+          <div class="info-box">Aucun résultat pour votre recherche.</div>
         </div>
       </div>
-      {% endfor %}
     </div>
+
+    <!-- Contact support -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.2);">📞</div>
+        <span class="card-title">Contacter le support</span>
+        <span style="font-size:10px;font-family:var(--mono);padding:3px 10px;border-radius:20px;background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);">EN LIGNE</span>
+      </div>
+      <div class="card-body" style="padding:16px;">
+        <div class="contact-card">
+          <div class="contact-icon-wrap" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);">📧</div>
+          <div>
+            <div class="contact-card-label">Email</div>
+            <div class="contact-card-value">{{ contacts.email }}</div>
+          </div>
+        </div>
+        <div class="contact-card">
+          <div class="contact-icon-wrap" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);">📞</div>
+          <div>
+            <div class="contact-card-label">Téléphone</div>
+            <div class="contact-card-value">{{ contacts.telephone }}</div>
+          </div>
+        </div>
+        <div class="contact-card">
+          <div class="contact-icon-wrap" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);">⏰</div>
+          <div>
+            <div class="contact-card-label">Horaires de disponibilité</div>
+            <div class="contact-card-value normal">{{ contacts.horaires }}</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:14px 16px;background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.12);border-radius:var(--radius-sm);">
+          <div style="font-size:11px;color:var(--text3);line-height:1.6;">💡 <strong style="color:var(--text2);">Conseil :</strong> Pour un traitement plus rapide, mentionnez votre matricule et la zone concernée dans votre message.</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Contact support -->
+  <!-- ═══ TUTORIELS ═══ -->
   <div class="card">
     <div class="card-head">
-      <div class="card-title">📞 Contacter le support</div>
+      <div class="card-head-icon" style="background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.2);">📺</div>
+      <span class="card-title">Tutoriels vidéo</span>
+      <span style="font-size:10.5px;color:var(--text3);">3 tutoriels disponibles</span>
     </div>
     <div class="card-body">
-      <div class="contact-card">
-        <div class="contact-icon">📧</div>
-        <div style="font-weight: 500; margin-bottom: 4px;">Email</div>
-        <div style="font-family: monospace;">{{ contacts.email }}</div>
+      <div class="tuto-grid">
+        <div class="tuto-card" onclick="showTutorial('reservation')">
+          <div class="tuto-icon">📅</div>
+          <div class="tuto-title">Comment réserver une salle</div>
+          <div class="tuto-duration">▶ 2:34</div>
+          <div><button class="tuto-play-btn">▶ Regarder</button></div>
+        </div>
+        <div class="tuto-card" onclick="showTutorial('badge')">
+          <div class="tuto-icon">📱</div>
+          <div class="tuto-title">Utiliser son badge virtuel</div>
+          <div class="tuto-duration">▶ 1:45</div>
+          <div><button class="tuto-play-btn">▶ Regarder</button></div>
+        </div>
+        <div class="tuto-card" onclick="showTutorial('acces')">
+          <div class="tuto-icon">🚪</div>
+          <div class="tuto-title">Accéder aux zones</div>
+          <div class="tuto-duration">▶ 1:20</div>
+          <div><button class="tuto-play-btn">▶ Regarder</button></div>
+        </div>
       </div>
-      <div class="contact-card" style="margin-top: 16px;">
-        <div class="contact-icon">📞</div>
-        <div style="font-weight: 500; margin-bottom: 4px;">Téléphone</div>
-        <div style="font-family: monospace;">{{ contacts.telephone }}</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ MODAL TUTORIEL ═══ -->
+<div id="tutoModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,23,.85);backdrop-filter:blur(6px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeTutoModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:modal-in .25s cubic-bezier(.22,1,.36,1)">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-weight:700;font-size:15px;color:var(--text1);" id="tuto-modal-title">Tutoriel</span>
+      <button onclick="closeTutoModal()" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+    <div style="padding:28px 24px;text-align:center;">
+      <div style="font-size:52px;margin-bottom:16px;" id="tuto-modal-icon">📺</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;" id="tuto-modal-desc"></div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-size:12px;color:var(--text3);">
+        🚧 Cette fonctionnalité sera disponible prochainement.
       </div>
-      <div class="contact-card" style="margin-top: 16px;">
-        <div class="contact-icon">⏰</div>
-        <div style="font-weight: 500; margin-bottom: 4px;">Horaires</div>
-        <div>{{ contacts.horaires }}</div>
-      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+      <button onclick="closeTutoModal()" style="padding:8px 18px;border-radius:8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:13px;font-family:var(--font);cursor:pointer;font-weight:600;">Fermer</button>
     </div>
   </div>
 </div>
 
-<!-- Tutoriels vidéo -->
-<div class="card">
-  <div class="card-head">
-    <div class="card-title">📺 Tutoriels vidéo</div>
-  </div>
-  <div class="card-body">
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
-      <div class="contact-card" style="cursor: pointer;" onclick="showTutorial('reservation')">
-        <div style="font-size: 32px; margin-bottom: 8px;">📅</div>
-        <div style="font-weight: 500;">Comment réserver une salle</div>
-        <div style="font-size: 11px; color: var(--text3); margin-top: 4px;">Vidéo 2:34</div>
-      </div>
-      <div class="contact-card" style="cursor: pointer;" onclick="showTutorial('badge')">
-        <div style="font-size: 32px; margin-bottom: 8px;">📱</div>
-        <div style="font-weight: 500;">Utiliser son badge virtuel</div>
-        <div style="font-size: 11px; color: var(--text3); margin-top: 4px;">Vidéo 1:45</div>
-      </div>
-      <div class="contact-card" style="cursor: pointer;" onclick="showTutorial('acces')">
-        <div style="font-size: 32px; margin-bottom: 8px;">🚪</div>
-        <div style="font-weight: 500;">Accéder aux zones</div>
-        <div style="font-size: 11px; color: var(--text3); margin-top: 4px;">Vidéo 1:20</div>
-      </div>
-    </div>
-  </div>
-</div>
+<style>
+  @keyframes modal-in { from{opacity:0;transform:translateY(20px) scale(.97)} to{opacity:1;transform:none} }
+</style>
 
 <script>
 function toggleFAQ(element) {
   const answer = element.nextElementSibling;
   const icon = element.querySelector('.faq-icon');
-  answer.classList.toggle('open');
-  icon.classList.toggle('open');
+  const isOpen = answer.classList.contains('open');
+
+  // Close all
+  document.querySelectorAll('.faq-answer.open').forEach(a => a.classList.remove('open'));
+  document.querySelectorAll('.faq-icon.open').forEach(i => i.classList.remove('open'));
+
+  if (!isOpen) {
+    answer.classList.add('open');
+    icon.classList.add('open');
+  }
 }
 
 function searchFAQ() {
-  const searchTerm = document.getElementById('faqSearch').value.toLowerCase();
-  const faqs = document.querySelectorAll('.faq-item');
-  
-  faqs.forEach(faq => {
-    const question = faq.dataset.question;
-    if (question.includes(searchTerm) || searchTerm === '') {
-      faq.style.display = '';
-    } else {
-      faq.style.display = 'none';
-    }
+  const term = document.getElementById('faqSearch').value.toLowerCase().trim();
+  const items = document.querySelectorAll('.faq-item');
+  let visible = 0;
+
+  items.forEach(item => {
+    const q = item.dataset.question || '';
+    const a = item.querySelector('.faq-answer')?.textContent.toLowerCase() || '';
+    const match = !term || q.includes(term) || a.includes(term);
+    item.style.display = match ? '' : 'none';
+    if (match) visible++;
   });
+
+  document.getElementById('faq-empty').style.display = visible === 0 ? 'block' : 'none';
 }
 
+const tutoData = {
+  reservation: { icon: '📅', title: 'Comment réserver une salle', desc: 'Apprenez à créer et gérer vos réservations de salles en quelques étapes simples depuis votre espace personnel.' },
+  badge:       { icon: '📱', title: 'Utiliser son badge virtuel',  desc: 'Découvrez comment afficher et utiliser votre QR code pour accéder aux différentes zones sécurisées.' },
+  acces:       { icon: '🚪', title: 'Accéder aux zones',           desc: 'Comprenez les niveaux d\'accès et comment naviguer efficacement dans les différentes zones du bâtiment.' },
+};
+
 function showTutorial(type) {
-  const titles = {
-    'reservation': 'Comment réserver une salle',
-    'badge': 'Utiliser son badge virtuel',
-    'acces': 'Accéder aux zones'
-  };
-  alert(`📺 Tutoriel: ${titles[type]}\n\nCette fonctionnalité sera disponible prochainement.`);
+  const d = tutoData[type];
+  document.getElementById('tuto-modal-icon').textContent = d.icon;
+  document.getElementById('tuto-modal-title').textContent = d.title;
+  document.getElementById('tuto-modal-desc').textContent = d.desc;
+  document.getElementById('tutoModal').style.display = 'flex';
+}
+
+function closeTutoModal() {
+  document.getElementById('tutoModal').style.display = 'none';
 }
 </script>
 
