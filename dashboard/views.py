@@ -2862,15 +2862,31 @@ def api_materiel_pdf(request, materiel_id):
         val_style = ps('VAL', fontSize=10, fontName='Helvetica',
                         textColor=C_BLACK, alignment=TA_LEFT)
 
+        # ✅ Fonction info_row DÉFINIE ICI (à l'intérieur de la fonction)
         def info_row(label, value):
             if not value and value != 0:
                 return [Paragraph(label, label_style), Paragraph('—', val_style)]
             return [Paragraph(label, label_style), Paragraph(str(value), val_style)]
+        
+        # ✅ Fonction pour formater les valeurs numériques
+        def format_valeur(value):
+            """Formate une valeur avec séparateur de milliers"""
+            if value is None or value == '':
+                return ''
+            try:
+                if isinstance(value, str):
+                    value = value.strip().replace(' ', '').replace('\u202f', '')
+                    if value == '':
+                        return ''
+                    value = float(value) if '.' in value else int(value)
+                return f"{int(value):,}"
+            except (ValueError, TypeError):
+                return str(value)
 
         elements = []
 
         # ════════════════════════════════════════════
-        #  EN-TÊTE (même que employés)
+        #  EN-TÊTE
         # ════════════════════════════════════════════
         from django.contrib.staticfiles.finders import find as static_find
 
@@ -2972,7 +2988,7 @@ def api_materiel_pdf(request, materiel_id):
                 except:
                     pass
 
-        # Données générales
+        # ✅ Données générales (corrigé avec format_valeur)
         gen_rows = [
             info_row('Nom',                    m.get('nom', '')),
             info_row('Catégorie',              m.get('categorie', '').title() if m.get('categorie') else ''),
@@ -2985,9 +3001,9 @@ def api_materiel_pdf(request, materiel_id):
             info_row('Date d\'achat',          m.get('date_achat', '')),
             info_row('Date de mise en service', m.get('date_mise_service', '')),
             info_row('Garantie jusqu\'au',     m.get('garantie', '')),
-            info_row('Valeur d\'achat (DA)',   f"{m.get('valeur', ''):,} DA" if m.get('valeur') else ''),
-            info_row('Valeur résiduelle (DA)', f"{m.get('valeur_residuelle', ''):,} DA" if m.get('valeur_residuelle') else ''),
-            info_row('Statut',                 m.get('statut', '').replace('_', ' ').title()),
+            info_row('Valeur d\'achat (DA)',   f"{format_valeur(m.get('valeur'))} DA" if m.get('valeur') else ''),
+            info_row('Valeur résiduelle (DA)', f"{format_valeur(m.get('valeur_residuelle'))} DA" if m.get('valeur_residuelle') else ''),
+            info_row('Statut',                 m.get('statut', '').replace('_', ' ').title() if m.get('statut') else ''),
             info_row('État',                   m.get('etat', '').replace('_', ' ').title() if m.get('etat') else ''),
             info_row('Zone assignée',          m.get('zone', '')),
             info_row('Utilisateur assigné',    m.get('utilisateur_nom', '')),
@@ -2996,11 +3012,10 @@ def api_materiel_pdf(request, materiel_id):
             info_row('RFID/NFC Tag',           m.get('rfid_tag', '')),
         ]
 
-        # Filtrer les lignes vides
-        gen_rows = [r for r in gen_rows if r[1].text not in ('', '—', None) or r[0].text.startswith('Catégorie')]
+        # Filtrer les lignes vides (corrigé)
+        gen_rows = [r for r in gen_rows if len(r) >= 2 and r[1].text not in ('', '—', None)]
 
         if photo_img:
-            # Photo + infos côte à côte
             t_gen = Table(gen_rows, colWidths=[5*cm, 7*cm])
             t_gen.setStyle(TableStyle([
                 ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
@@ -3060,7 +3075,7 @@ def api_materiel_pdf(request, materiel_id):
             info_row('Poids (kg)',               m.get('poids', '')),
             info_row('Dimensions',               m.get('dimensions', '')),
         ]
-        tech_rows = [r for r in tech_rows if r[1].text not in ('', '—', None)]
+        tech_rows = [r for r in tech_rows if len(r) >= 2 and r[1].text not in ('', '—', None)]
 
         if tech_rows:
             elements.append(Paragraph('Spécifications techniques', sec_style))
@@ -3119,7 +3134,7 @@ def api_materiel_pdf(request, materiel_id):
         # ════════════════════════════════════════════
         maintenances = list(db.maintenances.find(
             {'materiel_id': m['_id']}
-        ).sort('date', -1).limit(10)) if hasattr(db, 'maintenances') else []
+        ).sort('date', -1).limit(10)) if 'maintenances' in db.list_collection_names() else []
 
         if maintenances:
             elements.append(Paragraph('Historique de maintenance', sec_style))
@@ -3132,12 +3147,14 @@ def api_materiel_pdf(request, materiel_id):
             ]
             maint_data = [maint_headers]
             for mt in maintenances:
+                cout = mt.get('cout', 0)
+                cout_str = f"{int(cout):,}" if cout else '—'
                 maint_data.append([
-                    Paragraph(mt.get('date', '—'), td_left),
-                    Paragraph(mt.get('type', '—').replace('_', ' ').title(), td),
-                    Paragraph(mt.get('intervenant', '—'), td),
-                    Paragraph(f"{mt.get('cout', 0):,}" if mt.get('cout') else '—', td),
-                    Paragraph(mt.get('description', '—')[:80], td_left),
+                    Paragraph(str(mt.get('date', '—')), td_left),
+                    Paragraph(str(mt.get('type', '—')).replace('_', ' ').title(), td),
+                    Paragraph(str(mt.get('intervenant', '—')), td),
+                    Paragraph(cout_str, td),
+                    Paragraph(str(mt.get('description', '—'))[:80], td_left),
                 ])
 
             t_maint = Table(maint_data, colWidths=[2.5*cm, 2.8*cm, 3.5*cm, 2.5*cm, 6.2*cm], repeatRows=1)
@@ -3231,6 +3248,7 @@ def api_materiel_pdf(request, materiel_id):
         return response
 
     except Exception as e:
+        import traceback
         return HttpResponse(
             f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
             content_type='text/plain',
@@ -5883,129 +5901,35 @@ def update_admin_avatar(request):
 
 # ====================== GESTION DES RESSOURCES ======================
 
-@login_required
-def resource_list(request):
-    if not request.user.is_staff:
-        return redirect('employe_espace')
-    
-    resources = list(db.resources.find())
-    for r in resources:
-        r['id'] = str(r['_id'])
-    
-    stats = {
-        'total': len(resources),
-        'par_categorie': {},
-        'disponibles': sum(1 for r in resources if r.get('statut') == 'disponible'),
-        'maintenance': sum(1 for r in resources if r.get('statut') == 'maintenance'),
-    }
-    
-    for r in resources:
-        cat = r.get('categorie', 'autre')
-        stats['par_categorie'][cat] = stats['par_categorie'].get(cat, 0) + 1
-    
-    return render(request, 'dashboard/ressources.html', {
-        'resources': resources,
-        'stats': stats,
-        'total_resources': len(resources),
-    })
 
 
-@login_required
-def resource_ajouter(request):
-    if not request.user.is_staff:
-        return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
-    if request.method == 'POST':
-        try:
-            data = {
-                'nom': request.POST.get('nom'),
-                'categorie': request.POST.get('categorie'),
-                'description': request.POST.get('description', ''),
-                'photo': request.POST.get('photo', ''),
-                'caracteristiques': json.loads(request.POST.get('caracteristiques', '{}')),
-                'localisation': request.POST.get('localisation', ''),
-                'bureau_associe': request.POST.get('bureau_associe'),
-                'capacite': int(request.POST.get('capacite', 1)),
-                'statut': request.POST.get('statut', 'disponible'),
-                'disponibilite_heures': json.loads(request.POST.get('disponibilite_heures', '{}')),
-                'created_at': datetime.now(),
-                'created_by': request.user.username,
-            }
-            result = db.resources.insert_one(data)
-            messages.success(request, f"Ressource '{data['nom']}' ajoutée avec succès")
-            return redirect('resource_list')
-        except Exception as e:
-            messages.error(request, f"Erreur: {str(e)}")
-    
-    bureaux = list(db.bureaux.find())
-    for b in bureaux:
-        b['id'] = str(b['_id'])
-    
-    return render(request, 'dashboard/resource_form.html', {
-        'bureaux': bureaux,
-        'resource': {},
-        'is_edit': False,
-    })
-
-
-@login_required
-def resource_modifier(request, resource_id):
-    if not request.user.is_staff:
-        return redirect('employe_espace')
-    
-    try:
-        resource = db.resources.find_one({'_id': ObjectId(resource_id)})
-        if not resource:
-            messages.error(request, "Ressource non trouvée")
-            return redirect('resource_list')
-        resource['id'] = str(resource['_id'])
-        
-        if request.method == 'POST':
-            update_data = {
-                'nom': request.POST.get('nom'),
-                'categorie': request.POST.get('categorie'),
-                'description': request.POST.get('description', ''),
-                'photo': request.POST.get('photo', ''),
-                'caracteristiques': json.loads(request.POST.get('caracteristiques', '{}')),
-                'localisation': request.POST.get('localisation', ''),
-                'bureau_associe': request.POST.get('bureau_associe'),
-                'capacite': int(request.POST.get('capacite', 1)),
-                'statut': request.POST.get('statut', 'disponible'),
-                'disponibilite_heures': json.loads(request.POST.get('disponibilite_heures', '{}')),
-                'updated_at': datetime.now(),
-                'updated_by': request.user.username,
-            }
-            db.resources.update_one({'_id': ObjectId(resource_id)}, {'$set': update_data})
-            messages.success(request, f"Ressource modifiée avec succès")
-            return redirect('resource_list')
-    except Exception as e:
-        messages.error(request, f"Erreur: {str(e)}")
-    
-    bureaux = list(db.bureaux.find())
-    for b in bureaux:
-        b['id'] = str(b['_id'])
-    
-    return render(request, 'dashboard/resource_form.html', {
-        'bureaux': bureaux,
-        'resource': resource,
-        'is_edit': True,
-    })
-
-
-@login_required
-def resource_supprimer(request, resource_id):
-    if not request.user.is_staff:
-        return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
-    if request.method == 'POST':
-        db.resources.update_one(
-            {'_id': ObjectId(resource_id)},
-            {'$set': {'statut': 'hors_service', 'deleted_at': datetime.now()}}
-        )
-        messages.success(request, "Ressource désactivée")
-    
-    return redirect('resource_list')
 # ====================== GESTION DES RESSOURCES (SUITE) ======================
+
+@login_required
+@require_http_methods(["POST"])
+def api_materiel_upload_photo(request):
+    import base64, uuid
+    from django.conf import settings
+    try:
+        data = json.loads(request.body)
+        photo_data = data.get('photo_data', '')
+        if not photo_data:
+            return JsonResponse({'status': 'error', 'message': 'Pas de photo'}, status=400)
+        
+        if ',' in photo_data:
+            photo_data = photo_data.split(',')[1]
+        
+        img_bytes = base64.b64decode(photo_data)
+        filename = f"materiels/{uuid.uuid4().hex}.jpg"
+        filepath = os.path.join(settings.MEDIA_ROOT, filename)
+        
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'wb') as f:
+            f.write(img_bytes)
+        
+        return JsonResponse({'status': 'success', 'path': filename})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 @login_required
 def bureau_detail(request, bureau_id):
     """Détail d'un bureau/zone avec affichage de la hiérarchie"""
@@ -6109,44 +6033,6 @@ def api_materiel_list(request):
     for m in materiels:
         m['id'] = str(m['_id'])
     return JsonResponse({'materiels': materiels})
-
-
-@login_required
-def api_materiel_ajouter(request):
-    """API pour ajouter/modifier du matériel"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
-    
-    try:
-        data = json.loads(request.body)
-        materiel_id = data.get('id')
-        
-        materiel_data = {
-            'nom': data.get('nom'),
-            'categorie': data.get('categorie', 'autre'),
-            'numero_serie': data.get('numero_serie', ''),
-            'statut': data.get('statut', 'disponible'),
-            'zone': data.get('zone', ''),
-            'description': data.get('description', ''),
-            'photo': data.get('photo', ''),
-            'updated_at': datetime.now()
-        }
-        
-        if 'materiels' not in db.list_collection_names():
-            db.create_collection('materiels')
-        
-        if materiel_id and not materiel_id.startswith('mat_') and len(materiel_id) == 24:
-            # Modification d'un existant
-            db.materiels.update_one({'_id': ObjectId(materiel_id)}, {'$set': materiel_data})
-            return JsonResponse({'status': 'success', 'id': materiel_id})
-        else:
-            # Nouveau matériel
-            materiel_data['created_at'] = datetime.now()
-            result = db.materiels.insert_one(materiel_data)
-            return JsonResponse({'status': 'success', 'id': str(result.inserted_id)})
-            
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
 @login_required

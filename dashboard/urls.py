@@ -82,10 +82,10 @@ urlpatterns = [
     path('reservations/<str:reservation_id>/refuser/',          views.reservation_refuser,   name='reservation_refuser'),
 
     # ── Ressources (Resource model Django) ───────────────────────────────────
-    path('resources/',                               views.resource_list,      name='resource_list'),
-    path('resources/ajouter/',                       views.resource_ajouter,   name='resource_ajouter'),
-    path('resources/<str:resource_id>/modifier/',    views.resource_modifier,  name='resource_modifier'),
-    path('resources/<str:resource_id>/supprimer/',   views.resource_supprimer, name='resource_supprimer'),
+    #path('resources/',                               views.resource_list,      name='resource_list'),
+    #path('resources/ajouter/',                       views.resource_ajouter,   name='resource_ajouter'),
+    #path('resources/<str:resource_id>/modifier/',    views.resource_modifier,  name='resource_modifier'),
+    #path('resources/<str:resource_id>/supprimer/',   views.resource_supprimer, name='resource_supprimer'),
 
     # ── Gestion hiérarchique ─────────────────────────────────────────────────
     path('gestion-hierarchique/',                                         views.gestion_hierarchique,    name='gestion_hierarchique'),
@@ -168,7 +168,7 @@ urlpatterns = [
     path('api/resources/top/',              views.api_resources_top,       name='api_resources_top'),
     path('api/ressources/disponibles/',     views.api_ressources_disponibles, name='api_ressources_disponibles'),
     path('api/smart-suggestions/',          views.api_smart_suggestions,   name='api_smart_suggestions'),
-
+    path('api/materiel/upload-photo/', views.api_materiel_upload_photo, name='api_materiel_upload_photo'),
     # ── API Matériel ─────────────────────────────────────────────────────────
     path('api/materiel/list/',                          views.api_materiel_list,     name='api_materiel_list'),
     path('api/materiel/ajouter/',                       views.api_materiel_ajouter,  name='api_materiel_ajouter'),
