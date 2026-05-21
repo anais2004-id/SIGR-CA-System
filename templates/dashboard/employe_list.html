@@ -6,7 +6,7 @@
 
 {% block topbar_actions %}
 <div style="display:flex; gap:10px; align-items:center;">
-  <button class="btn btn-primary btn-sm" onclick="openAddModal()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:var(--blue); color:#fff; border:none; border-radius:8px; cursor:pointer; transition:all .18s;">
+  <button class="btn btn-primary btn-sm" onclick="openAddModal()" style="height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; font-family:var(--font); font-weight:600; font-size:12.5px; background:var(--blue2); color:#fff; border:none; border-radius:8px; cursor:pointer; transition:all .18s;">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Nouvel employé
   </button>
@@ -18,10 +18,7 @@
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
     Rapport PDF
   </button>
-  <div class="live-pill" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple);">
-    <span class="live-dot" style="background:var(--purple);"></span>
-    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">{{ total_employes }} PROFILS</span>
-  </div>
+  
 </div>
 {% endblock %}
 
@@ -135,7 +132,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 .kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
 .kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
 
-.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.blue   { --kpi-color:var(--blue2);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
 .kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
 .kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
 .kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
@@ -178,7 +175,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
   transition: all .18s;
 }
 .filter-tab.active {
-  background: var(--blue); color: #fff; border-color: var(--blue);
+  background: var(--blue2); color: #fff; border-color: var(--blue2);
   box-shadow: 0 0 12px rgba(59,130,246,.3);
 }
 .filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
@@ -258,7 +255,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
   text-decoration: none;
 }
 .btn-primary { background: var(--blue); color: #fff; }
-.btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
+.btn-primary:hover { background: var(--blue); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
 .btn-ghost {
   background: transparent; color: var(--text2);
   border: 1px solid var(--border2);
@@ -858,11 +855,17 @@ function openAddModal() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
           <div>
             <label class="form-label">Nom <span style="color:var(--red);">*</span></label>
-            <input class="form-input" type="text" name="nom" placeholder="Nom de famille" required>
+            <input class="form-input" type="text" name="nom" placeholder="Nom de famille" required
+                   pattern="[A-Za-zÀ-ÿ\s\-]+"
+                   title="Lettres uniquement"
+                   oninput="this.value = this.value.replace(/[^A-Za-zÀ-ÿ\s\-]/g, '')">
           </div>
           <div>
             <label class="form-label">Prénom</label>
-            <input class="form-input" type="text" name="prenom" placeholder="Prénom">
+            <input class="form-input" type="text" name="prenom" placeholder="Prénom"
+                   pattern="[A-Za-zÀ-ÿ\s\-]+"
+                   title="Lettres uniquement"
+                   oninput="this.value = this.value.replace(/[^A-Za-zÀ-ÿ\s\-]/g, '')">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
@@ -872,7 +875,12 @@ function openAddModal() {
           </div>
           <div>
             <label class="form-label">Téléphone</label>
-            <input class="form-input" type="tel" name="telephone" placeholder="+213 XX XX XX XX">
+            <input class="form-input" type="tel" name="telephone" 
+                   placeholder="05 XX XX XX XX"
+                   pattern="0[5-7][0-9]{8}"
+                   maxlength="10"
+                   title="Format : 05XXXXXXXX ou 06XXXXXXXX ou 07XXXXXXXX (10 chiffres)"
+                   oninput="this.value = this.value.replace(/[^0-9]/g, '').substring(0,10)">
           </div>
         </div>
 
@@ -895,8 +903,24 @@ function openAddModal() {
           <span style="width:24px;height:2px;background:var(--border);"></span> Badge
         </div>
         <div style="margin-bottom:18px;">
-          <label class="form-label">Badge RFID <span style="color:var(--red);">*</span></label>
-          <input class="form-input" type="text" name="badge_id" placeholder="RFID-XXXX" required style="font-family:var(--mono);">
+          <label class="form-label">
+            <i class="fas fa-microchip"></i> Badge RFID <span style="color:var(--red);">*</span>
+          </label>
+          <div class="input-group">
+            <i class="fas fa-microchip input-icon"></i>
+            <input class="form-input" type="text" name="badge_id"
+               id="badge_id"
+               placeholder="XX:XX:XX:XX"
+               required
+               pattern="[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}"
+               maxlength="11"
+               oninput="formatRFID(this)"
+               style="font-family:var(--mono); letter-spacing: 1px; text-transform:uppercase;"
+               title="Format requis : XX:XX:XX:XX (ex : D7:77:C5:01)">
+          </div>
+          <small style="color:var(--text3); font-size:11px; margin-top:6px; display:block;">
+            <i class="fas fa-info-circle"></i> Format : XX:XX:XX:XX (ex: D7:77:C5:01)
+          </small>
         </div>
 
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:8px;">
@@ -1008,6 +1032,13 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('empDept')?.addEventListener('change', empFilter);
   document.getElementById('empNiveau')?.addEventListener('change', empFilter);
 });
+function formatRFID(input) {
+  let value = input.value.replace(/[^A-Fa-f0-9]/g, '').toUpperCase();
+  let formatted = value.match(/.{1,2}/g);
+  if (formatted) {
+    input.value = formatted.join(':').substring(0, 11);
+  }
+}
 </script>
 
 {% endblock %}

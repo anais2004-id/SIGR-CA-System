@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="fr">
 <head>
@@ -72,24 +73,142 @@
       --bg4: #e2e8f0;
       --bg5: #cbd5e1;
 
-      --border:  rgba(148,163,184,.25);
-      --border2: rgba(148,163,184,.15);
-      --border3: rgba(148,163,184,.35);
+      --border:  rgba(100,116,139,.22);
+      --border2: rgba(100,116,139,.16);
+      --border3: rgba(100,116,139,.35);
 
+      /* Textes tous sombres et lisibles */
       --text:  #0f172a;
-      --text2: #475569;
-      --text3: #94a3b8;
+      --text2: #334155;
+      --text3: #64748b;
 
-      --blue3:  rgba(59,130,246,.1);
-      --green2: rgba(16,185,129,.1);
-      --amber2: rgba(245,158,11,.1);
-      --red2:   rgba(239,68,68,.08);
-      --purple2:rgba(139,92,246,.1);
+      /* Couleurs d'accent renforcées pour fond clair */
+      --blue:   #1d4ed8;
+      --blue2:  #1e40af;
+      --cyan:   #0369a1;
+      --green:  #065f46;
+      --amber:  #92400e;
+      --red:    #991b1b;
+      --purple: #5b21b6;
+      --pink:   #9d174d;
+
+      /* Fonds colorés légèrement plus saturés pour rester visibles */
+      --blue3:   rgba(29,78,216,.1);
+      --green2:  rgba(16,185,129,.12);
+      --amber2:  rgba(245,158,11,.12);
+      --red2:    rgba(239,68,68,.1);
+      --purple2: rgba(139,92,246,.1);
+
+      /* Glows atténués sur fond clair */
+      --glow-blue:   0 0 14px rgba(29,78,216,.15);
+      --glow-green:  0 0 14px rgba(6,95,70,.15);
+      --glow-red:    0 0 14px rgba(153,27,27,.15);
+      --glow-amber:  0 0 14px rgba(146,64,14,.15);
+      --glow-purple: 0 0 14px rgba(91,33,182,.15);
+      --glow-cyan:   0 0 14px rgba(3,105,161,.15);
 
       --shadow:   0 4px 20px rgba(0,0,0,.08);
-      --shadow-sm:0 1px 3px rgba(0,0,0,.05);
+      --shadow-sm:0 1px 3px rgba(0,0,0,.06);
     }
 
+    /* Corrections spécifiques mode clair */
+    body.light .kpi.k-blue   .kpi-value { color: #1d4ed8; }
+    body.light .kpi.k-green  .kpi-value { color: #065f46; }
+    body.light .kpi.k-red    .kpi-value { color: #991b1b; }
+    body.light .kpi.k-amber  .kpi-value { color: #92400e; }
+    body.light .kpi.k-purple .kpi-value { color: #5b21b6; }
+    body.light .kpi.k-cyan   .kpi-value { color: #0369a1; }
+
+    body.light .kpi-delta.up     { color: #065f46; }
+    body.light .kpi-delta.down   { color: #991b1b; }
+
+    body.light .b-green  { color: #065f46;  border-color: rgba(6,95,70,.3); }
+    body.light .b-red    { color: #991b1b;  border-color: rgba(153,27,27,.25); }
+    body.light .b-blue   { color: #1d4ed8;  border-color: rgba(29,78,216,.3); }
+    body.light .b-amber  { color: #92400e;  border-color: rgba(146,64,14,.3); }
+    body.light .b-purple { color: #5b21b6;  border-color: rgba(91,33,182,.3); }
+    body.light .b-gray   { color: #334155; }
+
+    body.light .btn-edit { color: #1d4ed8; border-color: rgba(29,78,216,.3); }
+    body.light .btn-del  { color: #991b1b; border-color: rgba(153,27,27,.25); }
+    body.light .btn-green { color: #065f46; border-color: rgba(6,95,70,.3); }
+
+    body.light .fs-ok { color: #065f46; border-color: rgba(6,95,70,.3); }
+    body.light .fs-no { color: #991b1b; border-color: rgba(153,27,27,.25); }
+
+    body.light .alert-box.danger .alert-text { color: #991b1b; }
+    body.light .alert-box.warn   .alert-text { color: #92400e; }
+    body.light .alert-box.info   .alert-text { color: #1d4ed8; }
+
+    body.light .pill-live  { color: #065f46; border-color: rgba(6,95,70,.3); }
+    body.light .pill-theme { color: #334155; }
+    body.light .pill-theme:hover { color: #1d4ed8; }
+
+    body.light .nav-item.active { color: #1d4ed8; border-color: rgba(29,78,216,.3); }
+    body.light .nav-dropdown-trigger.open { color: #1d4ed8; }
+
+    body.light .emp-sidebar-badge-title { color: #065f46; }
+
+    body.light .logout-btn { color: #991b1b; }
+
+    body.light .form-input, body.light .form-select {
+      background: #ffffff;
+      color: #0f172a;
+      border-color: rgba(100,116,139,.3);
+    }
+    body.light .form-input::placeholder { color: #94a3b8; }
+
+    body.light .tbl th { color: #475569; background: #f1f5f9; }
+    body.light .tbl td { color: #0f172a; }
+
+    body.light .nav-dropdown-item { color: #334155; }
+    body.light .nav-dropdown-item:hover { color: #0f172a; }
+    body.light .nav-dropdown-item.nav-dropdown-logout { color: #991b1b; }
+    /* ── Texte blanc hardcodé → noir en mode clair ── */
+body.light,
+body.light p,
+body.light span,
+body.light h1,
+body.light h2,
+body.light h3,
+body.light h4,
+body.light h5,
+body.light h6,
+body.light label,
+body.light li,
+body.light td,
+body.light th,
+body.light div,
+body.light a:not(.btn):not(.nav-item):not(.pill):not(.badge) {
+  color: var(--text);
+}
+
+/* Éléments qui doivent rester blancs même en mode clair */
+body.light .user-av,
+body.light .nav-badge,
+body.light .btn-primary,
+body.light .logo-mark,
+body.light [class*="btn-"]:not(.btn-ghost):not(.btn-edit):not(.btn-del) {
+  color: white !important;
+}
+
+/* Textes secondaires */
+body.light .topbar-sub,
+body.light .user-role,
+body.light .nav-group,
+body.light .card-sub,
+body.light .kpi-label,
+body.light .detail-label {
+  color: var(--text3) !important;
+}
+
+/* Inputs et selects */
+body.light input,
+body.light select,
+body.light textarea {
+  color: #0f172a !important;
+  background: #ffffff !important;
+}
     /* ═══════════════════════════════════════
        RESET & BASE
     ═══════════════════════════════════════ */
@@ -795,19 +914,21 @@
      SIDEBAR
 ═══════════════════════════════════════ -->
 <aside class="sidebar">
-  <div class="logo">
-    <div class="logo-mark">🔐</div>
-    <div>
-      <div class="logo-title">SIGR-CA</div>
-      <div class="logo-sub">
-        {% if user.is_authenticated and not user.is_staff %}
-          Espace Employé
-        {% else %}
-          Gestion Intelligente
-        {% endif %}
-      </div>
+ <div class="logo">
+  <img src="{% static 'img/logo.png' %}" alt="SIGR-CA"
+     style="height:42px; width:auto; object-fit:contain; border-radius:8px;">
+     
+  <div>
+    <div class="logo-title">SIGR-CA</div>
+    <div class="logo-sub">
+      {% if user.is_authenticated and not user.is_staff %}
+        Espace Employé
+      {% else %}
+        Gestion Intelligente
+      {% endif %}
     </div>
   </div>
+</div>
 
   <!-- SIDEBAR ADMIN -->
   {% if user.is_authenticated and user.is_staff %}

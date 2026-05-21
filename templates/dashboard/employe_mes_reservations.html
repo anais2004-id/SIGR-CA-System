@@ -82,7 +82,7 @@
 .kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
 .kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
 
-.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.blue   { --kpi-color:var(--blue2);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
 .kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
 .kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
 .kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
@@ -118,7 +118,7 @@
 ═══════════════════════════════════════ */
 .btn-primary {
   padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
-  background: var(--blue); color: #fff; font-weight: 600; font-size: 13px;
+  background: var(--blue2); color: #fff; font-weight: 600; font-size: 13px;
   font-family: var(--font); transition: all .18s; display: inline-flex; align-items: center; gap: 6px;
 }
 .btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
@@ -246,7 +246,7 @@
   border-radius: 4px; padding: 3px 6px; font-size: 10px; text-align: center;
   cursor: pointer; color: var(--text3); transition: all .15s;
 }
-.slot-empty:hover { background: rgba(59,130,246,.12); border-color: var(--blue); color: var(--blue2); }
+.slot-empty:hover { background: rgba(59,130,246,.12); border-color: var(--blue2); color: var(--blue2); }
 
 /* ═══════════════════════════════════════
    MODAL
@@ -285,7 +285,7 @@
   transition: all .18s;
 }
 .form-input:focus, .form-select:focus {
-  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+  border-color: var(--blue2); box-shadow: 0 0 0 3px rgba(59,130,246,.1);
 }
 textarea.form-input { resize: vertical; min-height: 80px; }
 

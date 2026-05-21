@@ -10,7 +10,7 @@
   <!-- Select employé -->
   <select id="employeeSelect" 
           style="width:280px; height:38px; padding:0 36px 0 14px; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; font-size:13px; color:var(--text1); font-family:var(--font); outline:none; cursor:pointer; transition:all .15s; appearance:none; -webkit-appearance:none; background-image:url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%238fa3bc\" stroke-width=\"2\"><polyline points=\"6 9 12 15 18 9\"/></svg>'); background-repeat:no-repeat; background-position:right 12px center;"
-          onfocus="this.style.borderColor='var(--blue)';this.style.boxShadow='0 0 0 3px rgba(59,130,246,.12)'" 
+          onfocus="this.style.borderColor='var(--blue2)';this.style.boxShadow='0 0 0 3px rgba(59,130,246,.12)'" 
           onblur="this.style.borderColor='var(--border2)';this.style.boxShadow='none'"
           onchange="loadEmployeeRules()">
     <option value="">— Choisir un employé —</option>
@@ -67,9 +67,9 @@
   
   <!-- Bouton Enregistrer -->
   <button onclick="saveAllRules()" 
-          style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; white-space:nowrap;"
+          style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue2); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; white-space:nowrap;"
           onmouseover="this.style.background='var(--blue2)';this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 14px rgba(59,130,246,.35)'" 
-          onmouseout="this.style.background='var(--blue)';this.style.transform='none';this.style.boxShadow='none'">
+          onmouseout="this.style.background='var(--blue2)';this.style.transform='none';this.style.boxShadow='none'">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="20 6 9 17 4 12"/>
     </svg>
@@ -172,10 +172,10 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 }
 .cal-day:hover { background: var(--bg4); transform: translateY(-2px); border-color: var(--border3); z-index: 1; }
 .cal-day.selected {
-  background: var(--blue); color: #fff; border-color: var(--blue);
+  background: var(--blue2); color: #fff; border-color: var(--blue2);
   box-shadow: 0 0 20px rgba(59,130,246,.35); transform: scale(1.05); z-index: 2;
 }
-.cal-day.today { border: 2px solid var(--blue); font-weight: 800; }
+.cal-day.today { border: 2px solid var(--blue2); font-weight: 800; }
 .cal-day.other-month { opacity: .3; cursor: default; }
 .cal-day.other-month:hover { background: var(--bg3); transform: none; }
 .cal-day.has-rules { border-bottom: 3px solid var(--amber); }
@@ -244,7 +244,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
   transition: all .18s; display: inline-flex; align-items: center; gap: 5px;
   text-decoration: none;
 }
-.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary { background: var(--blue2); color: #fff; }
 .btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.35); }
 .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
 .btn-ghost:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
@@ -254,7 +254,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
   border-radius: 8px; font-size: 12.5px; color: var(--text1); font-family: var(--font);
   outline: none; transition: all .15s;
 }
-.form-input:focus, .form-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+.form-input:focus, .form-select:focus { border-color: var(--blue2); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
 
 /* ═══════════════════════════════════════
    MODAL
@@ -319,13 +319,13 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       <!-- Légende -->
       <div style="display:flex; gap:18px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text3);">
-          <div style="width:10px;height:10px;border-radius:2px;background:var(--blue);box-shadow:0 0 6px rgba(59,130,246,.4);"></div> Jour sélectionné
+          <div style="width:10px;height:10px;border-radius:2px;background:var(--blue2);box-shadow:0 0 6px rgba(59,130,246,.4);"></div> Jour sélectionné
         </div>
         <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text3);">
           <div style="width:10px;height:3px;border-radius:2px;background:var(--amber);box-shadow:0 0 6px rgba(245,158,11,.4);"></div> Règles configurées
         </div>
         <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text3);">
-          <div style="width:10px;height:10px;border-radius:2px;border:2px solid var(--blue);"></div> Aujourd'hui
+          <div style="width:10px;height:10px;border-radius:2px;border:2px solid var(--blue2);"></div> Aujourd'hui
         </div>
       </div>
     </div>

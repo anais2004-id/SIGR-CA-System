@@ -129,11 +129,11 @@ urlpatterns = [
     path('calendrier/',                     views.calendrier,             name='calendrier_avance'),
 
     # ── API Occupation & statistiques ────────────────────────────────────────
-    path('api/occupation/',                        views.api_occupation,          name='api_occupation'),
+    #path('api/occupation/',                        views.get_occupation,          name='api_occupation'),
     path('api/bureau/<str:bureau_id>/stats/',      views.api_bureau_stats,        name='api_bureau_stats'),
     path('api/stats/trend/',                       views.api_stats_trend,         name='api_stats_trend'),
     path('api/stats/overview/',                    views.api_stats_overview,      name='api_stats_overview'),
-    path('api/stats/occupation/',                  views.api_occupation_stats,    name='api_occupation_stats'),
+    #path('api/stats/occupation/',                  views.api_occupation_stats,    name='api_occupation_stats'),
     path('api/stats/top-ressources/',              views.api_top_ressources,      name='api_top_ressources'),
     path('api/stats/weekly-schedule/',             views.api_weekly_schedule,     name='api_weekly_schedule'),
     path('api/stats/hour/',                        views.api_hour_stats,          name='api_hour_stats'),
@@ -247,5 +247,9 @@ urlpatterns = [
     path('api/indisponibilites/export-csv/', views.api_export_indisponibilites_csv, name='api_export_indisponibilites_csv'),
     path('api/indisponibilites/export-pdf/', views.api_export_indisponibilites_pdf, name='api_export_indisponibilites_pdf'),
     path('api/employes/export-pdf/', views.api_employes_export_pdf, name='api_employes_export_pdf'),
+    path('api/rfid-scan/',          views.api_rfid_scan,         name='api_rfid_scan'),
+    path('api/live-feed/',           views.api_live_feed,         name='api_live_feed'),
+    #path('api/occupation/',          views.get_occupation,        name='api_occupation'),
+    path('api/emergency-unlock/',    views.api_emergency_unlock,  name='api_emergency_unlock'),
 ]
     

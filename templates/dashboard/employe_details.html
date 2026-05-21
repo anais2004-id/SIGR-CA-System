@@ -18,9 +18,9 @@
   
   <!-- Bouton Modifier -->
   <a href="{% url 'employe_modifier' employe.id %}" 
-     style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
+     style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue2); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
      onmouseover="this.style.background='var(--blue2)';this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 14px rgba(59,130,246,.35)'"
-     onmouseout="this.style.background='var(--blue)';this.style.transform='none';this.style.boxShadow='none'">
+     onmouseout="this.style.background='var(--blue2)';this.style.transform='none';this.style.boxShadow='none'">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     Modifier
   </a>
@@ -109,7 +109,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 .kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
 .kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
 
-.kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
+.kpi.blue   { --kpi-color:var(--blue2);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
 .kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
 .kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
 .kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
@@ -151,7 +151,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
   cursor: pointer; font-size: 11px; font-weight: 600;
   color: var(--text2); font-family: var(--font); transition: all .15s;
 }
-.filter-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.filter-tab.active { background: var(--blue2); color: #fff; border-color: var(--blue2); }
 .filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
 
 /* Scrollbar */

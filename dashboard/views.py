@@ -1,4 +1,4 @@
-# dashboard/views.py
+﻿# dashboard/views.py
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.conf import settings
@@ -408,7 +408,6 @@ def employe_mes_reservations(request):
     from bson import ObjectId
     import json
 
-    # Récupération de l'employé
     employe = db.employees.find_one({'django_user_id': request.user.id}) \
               or db.employees.find_one({'django_username': request.user.username})
 
@@ -429,7 +428,7 @@ def employe_mes_reservations(request):
             date_fin_s    = request.POST.get('date_fin')
             nb_part       = int(request.POST.get('nb_participants', 1) or 1)
 
-            # --- Validations ---
+            # --- Validations de base ---
             if not titre:
                 messages.error(request, "Le titre est obligatoire.")
                 return redirect('employe_mes_reservations')
@@ -452,6 +451,26 @@ def employe_mes_reservations(request):
             if date_fin <= date_debut:
                 messages.error(request, "La date de fin doit être après la date de début.")
                 return redirect('employe_mes_reservations')
+
+            # --- Validation durée selon type de ressource ---
+            duree_minutes = int((date_fin - date_debut).total_seconds() / 60)
+
+            if resource_type == 'salle':
+             # Salle : 30 min minimum, 1 jours (1440 min) maximum
+                if duree_minutes < 30:
+                    messages.error(request, "Une salle ne peut pas être réservée moins de 30 minutes.")
+                    return redirect('employe_mes_reservations')
+                if duree_minutes > 1440:
+                    messages.error(request, "Une salle ne peut pas être réservée plus de 1 jour (24h maximum).")
+                    return redirect('employe_mes_reservations')
+            else:
+                # Ressource/matériel : 1h minimum, 1 an (525600 min) maximum
+                if duree_minutes < 60:
+                    messages.error(request, "Une ressource ne peut pas être réservée moins d'1 heure.")
+                    return redirect('employe_mes_reservations')
+                if duree_minutes > 525600:
+                    messages.error(request, "Une ressource ne peut pas être réservée plus d'un an.")
+                    return redirect('employe_mes_reservations')
 
             if date_debut < datetime.now():
                 messages.error(request, "Impossible de réserver dans le passé.")
@@ -493,7 +512,7 @@ def employe_mes_reservations(request):
                 ressource_nom   = materiel['nom']
                 ressource_label = f"📦 Matériel: {ressource_nom}"
 
-            # --- Construction de la réservation (ObjectId partout pour cohérence) ---
+            # --- Construction de la réservation ---
             reservation_data = {
                 'titre':           titre,
                 'description':     description,
@@ -505,8 +524,8 @@ def employe_mes_reservations(request):
                 'statut':          'en_attente',
                 'qr_code':         None,
                 'resource_type':   resource_type,
-                'resource_id':     resource_oid,        # champ générique
-                'bureau_nom':      ressource_nom,       # affichage homogène
+                'resource_id':     resource_oid,
+                'bureau_nom':      ressource_nom,
                 'created_at':      datetime.now(),
                 'created_by':      request.user.username,
             }
@@ -514,12 +533,11 @@ def employe_mes_reservations(request):
             if resource_type == 'salle':
                 reservation_data['bureau_id'] = resource_oid
             else:
-                reservation_data['materiel_id']  = resource_oid   # ObjectId, pas string
+                reservation_data['materiel_id']  = resource_oid
                 reservation_data['materiel_nom'] = ressource_nom
 
             result = db.reservations.insert_one(reservation_data)
             reservation_id = str(result.inserted_id)
-            
 
             # --- Notification employé ---
             db.notifications.insert_one({
@@ -586,16 +604,12 @@ def employe_mes_reservations(request):
             return redirect('employe_mes_reservations')
 
     # ============ AFFICHAGE GET ============
-
-    # Récupérer les réservations de l'employé
     reservations = list(
         db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1)
     )
 
     for r in reservations:
         r['id'] = str(r['_id'])
-
-        # Salle ou matériel : on lit d'abord resource_type, sinon on devine
         rtype = r.get('resource_type') or ('materiel' if r.get('materiel_id') else 'salle')
 
         if rtype == 'materiel':
@@ -621,7 +635,6 @@ def employe_mes_reservations(request):
 
         r.setdefault('qr_code', None)
 
-    # KPIs
     now = datetime.now()
     actives = sum(
         1 for r in reservations
@@ -636,7 +649,6 @@ def employe_mes_reservations(request):
     )
     en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
 
-    # Listes pour le formulaire
     bureaux = list(db.bureaux.find())
     for b in bureaux:
         b['id']           = str(b['_id'])
@@ -647,7 +659,6 @@ def employe_mes_reservations(request):
         m['id']        = str(m['_id'])
         m['type_icon'] = get_materiel_icon(m.get('categorie', 'autre'))
 
-    # JSON pour le calendrier (dates en ISO, pas d'ObjectId)
     reservations_list = [
         {
             'id':         r['id'],
@@ -1555,267 +1566,581 @@ def employe_supprimer(request, employe_id):
 
 # ─────────────────────────────────────────────
 #  EXPORT PDF — RAPPORT EMPLOYÉS AVEC LOGO
-# ─────────────────────────────────────────────
-
 from django.http import HttpResponse
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from bson import ObjectId
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    Image, HRFlowable, KeepTogether
 )
+from reportlab.platypus.flowables import Flowable
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.pdfgen import canvas as rl_canvas
 import io, os
 from datetime import datetime
 
 
+# ═══════════════════════════════════════════
+#  COULEURS PALETTE SIGR-CA
+# ═══════════════════════════════════════════
+C_BLUE_DARK   = colors.HexColor('#0f172a')   # fond header
+C_BLUE_MAIN   = colors.HexColor('#1d4ed8')   # bleu principal
+C_BLUE_LIGHT  = colors.HexColor('#dbeafe')   # fond ligne paire
+C_BLUE_MID    = colors.HexColor('#3b82f6')   # accents
+C_PURPLE      = colors.HexColor('#7c3aed')   # section titles
+C_GREEN       = colors.HexColor('#059669')   # taux bon
+C_AMBER       = colors.HexColor('#d97706')   # taux moyen
+C_RED         = colors.HexColor('#dc2626')   # taux mauvais / archivé
+C_GREY_LIGHT  = colors.HexColor('#f8fafc')   # fond ligne impaire
+C_GREY_MID    = colors.HexColor('#e2e8f0')   # bordures
+C_GREY_TEXT   = colors.HexColor('#64748b')   # texte secondaire
+C_WHITE       = colors.white
+C_BLACK       = colors.HexColor('#0f172a')
+
+
+# ═══════════════════════════════════════════
+#  NUMÉROTATION DES PAGES (canvas callback)
+# ═══════════════════════════════════════════
+class NumberedCanvas(rl_canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for i, state in enumerate(self._saved_page_states):
+            self.__dict__.update(state)
+            self._draw_footer(i + 1, num_pages)
+            rl_canvas.Canvas.showPage(self)
+        rl_canvas.Canvas.save(self)
+
+    def _draw_footer(self, page_num, total_pages):
+        w, _ = A4
+        self.setFillColor(colors.HexColor('#64748b'))
+        self.setFont('Helvetica', 8)
+        self.drawCentredString(
+            w / 2, 1.2 * cm,
+            f"Page {page_num} / {total_pages}  —  SIGR-CA — Document confidentiel"
+        )
+        self.setStrokeColor(colors.HexColor('#e2e8f0'))
+        self.setLineWidth(0.5)
+        self.line(2 * cm, 1.6 * cm, w - 2 * cm, 1.6 * cm)
+# ═══════════════════════════════════════════
+#  BANDE DE FOND COLORÉE (Flowable custom)
+# ═══════════════════════════════════════════
+class ColorBand(Flowable):
+    """Bande horizontale pleine couleur avec texte centré."""
+    def __init__(self, text, width, height=0.9*cm,
+                 bg=C_BLUE_DARK, fg=C_WHITE, font_size=11):
+        super().__init__()
+        self.text = text
+        self.band_width = width
+        self.band_height = height
+        self.bg = bg
+        self.fg = fg
+        self.font_size = font_size
+
+    def wrap(self, *args):
+        return self.band_width, self.band_height
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(self.bg)
+        c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+        c.setFillColor(self.fg)
+        c.setFont('Helvetica-Bold', self.font_size)
+        c.drawString(0.4 * cm, 0.25 * cm, self.text)
+
+
+# ═══════════════════════════════════════════
+#  HELPER : BADGE STATUT coloré inline
+# ═══════════════════════════════════════════
+def statut_para(statut, style):
+    if statut == 'actif':
+        color = '#059669'
+        label = '● Actif'
+    else:
+        color = '#dc2626'
+        label = '● Archivé'
+    return Paragraph(
+        f'<font color="{color}"><b>{label}</b></font>', style
+    )
+
+
+# ═══════════════════════════════════════════
+#  VUE PRINCIPALE
+# ═══════════════════════════════════════════
+from django.http import HttpResponse
+from django.conf import settings
+from django.contrib.auth.decorators import login_required
+from bson import ObjectId
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    Image, HRFlowable, KeepTogether
+)
+from reportlab.platypus.flowables import Flowable
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.pdfgen import canvas as rl_canvas
+import io, os, traceback
+from datetime import datetime
+
+
+# ═══════════════════════════════════════════
+#  COULEURS PALETTE SIGR-CA
+# ═══════════════════════════════════════════
+C_BLUE_DARK  = colors.HexColor('#0f172a')
+C_BLUE_MAIN  = colors.HexColor('#1d4ed8')
+C_BLUE_LIGHT = colors.HexColor('#dbeafe')
+C_BLUE_MID   = colors.HexColor('#3b82f6')
+C_PURPLE     = colors.HexColor('#7c3aed')
+C_GREEN      = colors.HexColor('#059669')
+C_AMBER      = colors.HexColor('#d97706')
+C_RED        = colors.HexColor('#dc2626')
+C_GREY_LIGHT = colors.HexColor('#f8fafc')
+C_GREY_MID   = colors.HexColor('#e2e8f0')
+C_GREY_TEXT  = colors.HexColor('#64748b')
+C_WHITE      = colors.white
+C_BLACK      = colors.HexColor('#0f172a')
+
+
+# ═══════════════════════════════════════════
+#  NUMÉROTATION DES PAGES
+# ═══════════════════════════════════════════
+class NumberedCanvas(rl_canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for i, state in enumerate(self._saved_page_states):
+            self.__dict__.update(state)
+            self._draw_footer(i + 1, num_pages)
+            rl_canvas.Canvas.showPage(self)
+        rl_canvas.Canvas.save(self)
+
+    def _draw_footer(self, page_num, total_pages):
+        w, _ = A4
+        self.setFillColor(colors.HexColor('#64748b'))
+        self.setFont('Helvetica', 8)
+        self.drawCentredString(
+            w / 2, 1.2 * cm,
+            f"Page {page_num} / {total_pages}  —  SIGR-CA — Document confidentiel"
+        )
+        self.setStrokeColor(colors.HexColor('#e2e8f0'))
+        self.setLineWidth(0.5)
+        self.line(2 * cm, 1.6 * cm, w - 2 * cm, 1.6 * cm)
+
+
+# ═══════════════════════════════════════════
+#  BANDE COLORÉE
+# ═══════════════════════════════════════════
+class ColorBand(Flowable):
+    def __init__(self, text, width, height=0.9*cm,
+                 bg=C_BLUE_DARK, fg=C_WHITE, font_size=11):
+        super().__init__()
+        self.text = text
+        self.band_width = width
+        self.band_height = height
+        self.bg = bg
+        self.fg = fg
+        self.font_size = font_size
+
+    def wrap(self, *args):
+        return self.band_width, self.band_height
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(self.bg)
+        c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+        c.setFillColor(self.fg)
+        c.setFont('Helvetica-Bold', self.font_size)
+        c.drawString(0.4 * cm, 0.25 * cm, self.text)
+
+
+# ═══════════════════════════════════════════
+#  BADGE STATUT
+# ═══════════════════════════════════════════
+def statut_para(statut, style):
+    if statut == 'actif':
+        color, label = '#059669', '● Actif'
+    else:
+        color, label = '#dc2626', '● Archivé'
+    return Paragraph(f'<font color="{color}"><b>{label}</b></font>', style)
+
+
+# ═══════════════════════════════════════════
+#  HELPER COULEUR HEX
+# ═══════════════════════════════════════════
+def hex_color(c):
+    """Retourne la valeur hex d'une couleur ReportLab sans le #."""
+    try:
+        r = int(c.red * 255)
+        g = int(c.green * 255)
+        b = int(c.blue * 255)
+        return f'{r:02x}{g:02x}{b:02x}'
+    except Exception:
+        return '0f172a'
+
+
+# ═══════════════════════════════════════════
+#  VUE PRINCIPALE
+# ═══════════════════════════════════════════
 @login_required
 def api_employes_export_pdf(request):
     """
-    Export PDF de la liste des employés avec logo SIGR-CA.
-    Paramètre GET : ids (optionnel) — liste d'IDs séparés par des virgules
+    Export PDF professionnel de la liste des employés — SIGR-CA.
+    Paramètre GET : ids (optionnel) — liste d'IDs séparés par virgules
     """
-    # Récupérer les IDs depuis la requête
-    ids_param = request.GET.get('ids', '')
-    if ids_param:
-        ids = [ObjectId(id_str) for id_str in ids_param.split(',') if id_str]
-        employes_cursor = db.employees.find({'_id': {'$in': ids}})
-    else:
-        employes_cursor = db.employees.find({})
+    try:
+        # ── Récupération des données ──────────────────────────────
+        ids_param = request.GET.get('ids', '')
+        if ids_param:
+            ids = [ObjectId(i) for i in ids_param.split(',') if i]
+            employes = list(db.employees.find({'_id': {'$in': ids}}))
+        else:
+            employes = list(db.employees.find({}))
 
-    employes = list(employes_cursor)
+        now_str   = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file = datetime.now().strftime('%Y%m%d_%H%M')
 
-    # ── Création du buffer PDF ──
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        leftMargin=2 * cm, rightMargin=2 * cm,
-        topMargin=2 * cm, bottomMargin=2 * cm,
-    )
-    styles = getSampleStyleSheet()
-    elements = []
+        # ── Mise en page ──────────────────────────────────────────
+        buffer   = io.BytesIO()
+        PAGE_W, _ = A4
+        CONTENT_W = PAGE_W - 4 * cm
 
-    # ── Styles ──
-    title_style = ParagraphStyle(
-        'RapportTitle', parent=styles['Title'],
-        fontSize=16, textColor=colors.HexColor('#1d4ed8'),
-        spaceAfter=4, alignment=TA_CENTER,
-    )
-    subtitle_style = ParagraphStyle(
-        'RapportSubtitle', parent=styles['Normal'],
-        fontSize=10, textColor=colors.grey,
-        spaceAfter=14, alignment=TA_CENTER,
-    )
-    section_style = ParagraphStyle(
-        'SectionTitle', parent=styles['Heading2'],
-        fontSize=12, textColor=colors.HexColor('#7b3fe4'),
-        spaceBefore=16, spaceAfter=10,
-    )
-    th_style = ParagraphStyle(
-        'TH', parent=styles['Normal'],
-        fontSize=9, fontName='Helvetica-Bold', textColor=colors.white,
-        alignment=TA_CENTER,
-    )
-    td_style = ParagraphStyle(
-        'TD', parent=styles['Normal'],
-        fontSize=9, fontName='Helvetica',
-        alignment=TA_CENTER,
-    )
-    td_left = ParagraphStyle(
-        'TD_LEFT', parent=td_style, alignment=TA_LEFT,
-    )
-    footer_style = ParagraphStyle(
-        'Footer', parent=styles['Normal'],
-        fontSize=8, textColor=colors.grey, alignment=TA_CENTER,
-    )
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title="Rapport Employés — SIGR-CA",
+            author="SIGR-CA Système",
+            subject="Liste des employés",
+        )
 
-    # ═══════════════════════════════════════════
-    #  EN-TÊTE AVEC LOGO
-    # ═══════════════════════════════════════════
-    logo_path = os.path.join(settings.MEDIA_ROOT, 'avatars', 'logo SIGR-CA.png')
-    # Texte à gauche (titre + sous-titre)
-    header_text = [
-        [Paragraph("SIGR-CA", ParagraphStyle(
-            'LogoTitle', fontName='Helvetica-Bold', fontSize=20,
-            textColor=colors.HexColor('#1d4ed8'), alignment=TA_LEFT,
-        ))],
-        [Paragraph("Système Intégré de Gestion des Ressources<br/>et de Contrôle d'Accès", ParagraphStyle(
-            'LogoSub', fontName='Helvetica', fontSize=8,
-            textColor=colors.HexColor('#666666'), alignment=TA_LEFT,
-        ))],
-    ]
-    header_text_table = Table(header_text, colWidths=[10 * cm])
-    header_text_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-    ]))
+        # ── Registre de styles custom ─────────────────────────────
+        _custom_styles = {}
 
-    # Logo à droite
-    logo_img = None
-    if os.path.exists(logo_path):
-        logo_img = Image(logo_path, width=2.8 * cm, height=1.4 * cm)
-    else:
-        # Fallback : placeholder text
-        logo_img = Paragraph("SIGR-CA", ParagraphStyle(
-            'FallbackLogo', fontName='Helvetica-Bold', fontSize=14,
-            textColor=colors.HexColor('#1d4ed8'), alignment=TA_RIGHT,
+        def ps(name, **kw):
+            base = kw.pop('parent', 'Normal')
+            stylesheet = getSampleStyleSheet()
+            parent_style = _custom_styles.get(base) or stylesheet[base]
+            p = ParagraphStyle(name, parent=parent_style, **kw)
+            _custom_styles[name] = p
+            return p
+
+        # Styles définis dans l'ordre (les parents avant les enfants)
+        th        = ps('TH',   fontName='Helvetica-Bold', fontSize=9,
+                        textColor=C_WHITE, alignment=TA_CENTER,
+                        leading=12, spaceAfter=0, spaceBefore=0)
+        th_left   = ps('TH_L', parent='TH', alignment=TA_LEFT)
+        td        = ps('TD',   fontSize=9, alignment=TA_CENTER,
+                        leading=12, textColor=C_BLACK)
+        td_left   = ps('TD_L', parent='TD', alignment=TA_LEFT)
+        td_mono   = ps('TD_M', parent='TD', fontSize=8, fontName='Courier',
+                        alignment=TA_CENTER)
+        sec_style = ps('SEC',  fontName='Helvetica-Bold', fontSize=12,
+                        textColor=C_PURPLE, spaceBefore=20, spaceAfter=8,
+                        leading=16)
+        foot_style = ps('FOOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                         alignment=TA_CENTER, leading=11)
+
+        elements = []
+
+        # ════════════════════════════════════════════
+        #  EN-TÊTE
+        # ════════════════════════════════════════════
+        from django.contrib.staticfiles.finders import find as static_find
+
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_lines = [
+            [Paragraph(
+                '<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                ps('LT', fontSize=22, leading=26, alignment=TA_LEFT)
+            )],
+            [Paragraph(
+                "Système Intégré de Gestion des Ressources<br/>"
+                "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                ps('LS', fontSize=9, leading=13,
+                   textColor=C_GREY_TEXT, alignment=TA_LEFT)
+            )],
+        ]
+        title_tbl = Table(title_lines, colWidths=[11*cm])
+        title_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=2.6*cm)
+        else:
+            logo_cell = Paragraph(
+                '<font color="#1d4ed8"><b>SIGR</b></font>',
+                ps('FL', fontSize=18, alignment=TA_RIGHT)
+            )
+
+        meta_lines = [
+            [Paragraph(f"<b>Date :</b> {now_str}",
+                       ps('M1', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Employés :</b> {len(employes)}",
+                       ps('M2', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M3', fontSize=8, textColor=C_RED, alignment=TA_RIGHT))],
+        ]
+        meta_tbl = Table(meta_lines, colWidths=[4.5*cm])
+        meta_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        ]))
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0), (-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ]))
+
+        header_tbl = Table(
+            [[title_tbl, right_col]],
+            colWidths=[CONTENT_W - 4.5*cm, 4.5*cm]
+        )
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2,
+                                   color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+        elements.append(ColorBand(
+            "  RAPPORT GÉNÉRAL — LISTE DES EMPLOYÉS",
+            CONTENT_W, height=1.1*cm,
+            bg=C_BLUE_DARK, fg=C_WHITE, font_size=12
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  TABLEAU PRINCIPAL
+        # ════════════════════════════════════════════
+        elements.append(KeepTogether([
+            Paragraph('Liste complete des employes', sec_style),
+        ]))
+
+        col_widths = [4.5*cm, 2.8*cm, 2.8*cm, 2*cm, 1.8*cm, 1.8*cm, 2.1*cm]
+        headers = [
+            Paragraph('Nom & Prenom',  th_left),
+            Paragraph('Badge RFID',    th),
+            Paragraph('Departement',   th),
+            Paragraph('Niveau',        th),
+            Paragraph('Acces',         th),
+            Paragraph('Succes',        th),
+            Paragraph('Statut',        th),
+        ]
+        data = [headers]
+
+        for emp in employes:
+            nom_complet = (
+                f"{emp.get('nom','').strip()} {emp.get('prenom','').strip()}".strip()
+                or '—'
+            )
+            badge  = emp.get('badge_id', '—')
+            dept   = emp.get('departement', '—')
+            niveau = emp.get('niveau', 'Staff')
+
+            nb_acces = db.acces_logs.count_documents({'utilisateur_id': emp['_id']})
+            acces_ok = db.acces_logs.count_documents(
+                {'utilisateur_id': emp['_id'], 'resultat': 'AUTORISE'}
+            )
+            taux = round(acces_ok / nb_acces * 100, 1) if nb_acces > 0 else 0.0
+
+            if taux >= 80:
+                taux_color = '#059669'
+            elif taux >= 50:
+                taux_color = '#d97706'
+            else:
+                taux_color = '#dc2626'
+
+            statut = emp.get('statut', 'actif')
+
+            row = [
+                Paragraph(f'<b>{nom_complet}</b>', td_left),
+                Paragraph(badge, td_mono),
+                Paragraph(dept, td),
+                Paragraph(niveau, td),
+                Paragraph(str(nb_acces), td),
+                Paragraph(f'<font color="{taux_color}"><b>{taux}%</b></font>', td),
+                statut_para(statut, td),
+            ]
+            data.append(row)
+
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0, 0), (-1, 0), C_BLUE_MAIN),
+            ('TEXTCOLOR',      (0, 0), (-1, 0), C_WHITE),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+            ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+            ('LINEBELOW',      (0, 0), (-1, 0), 1.5, C_BLUE_MAIN),
+            ('TOPPADDING',     (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING',  (0, 0), (-1, 0), 10),
+            ('TOPPADDING',     (0, 1), (-1, -1), 7),
+            ('BOTTOMPADDING',  (0, 1), (-1, -1), 7),
+            ('LEFTPADDING',    (0, 0), (-1, -1), 7),
+            ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX',            (0, 0), (-1, -1), 1, C_BLUE_MID),
+        ]))
+        elements.append(tbl)
+
+        # ════════════════════════════════════════════
+        #  RÉSUMÉ STATISTIQUE
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1*cm))
+        elements.append(Paragraph('Resume statistique', sec_style))
+
+        total    = len(employes)
+        actifs   = sum(1 for e in employes if e.get('statut', 'actif') == 'actif')
+        archives = total - actifs
+
+        total_acces = 0
+        total_ok    = 0
+        for emp in employes:
+            nb = db.acces_logs.count_documents({'utilisateur_id': emp['_id']})
+            ok = db.acces_logs.count_documents(
+                {'utilisateur_id': emp['_id'], 'resultat': 'AUTORISE'}
+            )
+            total_acces += nb
+            total_ok    += ok
+        taux_global = round(total_ok / total_acces * 100, 1) if total_acces > 0 else 0.0
+
+        niveaux = {}
+        for emp in employes:
+            n = emp.get('niveau', 'Staff')
+            niveaux[n] = niveaux.get(n, 0) + 1
+
+        def stat_row(label, value, value_color=C_BLACK):
+            hex_val = hex_color(value_color)
+            return [
+                Paragraph(label, ps(f'SL_{label[:4]}', fontSize=9,
+                                    textColor=C_GREY_TEXT, alignment=TA_LEFT)),
+                Paragraph(
+                    f'<font color="#{hex_val}"><b>{value}</b></font>',
+                    ps(f'SV_{label[:4]}', fontSize=10,
+                       alignment=TA_RIGHT, fontName='Helvetica-Bold')
+                ),
+            ]
+
+        stats_left = [
+            stat_row('Total employes',           str(total)),
+            stat_row('Employes actifs',          str(actifs),   C_GREEN),
+            stat_row('Employes archives',        str(archives), C_RED),
+            stat_row('Total acces enregistres',  str(total_acces)),
+            stat_row('Taux de succes global',    f'{taux_global}%',
+                     C_GREEN if taux_global >= 80 else C_AMBER if taux_global >= 50 else C_RED),
+        ]
+
+        niveau_rows = [[
+            Paragraph('Repartition par niveau',
+                      ps('NT', fontSize=9, fontName='Helvetica-Bold',
+                         textColor=C_PURPLE)),
+            Paragraph('', ps('NV', fontSize=9)),
+        ]]
+        for n, cnt in sorted(niveaux.items()):
+            pct = round(cnt / total * 100) if total > 0 else 0
+            niveau_rows.append([
+                Paragraph(n, ps(f'NL_{n[:4]}', fontSize=9, textColor=C_GREY_TEXT)),
+                Paragraph(
+                    f'<b>{cnt}</b> <font color="#94a3b8">({pct}%)</font>',
+                    ps(f'NR_{n[:4]}', fontSize=9, alignment=TA_RIGHT)
+                ),
+            ])
+
+        tbl_stats_left  = Table(stats_left,  colWidths=[5*cm, 3*cm])
+        tbl_stats_right = Table(niveau_rows, colWidths=[4.5*cm, 2.5*cm])
+
+        common_stat_style = TableStyle([
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_WHITE, C_GREY_LIGHT]),
+            ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+            ('TOPPADDING',     (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING',  (0, 0), (-1, -1), 7),
+            ('LEFTPADDING',    (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING',   (0, 0), (-1, -1), 10),
+            ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX',            (0, 0), (-1, -1), 1, C_GREY_MID),
+        ])
+        tbl_stats_left.setStyle(common_stat_style)
+        tbl_stats_right.setStyle(common_stat_style)
+
+        stats_container = Table(
+            [[tbl_stats_left, Spacer(0.5*cm, 1), tbl_stats_right]],
+            colWidths=[8*cm, 0.5*cm, 7.3*cm]
+        )
+        stats_container.setStyle(TableStyle([
+            ('VALIGN',       (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING',  (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ]))
+        elements.append(stats_container)
+
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE DOCUMENT
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1.2*cm))
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=C_GREY_MID, spaceAfter=6))
+        elements.append(Paragraph(
+            f"Document genere automatiquement le <b>{now_str}</b> par le systeme SIGR-CA.",
+            foot_style,
+        ))
+        elements.append(Paragraph(
+            "Ce document est <b>confidentiel</b> et destine a un usage interne uniquement. "
+            "Toute reproduction ou diffusion non autorisee est interdite.",
+            ps('CONF', fontSize=7, textColor=C_GREY_TEXT,
+               alignment=TA_CENTER, leading=10),
         ))
 
-    # Tableau en-tête (texte gauche + logo droite)
-    header_table = Table(
-        [[header_text_table, logo_img]],
-        colWidths=[14 * cm, 4 * cm],
-    )
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
+        # ── Build PDF ────────────────────────────────────────────
+        doc.build(elements, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
 
-    elements.append(header_table)
-    elements.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#1d4ed8')))
-    elements.append(Spacer(1, 0.5 * cm))
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="Rapport_Employes_{date_file}.pdf"'
+        )
+        return response
 
-    # ── Titre du rapport ──
-    elements.append(Paragraph("RAPPORT GÉNÉRAL — EMPLOYÉS", title_style))
-    elements.append(Paragraph(
-        f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — "
-        f"{len(employes)} employé(s) — Niveaux d'accès et statistiques",
-        subtitle_style,
-    ))
-    elements.append(Spacer(1, 0.8 * cm))
-
-    # ═══════════════════════════════════════════
-    #  TABLEAU PRINCIPAL : LISTE COMPLÈTE
-    # ═══════════════════════════════════════════
-    elements.append(Paragraph('📋 Liste des employés', section_style))
-
-    headers = [
-        Paragraph('Nom & Prénom', th_style),
-        Paragraph('Badge RFID', th_style),
-        Paragraph('Département', th_style),
-        Paragraph('Niveau', th_style),
-        Paragraph('Nb Accès', th_style),
-        Paragraph('Taux succès', th_style),
-        Paragraph('Statut', th_style),
-    ]
-
-    data = [headers]
-
-    for emp in employes:
-        nom_complet = f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or '—'
-        badge = emp.get('badge_id', '—')
-        departement = emp.get('departement', '—')
-        niveau = emp.get('niveau', 'Staff')
-
-        nb_acces = db.acces_logs.count_documents({'utilisateur_id': emp['_id']})
-        acces_ok = db.acces_logs.count_documents({
-            'utilisateur_id': emp['_id'], 'resultat': 'AUTORISE'
-        })
-        taux = round((acces_ok / nb_acces * 100), 1) if nb_acces > 0 else 0
-        taux_str = f"{taux}%"
-
-        statut = emp.get('statut', 'actif')
-        statut_display = 'Actif' if statut == 'actif' else 'Archivé'
-
-        # Couleur du taux
-        if taux >= 80:
-            taux_color = colors.HexColor('#10b981')  # vert
-        elif taux >= 50:
-            taux_color = colors.HexColor('#f59e0b')  # amber
-        else:
-            taux_color = colors.HexColor('#ef4444')  # rouge
-
-        row = [
-            Paragraph(nom_complet, td_left),
-            Paragraph(badge, ParagraphStyle('Mono', parent=td_style, fontName='Courier', fontSize=8)),
-            Paragraph(departement, td_style),
-            Paragraph(niveau, td_style),
-            Paragraph(str(nb_acces), td_style),
-            Paragraph(taux_str, ParagraphStyle('Taux', parent=td_style, textColor=taux_color, fontName='Helvetica-Bold')),
-            Paragraph(statut_display, td_style),
-        ]
-        data.append(row)
-
-    col_widths = [5 * cm, 3 * cm, 3 * cm, 2.2 * cm, 2 * cm, 2 * cm, 2 * cm]
-    table = Table(data, colWidths=col_widths, repeatRows=1)
-
-    table_style = TableStyle([
-        # En-tête
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d4ed8')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        # Grille
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
-        # Padding
-        ('PADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-        # Alternance lignes
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
-        # Alignement vertical
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ])
-    table.setStyle(table_style)
-    elements.append(table)
-
-    # ═══════════════════════════════════════════
-    #  RÉSUMÉ STATISTIQUE
-    # ═══════════════════════════════════════════
-    elements.append(Spacer(1, 1 * cm))
-    elements.append(Paragraph('📊 Résumé statistique', section_style))
-
-    total = len(employes)
-    actifs = sum(1 for e in employes if e.get('statut', 'actif') == 'actif')
-    inactifs = total - actifs
-    taux_global = round(
-        sum(1 for e in employes if e.get('taux_succes', 0) >= 80) / total * 100, 1
-    ) if total > 0 else 0
-
-    stats_data = [
-        [Paragraph('Total employés', td_left), Paragraph(str(total), td_style)],
-        [Paragraph('Actifs', td_left), Paragraph(str(actifs), td_style)],
-        [Paragraph('Archivés', td_left), Paragraph(str(inactifs), td_style)],
-        [Paragraph('Taux de succès ≥ 80%', td_left), Paragraph(f"{taux_global}%", td_style)],
-    ]
-
-    stats_table = Table(stats_data, colWidths=[10 * cm, 8 * cm])
-    stats_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f6ff')),
-        ('PADDING', (0, 0), (-1, -1), 8),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
-    ]))
-    elements.append(stats_table)
-
-    # ── Pied de page ──
-    elements.append(Spacer(1, 1.2 * cm))
-    elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
-    elements.append(Spacer(1, 0.3 * cm))
-    elements.append(Paragraph(
-        f"Document généré automatiquement le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — "
-        f"SIGR-CA — Système Intégré de Gestion des Ressources et de Contrôle d'Accès",
-        footer_style,
-    ))
-    elements.append(Paragraph(
-        "Ce document est confidentiel et destiné à un usage interne uniquement.",
-        ParagraphStyle('Conf', parent=footer_style, fontSize=7, textColor=colors.HexColor('#999999')),
-    ))
-
-    # ── Build PDF ──
-    doc.build(elements)
-    buffer.seek(0)
-
-    response = HttpResponse(buffer, content_type='application/pdf')
-    response['Content-Disposition'] = (
-        f'inline; filename="Rapport_Employes_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf"'
-    )
-    return response
+    except Exception as e:
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain',
+            status=500
+        )
 
 # ====================== HISTORIQUE ======================
 
@@ -1939,8 +2264,268 @@ def live(request):
         'taux_succes': taux_succes_hour,
         'delta_ok': delta_ok,
     })
+def _creer_alerte(message, zone='Système', niveau='MEDIUM'):
+    """Insère une alerte dans la collection alertes."""
+    try:
+        if 'alertes' not in db.list_collection_names():
+            db.create_collection('alertes')
+        db.alertes.insert_one({
+            'message':   message,
+            'zone':      zone,
+            'niveau':    niveau,   # LOW / MEDIUM / HIGH / CRITICAL
+            'statut':    'NON_TRAITEE',
+            'timestamp': datetime.now(),
+        })
+    except Exception as e:
+        logger.error(f"[ALERTE] Erreur création alerte: {e}")
 
+import json
+import logging
+from datetime import datetime, timedelta
+from bson import ObjectId
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
+from django.conf import settings
+ 
+# Import de ta connexion MongoDB (adapter selon ton projet)
+# from .db import db   ← décommente et adapte
+ 
+logger = logging.getLogger(__name__)
+ 
+# Clé secrète partagée avec l'ESP32 (à mettre dans settings.py)
+# ESP32_API_KEY = "CHANGE_MOI_SECRET_KEY_123"
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────
+#  HELPER : Vérification clé ESP32
+# ─────────────────────────────────────────────────────────────────────
+ 
+def _check_esp32_key(request):
+    """Vérifie le header X-ESP32-Key envoyé par l'ESP32."""
+    key = request.headers.get('X-ESP32-Key', '')
+    expected = getattr(settings, 'ESP32_API_KEY', 'CHANGE_MOI_SECRET_KEY_123')
+    return key == expected
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────
+#  ENDPOINT PRINCIPAL : Réception d'un scan RFID depuis l'ESP32
+# ─────────────────────────────────────────────────────────────────────
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_rfid_scan(request):
+    """
+    Reçoit un scan RFID depuis l'ESP32 et enregistre l'accès.
 
+    Body JSON attendu :
+    {
+        "uid":             "D7:77:C5:01",
+        "equipement_code": "RDR-001",
+        "type_acces":      "RFID"
+    }
+
+    Réponse JSON :
+    {
+        "resultat": "AUTORISE" | "REFUSE",
+        "message":  "...",
+        "nom":      "Nom Prenom"  (si trouvé)
+    }
+    """
+
+    # ── Vérification clé sécurité ──
+    if not _check_esp32_key(request):
+        logger.warning(f"[RFID] Clé API invalide depuis {request.META.get('REMOTE_ADDR')}")
+        return JsonResponse({'resultat': 'REFUSE', 'message': 'Clé API invalide'}, status=403)
+
+    # ── Parse JSON ──
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'resultat': 'REFUSE', 'message': 'JSON invalide'}, status=400)
+
+    uid             = data.get('uid', '').strip().upper()
+    equipement_code = data.get('equipement_code', '').strip()
+    type_acces      = data.get('type_acces', 'RFID')
+
+    if not uid or not equipement_code:
+        return JsonResponse({'resultat': 'REFUSE', 'message': 'UID ou code équipement manquant'}, status=400)
+
+    logger.info(f"[RFID] Scan reçu — UID: {uid} | Équipement: {equipement_code}")
+
+    # ── Vérification équipement ──
+    equipement = db.equipements.find_one({'code': equipement_code, 'statut': 'actif'})
+    if not equipement:
+        logger.warning(f"[RFID] Équipement inconnu ou inactif: {equipement_code}")
+        return JsonResponse({'resultat': 'REFUSE', 'message': f'Équipement {equipement_code} non trouvé ou inactif'})
+
+    bureau_id  = equipement.get('bureau_id')
+    bureau     = db.bureaux.find_one({'_id': bureau_id}) if bureau_id else None
+    bureau_nom = bureau['nom'] if bureau else 'Zone inconnue'
+
+    # ── Recherche employé par badge_id (UID RFID) ──
+    uid_normalized = uid.replace(':', '').replace(' ', '')
+
+    employe = db.employees.find_one({
+        '$or': [
+            {'badge_id': uid},
+            {'badge_id': uid_normalized},
+            {'badge_id': uid.lower()},
+        ],
+        'statut': 'actif'
+    })
+
+    timestamp  = datetime.now()
+    maintenant = datetime.now()
+
+    if employe:
+        nom_complet = f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip()
+
+        # ── Vérification réservation pour cette salle ──
+        if bureau_id:
+            employe_oid    = employe['_id']
+            fenetre_retard = timedelta(minutes=15)
+
+            # Chercher les réservations d'aujourd'hui pour cette salle
+            debut_journee = maintenant.replace(hour=0,  minute=0,  second=0,  microsecond=0)
+            fin_journee   = maintenant.replace(hour=23, minute=59, second=59, microsecond=0)
+
+            resa_aujourd_hui = db.reservations.find_one(
+                {
+                    'employe_id': employe_oid,
+                    'bureau_id':  bureau_id,
+                    'statut':     'confirmee',
+                    'date_debut': {'$gte': debut_journee, '$lte': fin_journee},
+                },
+                sort=[('date_debut', 1)]
+            )
+
+            logger.info(f"[RFID] Réservation aujourd'hui — {resa_aujourd_hui}")
+
+            if not resa_aujourd_hui:
+                # Aucune réservation aujourd'hui pour cette salle
+                resultat = 'REFUSE'
+                message  = f"Aucune réservation confirmée pour la salle {bureau_nom} aujourd'hui."
+
+            else:
+                debut = resa_aujourd_hui['date_debut']
+                fin   = resa_aujourd_hui['date_fin']
+                limite_retard = debut + fenetre_retard  # debut + 15 min
+
+                if maintenant < debut:
+                    # ── Trop tôt ──
+                    early_minutes = int((debut - maintenant).total_seconds() / 60)
+                    resultat = 'REFUSE'
+                    message  = f"Trop tôt ! Votre réservation commence à {debut.strftime('%H:%M')} (dans {early_minutes} min)."
+
+                elif maintenant <= limite_retard:
+                    # ── Dans la fenêtre autorisée : entre debut et debut+15min ──
+                    resultat = 'AUTORISE'
+                    message  = f"Bienvenue, {nom_complet} !"
+                    if maintenant > debut:
+                        retard_min = int((maintenant - debut).total_seconds() / 60)
+                        message = f"Bienvenue, {nom_complet} ! ({retard_min} min de retard)"
+
+                else:
+                    # ── Plus de 15 min de retard → réservation ratée ──
+                    resultat = 'REFUSE'
+                    message  = (
+                        f"Accès refusé : vous avez dépassé les 15 minutes de tolérance. "
+                        f"Réservation à {debut.strftime('%H:%M')} — créneau expiré."
+                    )
+
+            # ── Log & retour si REFUSÉ ──
+            if resultat == 'REFUSE':
+                logger.warning(f"[RFID] REFUSÉ (réservation) — {nom_complet} → {bureau_nom} : {message}")
+
+                db.acces_logs.insert_one({
+                    'utilisateur_id':  employe['_id'],
+                    'badge_id':        uid,
+                    'equipement_code': equipement_code,
+                    'equipement_id':   equipement['_id'],
+                    'bureau_id':       bureau_id,
+                    'type_acces':      type_acces,
+                    'resultat':        resultat,
+                    'message':         message,
+                    'timestamp':       timestamp,
+                    'ip_source':       request.META.get('REMOTE_ADDR', ''),
+                })
+
+                _creer_alerte(
+                    message=f"Accès refusé (réservation) — {nom_complet} | {bureau_nom} : {message}",
+                    zone=bureau_nom,
+                    niveau='MEDIUM'
+                )
+
+                return JsonResponse({
+                    'resultat': resultat,
+                    'message':  message,
+                    'nom':      nom_complet,
+                    'bureau':   bureau_nom,
+                })
+
+        # ── ACCÈS AUTORISÉ ──
+        resultat = resultat if 'resultat' in dir() else 'AUTORISE'
+        message  = message  if 'message'  in dir() else f'Bienvenue, {nom_complet}'
+
+        logger.info(f"[RFID] AUTORISÉ — {nom_complet} ({uid}) → {bureau_nom}")
+
+        db.equipements.update_one(
+            {'_id': equipement['_id']},
+            {'$set': {'derniere_connexion': timestamp}}
+        )
+
+        db.acces_logs.insert_one({
+            'utilisateur_id':  employe['_id'],
+            'badge_id':        uid,
+            'equipement_code': equipement_code,
+            'equipement_id':   equipement['_id'],
+            'bureau_id':       bureau_id,
+            'type_acces':      type_acces,
+            'resultat':        'AUTORISE',
+            'message':         message,
+            'timestamp':       timestamp,
+            'ip_source':       request.META.get('REMOTE_ADDR', ''),
+        })
+
+        return JsonResponse({
+            'resultat': 'AUTORISE',
+            'message':  message,
+            'nom':      nom_complet,
+            'bureau':   bureau_nom,
+        })
+
+    else:
+        # ── ACCÈS REFUSÉ (badge inconnu) ──
+        resultat = 'REFUSE'
+        message  = f'Badge non reconnu ({uid})'
+
+        logger.warning(f"[RFID] REFUSÉ — UID inconnu: {uid} sur {equipement_code}")
+
+        db.acces_logs.insert_one({
+            'utilisateur_id':  None,
+            'badge_id':        uid,
+            'equipement_code': equipement_code,
+            'equipement_id':   equipement['_id'],
+            'bureau_id':       bureau_id,
+            'type_acces':      type_acces,
+            'resultat':        resultat,
+            'timestamp':       timestamp,
+            'ip_source':       request.META.get('REMOTE_ADDR', ''),
+        })
+
+        _creer_alerte(
+            message=f"Tentative accès non autorisée — Badge: {uid} sur {equipement_code} ({bureau_nom})",
+            zone=bureau_nom,
+            niveau='MEDIUM'
+        )
+
+        return JsonResponse({
+            'resultat': resultat,
+            'message':  message,
+            'nom':      'Inconnu',
+            'bureau':   bureau_nom,
+        })
 # ====================== GESTION DES RESSOURCES (ZONES & MATÉRIEL) ======================
 
 @login_required
@@ -2221,159 +2806,423 @@ def api_materiel_supprimer(request, materiel_id):
 
 
 # ─── FICHE D'INVENTAIRE — 1 seul matériel ────────────────────────────────────
-
+@login_required
 def api_materiel_pdf(request, materiel_id):
-    """Génère la fiche d'inventaire PDF complète pour un matériel."""
-    from django.contrib.auth.decorators import login_required
-
+    """Génère la fiche d'inventaire PDF complète pour un matériel — SIGR-CA."""
     try:
         m = db.materiels.find_one({'_id': ObjectId(materiel_id)})
         if not m:
             return HttpResponse('Matériel non trouvé', status=404)
 
-        buffer = io.BytesIO()
+        now_str   = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file = datetime.now().strftime('%Y%m%d_%H%M')
+
+        # ── Mise en page ──────────────────────────────────────────
+        buffer   = io.BytesIO()
+        PAGE_W, _ = A4
+        CONTENT_W = PAGE_W - 4 * cm
+
         doc = SimpleDocTemplate(
             buffer, pagesize=A4,
-            leftMargin=2 * cm, rightMargin=2 * cm,
-            topMargin=2 * cm, bottomMargin=2 * cm,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title=f"Fiche Inventaire — {m.get('nom', 'Matériel')}",
+            author="SIGR-CA Système",
+            subject="Fiche d'inventaire matériel",
         )
-        styles   = getSampleStyleSheet()
-        elements = []
+
+        # ── Registre de styles custom ─────────────────────────────
+        _custom_styles = {}
+
+        def ps(name, **kw):
+            base = kw.pop('parent', 'Normal')
+            stylesheet = getSampleStyleSheet()
+            parent_style = _custom_styles.get(base) or stylesheet[base]
+            p = ParagraphStyle(name, parent=parent_style, **kw)
+            _custom_styles[name] = p
+            return p
 
         # Styles
-        section_style = ParagraphStyle(
-            'Section', parent=styles['Heading2'],
-            fontSize=11, spaceBefore=14, spaceAfter=6,
-            textColor=colors.HexColor('#7b3fe4'),
-        )
-        label_style = ParagraphStyle('Label', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
-        value_style = ParagraphStyle('Value', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
-        small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=9)
+        th        = ps('TH',   fontName='Helvetica-Bold', fontSize=9,
+                        textColor=C_WHITE, alignment=TA_CENTER,
+                        leading=12, spaceAfter=0, spaceBefore=0)
+        th_left   = ps('TH_L', parent='TH', alignment=TA_LEFT)
+        td        = ps('TD',   fontSize=9, alignment=TA_CENTER,
+                        leading=12, textColor=C_BLACK)
+        td_left   = ps('TD_L', parent='TD', alignment=TA_LEFT)
+        td_mono   = ps('TD_M', parent='TD', fontSize=8, fontName='Courier',
+                        alignment=TA_CENTER)
+        sec_style = ps('SEC',  fontName='Helvetica-Bold', fontSize=12,
+                        textColor=C_PURPLE, spaceBefore=20, spaceAfter=8,
+                        leading=16)
+        foot_style = ps('FOOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                         alignment=TA_CENTER, leading=11)
+        label_style = ps('LABEL', fontSize=9, textColor=C_GREY_TEXT,
+                          fontName='Helvetica-Bold', alignment=TA_LEFT)
+        val_style = ps('VAL', fontSize=10, fontName='Helvetica',
+                        textColor=C_BLACK, alignment=TA_LEFT)
 
         def info_row(label, value):
-            if not value:
-                return None
-            return [Paragraph(label, label_style), Paragraph(str(value), value_style)]
+            if not value and value != 0:
+                return [Paragraph(label, label_style), Paragraph('—', val_style)]
+            return [Paragraph(label, label_style), Paragraph(str(value), val_style)]
 
-        # ── En-tête avec logo ──
-        _build_header(
-            elements,
-            "FICHE D'INVENTAIRE",
-            "Système Intégré de Gestion des Ressources — SIGR-CA",
-            styles,
-        )
+        elements = []
 
-        # ── Numéro d'inventaire (bandeau violet) ──
-        inv = m.get('num_inventaire', 'N/A')
-        inv_style = ParagraphStyle('Inv', fontName='Courier-Bold', fontSize=14,
-                                   textColor=colors.HexColor('#7b3fe4'))
-        inv_table = Table(
-            [[Paragraph('N° INVENTAIRE', label_style), Paragraph(inv, inv_style)]],
-            colWidths=[4 * cm, 13 * cm],
-        )
-        inv_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3e8ff')),
-            ('BOX',        (0, 0), (-1, -1), 1, colors.HexColor('#7b3fe4')),
-            ('PADDING',    (0, 0), (-1, -1), 10),
-            ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+        # ════════════════════════════════════════════
+        #  EN-TÊTE (même que employés)
+        # ════════════════════════════════════════════
+        from django.contrib.staticfiles.finders import find as static_find
+
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_lines = [
+            [Paragraph(
+                '<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                ps('LT', fontSize=22, leading=26, alignment=TA_LEFT)
+            )],
+            [Paragraph(
+                "Système Intégré de Gestion des Ressources<br/>"
+                "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                ps('LS', fontSize=9, leading=13,
+                   textColor=C_GREY_TEXT, alignment=TA_LEFT)
+            )],
+        ]
+        title_tbl = Table(title_lines, colWidths=[11*cm])
+        title_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
         ]))
-        elements.append(inv_table)
-        elements.append(Spacer(1, 0.5 * cm))
 
-        # ── Photo de la ressource (si disponible) + infos générales côte à côte ──
-        photo_img = _photo_img_from_resource(m.get('photo', ''))
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=2.6*cm)
+        else:
+            logo_cell = Paragraph(
+                '<font color="#1d4ed8"><b>SIGR</b></font>',
+                ps('FL', fontSize=18, alignment=TA_RIGHT)
+            )
 
-        gen_rows = [r for r in [
-            info_row('Nom',            m.get('nom', '')),
-            info_row('Catégorie',      m.get('categorie', '').title()),
-            info_row('Fournisseur',    m.get('fournisseur', '')),
-            info_row('Marque',         m.get('marque', '')),
-            info_row('Modèle',         m.get('modele', '')),
-            info_row('N° de série',    m.get('numero_serie', '')),
-            info_row("Date d'achat",   m.get('date_achat', '')),
-            info_row('Valeur (DA)',     f"{m.get('valeur', '')} DA" if m.get('valeur') else ''),
-            info_row('Statut',         m.get('statut', '').replace('_', ' ').title()),
-            info_row('Zone assignée',  m.get('zone', '')),
-        ] if r]
+        meta_lines = [
+            [Paragraph(f"<b>Date :</b> {now_str}",
+                       ps('M1', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Fiche d'inventaire</b>",
+                       ps('M2', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M3', fontSize=8, textColor=C_RED, alignment=TA_RIGHT))],
+        ]
+        meta_tbl = Table(meta_lines, colWidths=[4.5*cm])
+        meta_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        ]))
 
-        elements.append(Paragraph('Informations générales', section_style))
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0), (-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ]))
 
-        if gen_rows:
-            t_gen = Table(gen_rows, colWidths=[4 * cm, 13 * cm])
+        header_tbl = Table(
+            [[title_tbl, right_col]],
+            colWidths=[CONTENT_W - 4.5*cm, 4.5*cm]
+        )
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2,
+                                   color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+
+        # ── Bandeau titre ─────────────────────────────────────────
+        inv = m.get('num_inventaire', 'N/A')
+        elements.append(ColorBand(
+            f"  FICHE D'INVENTAIRE — N° {inv}",
+            CONTENT_W, height=1.1*cm,
+            bg=C_BLUE_DARK, fg=C_WHITE, font_size=12
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  INFORMATIONS GÉNÉRALES
+        # ════════════════════════════════════════════
+        elements.append(Paragraph('Informations générales', sec_style))
+
+        # Photo
+        photo_path = m.get('photo', '')
+        photo_img = None
+        if photo_path:
+            full_photo = os.path.join(settings.MEDIA_ROOT, photo_path)
+            if os.path.exists(full_photo):
+                try:
+                    from reportlab.platypus import Image as RLImage
+                    photo_img = RLImage(full_photo, width=5*cm, height=5*cm)
+                except:
+                    pass
+
+        # Données générales
+        gen_rows = [
+            info_row('Nom',                    m.get('nom', '')),
+            info_row('Catégorie',              m.get('categorie', '').title() if m.get('categorie') else ''),
+            info_row('Sous-catégorie',         m.get('sous_categorie', '').title() if m.get('sous_categorie') else ''),
+            info_row('Marque',                 m.get('marque', '')),
+            info_row('Modèle',                 m.get('modele', '')),
+            info_row('N° de série',            m.get('numero_serie', '')),
+            info_row('N° inventaire',          inv),
+            info_row('Fournisseur',            m.get('fournisseur', '')),
+            info_row('Date d\'achat',          m.get('date_achat', '')),
+            info_row('Date de mise en service', m.get('date_mise_service', '')),
+            info_row('Garantie jusqu\'au',     m.get('garantie', '')),
+            info_row('Valeur d\'achat (DA)',   f"{m.get('valeur', ''):,} DA" if m.get('valeur') else ''),
+            info_row('Valeur résiduelle (DA)', f"{m.get('valeur_residuelle', ''):,} DA" if m.get('valeur_residuelle') else ''),
+            info_row('Statut',                 m.get('statut', '').replace('_', ' ').title()),
+            info_row('État',                   m.get('etat', '').replace('_', ' ').title() if m.get('etat') else ''),
+            info_row('Zone assignée',          m.get('zone', '')),
+            info_row('Utilisateur assigné',    m.get('utilisateur_nom', '')),
+            info_row('Département',            m.get('departement', '')),
+            info_row('Code-barres',            m.get('code_barres', '')),
+            info_row('RFID/NFC Tag',           m.get('rfid_tag', '')),
+        ]
+
+        # Filtrer les lignes vides
+        gen_rows = [r for r in gen_rows if r[1].text not in ('', '—', None) or r[0].text.startswith('Catégorie')]
+
+        if photo_img:
+            # Photo + infos côte à côte
+            t_gen = Table(gen_rows, colWidths=[5*cm, 7*cm])
             t_gen.setStyle(TableStyle([
-                ('GRID',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
-                ('BACKGROUND',     (0, 0), (0, -1),  colors.HexColor('#f8f8f8')),
+                ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                ('BACKGROUND',     (0, 0), (0, -1), C_GREY_LIGHT),
                 ('PADDING',        (0, 0), (-1, -1), 7),
-                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
             ]))
 
-            if photo_img:
-                # Logo + tableau côte à côte
-                side_table = Table(
-                    [[t_gen, photo_img]],
-                    colWidths=[12 * cm, 5.5 * cm],
-                )
-                side_table.setStyle(TableStyle([
-                    ('VALIGN',  (0, 0), (-1, -1), 'TOP'),
-                    ('PADDING', (0, 0), (-1, -1), 0),
-                    ('LEFTPADDING', (1, 0), (1, 0), 10),
-                ]))
-                elements.append(side_table)
-            else:
-                elements.append(t_gen)
+            photo_cell = Table([[photo_img]], colWidths=[5.5*cm])
+            photo_cell.setStyle(TableStyle([
+                ('ALIGN',  (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('BOX',    (0, 0), (-1, -1), 1, C_GREY_MID),
+                ('PADDING', (0, 0), (-1, -1), 5),
+            ]))
 
-        # ── Spécifications techniques ──
-        tech_rows = [r for r in [
+            side_table = Table(
+                [[t_gen, photo_cell]],
+                colWidths=[12*cm, 5.5*cm],
+            )
+            side_table.setStyle(TableStyle([
+                ('VALIGN',       (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING',  (1, 0), (1, 0), 10),
+                ('RIGHTPADDING', (0, 0), (0, 0), 0),
+            ]))
+            elements.append(side_table)
+        else:
+            t_gen = Table(gen_rows, colWidths=[5*cm, 12.5*cm])
+            t_gen.setStyle(TableStyle([
+                ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                ('BACKGROUND',     (0, 0), (0, -1), C_GREY_LIGHT),
+                ('PADDING',        (0, 0), (-1, -1), 7),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+            ]))
+            elements.append(t_gen)
+
+        # ════════════════════════════════════════════
+        #  SPÉCIFICATIONS TECHNIQUES
+        # ════════════════════════════════════════════
+        tech_rows = [
             info_row('Processeur (CPU)',         m.get('processeur', '')),
             info_row('Mémoire RAM',              m.get('ram', '')),
+            info_row('Type de RAM',              m.get('type_ram', '')),
             info_row('Stockage',                 m.get('stockage', '')),
-            info_row("Système d'exploitation",   m.get('os', '')),
-            info_row('Écran',                    m.get('ecran', '')),
-        ] if r]
+            info_row('Type de stockage',         m.get('type_stockage', '')),
+            info_row('Carte graphique',          m.get('carte_graphique', '')),
+            info_row('Système d\'exploitation',  m.get('os', '')),
+            info_row('Version OS',               m.get('version_os', '')),
+            info_row('Adresse IP',               m.get('adresse_ip', '')),
+            info_row('Adresse MAC',              m.get('adresse_mac', '')),
+            info_row('Nom d\'hôte',              m.get('hostname', '')),
+            info_row('Écran / Résolution',       m.get('ecran', '')),
+            info_row('Ports / Connectique',      m.get('ports', '')),
+            info_row('Alimentation',             m.get('alimentation', '')),
+            info_row('Poids (kg)',               m.get('poids', '')),
+            info_row('Dimensions',               m.get('dimensions', '')),
+        ]
+        tech_rows = [r for r in tech_rows if r[1].text not in ('', '—', None)]
+
         if tech_rows:
-            elements.append(Paragraph('Spécifications techniques', section_style))
-            t_tech = Table(tech_rows, colWidths=[4 * cm, 13 * cm])
+            elements.append(Paragraph('Spécifications techniques', sec_style))
+            t_tech = Table(tech_rows, colWidths=[5*cm, 12.5*cm])
             t_tech.setStyle(TableStyle([
-                ('GRID',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
-                ('BACKGROUND',     (0, 0), (0, -1),  colors.HexColor('#f0f6ff')),
+                ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                ('BACKGROUND',     (0, 0), (0, -1), C_BLUE_LIGHT),
                 ('PADDING',        (0, 0), (-1, -1), 7),
-                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f7f9ff')]),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_WHITE, C_GREY_LIGHT]),
             ]))
             elements.append(t_tech)
 
-        # ── Description ──
-        if m.get('description'):
-            elements.append(Paragraph('Description / Remarques', section_style))
-            elements.append(Paragraph(m['description'], small_style))
+        # ════════════════════════════════════════════
+        #  LOGICIELS & LICENCES
+        # ════════════════════════════════════════════
+        logiciels = m.get('logiciels', [])
+        if logiciels:
+            elements.append(Paragraph('Logiciels & Licences', sec_style))
+            log_headers = [
+                Paragraph('Logiciel', th_left),
+                Paragraph('Version', th),
+                Paragraph('Licence', th),
+                Paragraph('Expiration', th),
+            ]
+            log_data = [log_headers]
+            for log in logiciels:
+                if isinstance(log, dict):
+                    log_data.append([
+                        Paragraph(log.get('nom', '—'), td_left),
+                        Paragraph(log.get('version', '—'), td),
+                        Paragraph(log.get('licence', '—'), td),
+                        Paragraph(log.get('expiration', '—'), td),
+                    ])
+                else:
+                    log_data.append([
+                        Paragraph(str(log), td_left),
+                        Paragraph('—', td),
+                        Paragraph('—', td),
+                        Paragraph('—', td),
+                    ])
 
-        # ── Zone QR-like : encadré signature ──
-        elements.append(Spacer(1, 0.8 * cm))
+            t_log = Table(log_data, colWidths=[6*cm, 3.5*cm, 4*cm, 4*cm], repeatRows=1)
+            t_log.setStyle(TableStyle([
+                ('BACKGROUND',     (0, 0), (-1, 0), C_BLUE_MAIN),
+                ('TEXTCOLOR',      (0, 0), (-1, 0), C_WHITE),
+                ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                ('PADDING',        (0, 0), (-1, -1), 7),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+            ]))
+            elements.append(t_log)
+
+        # ════════════════════════════════════════════
+        #  MAINTENANCE & INTERVENTIONS
+        # ════════════════════════════════════════════
+        maintenances = list(db.maintenances.find(
+            {'materiel_id': m['_id']}
+        ).sort('date', -1).limit(10)) if hasattr(db, 'maintenances') else []
+
+        if maintenances:
+            elements.append(Paragraph('Historique de maintenance', sec_style))
+            maint_headers = [
+                Paragraph('Date', th_left),
+                Paragraph('Type', th),
+                Paragraph('Intervenant', th),
+                Paragraph('Coût (DA)', th),
+                Paragraph('Description', th_left),
+            ]
+            maint_data = [maint_headers]
+            for mt in maintenances:
+                maint_data.append([
+                    Paragraph(mt.get('date', '—'), td_left),
+                    Paragraph(mt.get('type', '—').replace('_', ' ').title(), td),
+                    Paragraph(mt.get('intervenant', '—'), td),
+                    Paragraph(f"{mt.get('cout', 0):,}" if mt.get('cout') else '—', td),
+                    Paragraph(mt.get('description', '—')[:80], td_left),
+                ])
+
+            t_maint = Table(maint_data, colWidths=[2.5*cm, 2.8*cm, 3.5*cm, 2.5*cm, 6.2*cm], repeatRows=1)
+            t_maint.setStyle(TableStyle([
+                ('BACKGROUND',     (0, 0), (-1, 0), C_BLUE_MAIN),
+                ('TEXTCOLOR',      (0, 0), (-1, 0), C_WHITE),
+                ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                ('PADDING',        (0, 0), (-1, -1), 7),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+            ]))
+            elements.append(t_maint)
+        else:
+            elements.append(Paragraph('Maintenance', sec_style))
+            elements.append(Paragraph(
+                '<i>Aucune intervention de maintenance enregistrée.</i>',
+                ps('NOMT', fontSize=9, textColor=C_GREY_TEXT, alignment=TA_LEFT)
+            ))
+
+        # ════════════════════════════════════════════
+        #  DESCRIPTION / REMARQUES
+        # ════════════════════════════════════════════
+        if m.get('description'):
+            elements.append(Paragraph('Description / Remarques', sec_style))
+            elements.append(Paragraph(m['description'], ps('DESC', fontSize=10, textColor=C_BLACK,
+                                   alignment=TA_LEFT, leading=14, spaceAfter=6)))
+
+        # ════════════════════════════════════════════
+        #  ZONE SIGNATURE
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 0.8*cm))
+        elements.append(Paragraph('Validation & Signature', sec_style))
+
         sig_data = [
-            [Paragraph('Vérifié par', label_style),   Paragraph('', value_style),
-             Paragraph('Date vérification', label_style), Paragraph('', value_style)],
-            [Paragraph('Signature', label_style),      Paragraph('', value_style),
-             Paragraph('Visa responsable', label_style), Paragraph('', value_style)],
+            [
+                Paragraph('<b>Vérifié par</b>', label_style),
+                Paragraph('', val_style),
+                Paragraph('<b>Date de vérification</b>', label_style),
+                Paragraph('', val_style),
+            ],
+            [
+                Paragraph('<b>Signature</b>', label_style),
+                Paragraph('', val_style),
+                Paragraph('<b>Visa responsable</b>', label_style),
+                Paragraph('', val_style),
+            ],
+            [
+                Paragraph('<b>Commentaire</b>', label_style),
+                Paragraph('', val_style),
+                Paragraph('', val_style),
+                Paragraph('', val_style),
+            ],
         ]
-        sig_table = Table(sig_data, colWidths=[3.5 * cm, 5.5 * cm, 3.5 * cm, 5 * cm])
+        sig_table = Table(sig_data, colWidths=[3.5*cm, 5.5*cm, 3.5*cm, 5*cm])
         sig_table.setStyle(TableStyle([
-            ('BOX',     (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
-            ('GRID',    (0, 0), (-1, -1), 0.3, colors.HexColor('#e0e0e0')),
-            ('PADDING', (0, 0), (-1, -1), 10),
-            ('MINROWHEIGHTS', (0, 0), (-1, -1), 1.2 * cm),
+            ('BOX',            (0, 0), (-1, -1), 1, C_GREY_MID),
+            ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+            ('PADDING',        (0, 0), (-1, -1), 10),
+            ('BACKGROUND',     (0, 0), (0, -1), C_GREY_LIGHT),
+            ('BACKGROUND',     (2, 0), (2, -1), C_GREY_LIGHT),
+            ('MINROWHEIGHTS',  (0, 0), (-1, -1), 1.3*cm),
+            ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         elements.append(sig_table)
 
-        # ── Pied de page ──
-        elements.append(Spacer(1, 0.6 * cm))
-        elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
-        elements.append(Spacer(1, 0.2 * cm))
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1.2*cm))
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=C_GREY_MID, spaceAfter=6))
         elements.append(Paragraph(
-            f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — SIGR-CA  |  "
-            f"N° inventaire : {inv}",
-            ParagraphStyle('Footer', fontSize=8, textColor=colors.grey),
+            f"Document généré automatiquement le <b>{now_str}</b> par le système SIGR-CA.",
+            foot_style,
+        ))
+        elements.append(Paragraph(
+            f"Fiche d'inventaire N° <b>{inv}</b> — Ce document est <b>confidentiel</b> "
+            "et destiné à un usage interne uniquement. Toute reproduction ou diffusion "
+            "non autorisée est interdite.",
+            ps('CONF', fontSize=7, textColor=C_GREY_TEXT,
+               alignment=TA_CENTER, leading=10),
         ))
 
-        doc.build(elements)
+        # ── Build PDF ────────────────────────────────────────────
+        doc.build(elements, canvasmaker=NumberedCanvas)
         buffer.seek(0)
 
         nom_fichier = (m.get('nom', 'materiel') + '_' + inv).replace(' ', '_')
@@ -2382,13 +3231,15 @@ def api_materiel_pdf(request, materiel_id):
         return response
 
     except Exception as e:
-        return HttpResponse(f'Erreur : {str(e)}', status=500)
-
-
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain',
+            status=500
+        )
 # ─── RAPPORT PDF — Zone + tout son matériel ────────────────────────────────────
-
+@login_required
 def api_zone_pdf(request, zone_id):
-    """Rapport PDF d'une zone avec tout son matériel — logo en haut."""
+    """Rapport PDF d'une zone avec tout son matériel — logo SIGR-CA."""
     try:
         bureau = db.bureaux.find_one({'_id': ObjectId(zone_id)})
         if not bureau:
@@ -2400,271 +3251,762 @@ def api_zone_pdf(request, zone_id):
             if 'materiels' in db.list_collection_names() else []
         )
 
-        buffer = io.BytesIO()
+        now_str   = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file = datetime.now().strftime('%Y%m%d_%H%M')
+
+        # ── Mise en page ──────────────────────────────────────────
+        buffer   = io.BytesIO()
+        PAGE_W, PAGE_H = landscape(A4)
+        CONTENT_W = PAGE_W - 3 * cm
+
         doc = SimpleDocTemplate(
             buffer, pagesize=landscape(A4),
-            leftMargin=1.5 * cm, rightMargin=1.5 * cm,
-            topMargin=2 * cm, bottomMargin=2 * cm,
+            leftMargin=1.5*cm, rightMargin=1.5*cm,
+            topMargin=2*cm, bottomMargin=2*cm,
+            title=f"Rapport Zone — {zone_nom}",
+            author="SIGR-CA Système",
+            subject=f"Rapport zone {zone_nom}",
         )
-        styles   = getSampleStyleSheet()
+
+        # ── Registre de styles custom ─────────────────────────────
+        _custom_styles = {}
+
+        def ps(name, **kw):
+            base = kw.pop('parent', 'Normal')
+            stylesheet = getSampleStyleSheet()
+            parent_style = _custom_styles.get(base) or stylesheet[base]
+            p = ParagraphStyle(name, parent=parent_style, **kw)
+            _custom_styles[name] = p
+            return p
+
+        # Styles
+        th        = ps('TH',   fontName='Helvetica-Bold', fontSize=7,
+                        textColor=C_WHITE, alignment=TA_CENTER,
+                        leading=10, spaceAfter=0, spaceBefore=0)
+        th_left   = ps('TH_L', parent='TH', alignment=TA_LEFT)
+        td        = ps('TD',   fontSize=7, alignment=TA_CENTER,
+                        leading=10, textColor=C_BLACK)
+        td_left   = ps('TD_L', parent='TD', alignment=TA_LEFT)
+        td_mono   = ps('TD_M', parent='TD', fontSize=7, fontName='Courier',
+                        alignment=TA_CENTER)
+        sec_style = ps('SEC',  fontName='Helvetica-Bold', fontSize=13,
+                        textColor=C_PURPLE, spaceBefore=18, spaceAfter=8,
+                        leading=17)
+        foot_style = ps('FOOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                         alignment=TA_CENTER, leading=11)
+        label_style = ps('LABEL', fontSize=9, textColor=C_GREY_TEXT,
+                          fontName='Helvetica-Bold', alignment=TA_LEFT)
+        val_style = ps('VAL', fontSize=10, fontName='Helvetica',
+                        textColor=C_BLACK, alignment=TA_LEFT)
+
         elements = []
 
-        section_style = ParagraphStyle(
-            'Section', parent=styles['Heading2'],
-            fontSize=13, spaceBefore=14, spaceAfter=6,
-            textColor=colors.HexColor('#1f6feb'),
-        )
-        label_style = ParagraphStyle('Label', fontSize=9, textColor=colors.grey)
-        value_style = ParagraphStyle('Value', fontSize=10, fontName='Helvetica-Bold')
-        small = ParagraphStyle('Small', fontSize=8)
+        # ════════════════════════════════════════════
+        #  EN-TÊTE
+        # ════════════════════════════════════════════
+        from django.contrib.staticfiles.finders import find as static_find
 
-        # ── En-tête avec logo ──
-        _build_header(
-            elements,
-            f'RAPPORT DE ZONE : {zone_nom.upper()}',
-            'Système Intégré de Gestion des Ressources — SIGR-CA',
-            styles,
-        )
+        LOGO_PATH = static_find('img/logo.png')
 
-        # ── Fiche zone ──
-        elements.append(Paragraph('Informations de la zone', section_style))
-        zone_info = [
-            ['Code',          bureau.get('code_bureau', '—')],
-            ['Étage',         str(bureau.get('etage', 'RDC'))],
-            ['Capacité max',  f"{bureau.get('capacite_max', 0)} personnes"],
-            ['Niveau sécu.',  bureau.get('niveau_securite', 'standard').title()],
-            ['Statut',        bureau.get('statut', 'actif').title()],
-            ['Description',   bureau.get('description', '—')],
+        title_lines = [
+            [Paragraph(
+                '<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                ps('LT', fontSize=22, leading=26, alignment=TA_LEFT)
+            )],
+            [Paragraph(
+                "Système Intégré de Gestion des Ressources<br/>"
+                "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                ps('LS', fontSize=9, leading=13,
+                   textColor=C_GREY_TEXT, alignment=TA_LEFT)
+            )],
         ]
+        title_tbl = Table(title_lines, colWidths=[14*cm])
+        title_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=4*cm)
+        else:
+            logo_cell = Paragraph(
+                '<font color="#1d4ed8"><b>SIGR</b></font>',
+                ps('FL', fontSize=16, alignment=TA_RIGHT)
+            )
+
+        meta_lines = [
+            [Paragraph(f"<b>Date :</b> {now_str}",
+                       ps('M1', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Zone :</b> {zone_nom}",
+                       ps('M2', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Articles :</b> {len(materiels)}",
+                       ps('M3', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M4', fontSize=7, textColor=C_RED, alignment=TA_RIGHT))],
+        ]
+        meta_tbl = Table(meta_lines, colWidths=[4.5*cm])
+        meta_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        ]))
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0), (-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ]))
+
+        header_tbl = Table(
+            [[title_tbl, right_col]],
+            colWidths=[CONTENT_W - 4.5*cm, 4.5*cm]
+        )
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2,
+                                   color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+
+        # ── Bandeau titre ─────────────────────────────────────────
+        elements.append(ColorBand(
+            f"  RAPPORT DE ZONE : {zone_nom.upper()}",
+            CONTENT_W, height=1*cm,
+            bg=C_BLUE_DARK, fg=C_WHITE, font_size=11
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  INFORMATIONS DE LA ZONE
+        # ════════════════════════════════════════════
+        elements.append(Paragraph('Informations de la zone', sec_style))
+
+        code_bureau = bureau.get('code_bureau', '—')
+        etage = bureau.get('etage', 'RDC')
+        capacite = bureau.get('capacite_max', 0)
+        securite = bureau.get('niveau_securite', 'standard').title()
+        statut_zone = bureau.get('statut', 'actif').title()
+        description = bureau.get('description', '')
+        responsable = bureau.get('responsable', '')
+        telephone = bureau.get('telephone', '')
+        email = bureau.get('email', '')
+
+        zone_info = [
+            ['Code bureau',      code_bureau],
+            ['Étage',            str(etage)],
+            ['Capacité max',     f"{capacite} personnes"],
+            ['Niveau sécurité',  securite],
+            ['Statut',           statut_zone],
+        ]
+        if responsable:
+            zone_info.append(['Responsable', responsable])
+        if telephone:
+            zone_info.append(['Téléphone', telephone])
+        if email:
+            zone_info.append(['Email', email])
+
         t_zone = Table(
-            [[Paragraph(r[0], label_style), Paragraph(str(r[1]), value_style)]
+            [[Paragraph(r[0], label_style), Paragraph(str(r[1]), val_style)]
              for r in zone_info],
-            colWidths=[4 * cm, 23 * cm],
+            colWidths=[4.5*cm, 18.5*cm],
         )
         t_zone.setStyle(TableStyle([
-            ('GRID',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
-            ('BACKGROUND',     (0, 0), (0, -1),  colors.HexColor('#f0f6ff')),
+            ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+            ('BACKGROUND',     (0, 0), (0, -1), C_BLUE_LIGHT),
             ('PADDING',        (0, 0), (-1, -1), 7),
-            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+            ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_WHITE, C_GREY_LIGHT]),
         ]))
         elements.append(t_zone)
-        elements.append(Spacer(1, 0.6 * cm))
 
-        # ── Tableau matériel ──
+        if description:
+            elements.append(Spacer(1, 0.3*cm))
+            elements.append(Paragraph(
+                f"<b>Description :</b> {description}",
+                ps('DESC', fontSize=9, textColor=C_GREY_TEXT, leading=13, spaceAfter=6),
+            ))
+
+        # ── Statistiques rapides ──
+        dispo_zone = sum(1 for m in materiels if m.get('statut') == 'disponible')
+        utilise_zone = sum(1 for m in materiels if m.get('statut') == 'utilise')
+        maint_zone = sum(1 for m in materiels if m.get('statut') in ['maintenance', 'hors_service'])
+        valeur_zone = sum(
+            float(m.get('valeur', 0)) for m in materiels
+            if m.get('valeur') and str(m.get('valeur')).replace('.', '').isdigit()
+        )
+
+        elements.append(Spacer(1, 0.4*cm))
         elements.append(Paragraph(
-            f"Matériel inventorié ({len(materiels)} article(s))", section_style,
+            f"📊 <b>{len(materiels)} articles</b> — "
+            f"✅ {dispo_zone} disponibles  |  "
+            f"🔄 {utilise_zone} utilisés  |  "
+            f"⚠️ {maint_zone} en maintenance/HS  |  "
+            f"💰 Valeur totale : <b>{valeur_zone:,.0f} DA</b>",
+            ps('STATSZ', fontSize=9, textColor=C_BLUE_MAIN, leading=13, spaceAfter=6),
+        ))
+
+        # ════════════════════════════════════════════
+        #  MATÉRIEL INVENTORIÉ
+        # ════════════════════════════════════════════
+        elements.append(Paragraph(
+            f"Matériel inventorié ({len(materiels)} article(s))", sec_style,
         ))
 
         if materiels:
             headers = [
-                'N° Inventaire', 'Nom', 'Catégorie', 'Fournisseur', 'Marque / Modèle',
-                'N° Série', 'Spécifications', 'Statut', 'Date achat', 'Valeur (DA)',
+                Paragraph('N° Inventaire', th_left),
+                Paragraph('Nom', th_left),
+                Paragraph('Catégorie', th),
+                Paragraph('Marque/Modèle', th_left),
+                Paragraph('N° Série', th),
+                Paragraph('Spécifications', th_left),
+                Paragraph('Date achat', th),
+                Paragraph('Valeur (DA)', th),
+                Paragraph('Statut', th),
             ]
-            hdr_style = ParagraphStyle('Hdr', fontSize=8, fontName='Helvetica-Bold',
-                                       textColor=colors.white)
-            rows = [[Paragraph(h, hdr_style) for h in headers]]
+
             statut_map = {
-                'disponible': '✓ Disponible', 'utilise': '→ Utilisé',
-                'maintenance': '⚠ Maintenance', 'hors_service': '✗ H.S.',
+                'disponible':    '✅ Dispo',
+                'utilise':       '🔄 Utilisé',
+                'maintenance':   '⚠️ Maint.',
+                'hors_service':  '❌ H.S.',
+                'reforme':       '🗑️ Réformé',
             }
+
+            rows = [headers]
             for mat in materiels:
                 specs_parts = []
                 if mat.get('processeur'): specs_parts.append(f"CPU: {mat['processeur']}")
                 if mat.get('ram'):        specs_parts.append(f"RAM: {mat['ram']}")
-                if mat.get('stockage'):   specs_parts.append(f"HDD: {mat['stockage']}")
-                specs = '\n'.join(specs_parts) or '—'
-                inv_style_small = ParagraphStyle('Inv', fontName='Courier', fontSize=8,
-                                                 textColor=colors.HexColor('#7b3fe4'))
+                if mat.get('stockage'):   specs_parts.append(f"DD: {mat['stockage']}")
+                if mat.get('os'):         specs_parts.append(f"OS: {mat['os']}")
+                specs = ' | '.join(specs_parts) if specs_parts else '—'
+
+                statut = mat.get('statut', '')
+                statut_display = statut_map.get(statut, statut.replace('_', ' ').title())
+
+                valeur = mat.get('valeur', '')
+                valeur_display = f"{float(valeur):,.0f}" if valeur and str(valeur).replace('.', '').isdigit() else str(valeur) if valeur else '—'
+
                 rows.append([
-                    Paragraph(mat.get('num_inventaire', '—'), inv_style_small),
-                    Paragraph(mat.get('nom', '—'), small),
-                    Paragraph(mat.get('categorie', '—').title(), small),
-                    Paragraph(mat.get('fournisseur', '—'), small),
-                    Paragraph(f"{mat.get('marque', '')} {mat.get('modele', '')}".strip() or '—', small),
-                    Paragraph(mat.get('numero_serie', '—'),
-                              ParagraphStyle('Sn', fontName='Courier', fontSize=8)),
-                    Paragraph(specs, small),
-                    Paragraph(statut_map.get(mat.get('statut', ''), mat.get('statut', '')), small),
-                    Paragraph(mat.get('date_achat', '—'), small),
-                    Paragraph(mat.get('valeur', '—'), small),
+                    Paragraph(mat.get('num_inventaire', '—'), td_mono),
+                    Paragraph(mat.get('nom', '—'), td_left),
+                    Paragraph(mat.get('categorie', '—').title(), td),
+                    Paragraph(
+                        f"{mat.get('marque', '')} {mat.get('modele', '')}".strip() or '—',
+                        td_left
+                    ),
+                    Paragraph(mat.get('numero_serie', '—'), td_mono),
+                    Paragraph(specs, td_left),
+                    Paragraph(mat.get('date_achat', '—'), td),
+                    Paragraph(valeur_display, td),
+                    Paragraph(statut_display, td),
                 ])
-            col_widths = [3.5*cm, 3.5*cm, 2.2*cm, 2.5*cm, 3*cm, 2.8*cm, 4*cm, 2.2*cm, 2*cm, 2.3*cm]
+
+            col_widths = [
+                2.8*cm, 3*cm, 2.2*cm, 3.5*cm, 2.5*cm,
+                5*cm, 2.2*cm, 2.2*cm, 2.2*cm,
+            ]
             t_mat = Table(rows, colWidths=col_widths, repeatRows=1)
             t_mat.setStyle(TableStyle([
-                ('BACKGROUND',    (0, 0), (-1, 0),  colors.HexColor('#1f6feb')),
-                ('TEXTCOLOR',     (0, 0), (-1, 0),  colors.white),
-                ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#d0d0d0')),
-                ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#f7f9ff')]),
-                ('PADDING',       (0, 0), (-1, -1), 5),
-                ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+                ('BACKGROUND',     (0, 0), (-1, 0), C_BLUE_MAIN),
+                ('TEXTCOLOR',      (0, 0), (-1, 0), C_WHITE),
+                ('GRID',           (0, 0), (-1, -1), 0.3, C_GREY_MID),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+                ('PADDING',        (0, 0), (-1, -1), 4),
+                ('TOPPADDING',     (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING',  (0, 0), (-1, 0), 8),
+                ('TOPPADDING',     (0, 1), (-1, -1), 5),
+                ('BOTTOMPADDING',  (0, 1), (-1, -1), 5),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('BOX',            (0, 0), (-1, -1), 1, C_BLUE_MID),
             ]))
             elements.append(t_mat)
-        else:
-            elements.append(Paragraph('Aucun matériel assigné à cette zone.', styles['Normal']))
 
-        # Pied de page
-        elements.append(Spacer(1, 0.8 * cm))
-        elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
-        elements.append(Spacer(1, 0.2 * cm))
+            # ── Répartition par catégorie dans la zone ──
+            categories_zone = {}
+            for m in materiels:
+                cat = m.get('categorie', 'Non classé').title()
+                categories_zone[cat] = categories_zone.get(cat, 0) + 1
+
+            if len(categories_zone) > 1:
+                elements.append(Spacer(1, 0.5*cm))
+                elements.append(Paragraph('Répartition par catégorie', sec_style))
+                cat_data = [[
+                    Paragraph('<b>Catégorie</b>', th_left),
+                    Paragraph('<b>Nombre</b>', th),
+                    Paragraph('<b>%</b>', th),
+                ]]
+                for cat, cnt in sorted(categories_zone.items(), key=lambda x: -x[1]):
+                    pct = round(cnt / len(materiels) * 100, 1) if len(materiels) > 0 else 0
+                    cat_data.append([
+                        Paragraph(cat, td_left),
+                        Paragraph(str(cnt), td),
+                        Paragraph(f'{pct}%', td),
+                    ])
+
+                t_cat_zone = Table(cat_data, colWidths=[10*cm, 3*cm, 3*cm])
+                t_cat_zone.setStyle(TableStyle([
+                    ('BACKGROUND',     (0, 0), (-1, 0), C_BLUE_MAIN),
+                    ('TEXTCOLOR',      (0, 0), (-1, 0), C_WHITE),
+                    ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                    ('PADDING',        (0, 0), (-1, -1), 5),
+                    ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+                ]))
+                elements.append(t_cat_zone)
+        else:
+            elements.append(Paragraph(
+                '<i>Aucun matériel assigné à cette zone.</i>',
+                ps('NOMAT', fontSize=9, textColor=C_GREY_TEXT, alignment=TA_LEFT,
+                   spaceBefore=4, spaceAfter=4),
+            ))
+
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1*cm))
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=C_GREY_MID, spaceAfter=6))
         elements.append(Paragraph(
-            f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — SIGR-CA",
-            ParagraphStyle('Footer', fontSize=8, textColor=colors.grey),
+            f"Document généré automatiquement le <b>{now_str}</b> par le système SIGR-CA.",
+            foot_style,
+        ))
+        elements.append(Paragraph(
+            f"Rapport zone <b>{zone_nom}</b> — <b>{len(materiels)} articles</b> — "
+            "Ce document est <b>confidentiel</b> et destiné à un usage interne uniquement. "
+            "Toute reproduction ou diffusion non autorisée est interdite.",
+            ps('CONF', fontSize=7, textColor=C_GREY_TEXT,
+               alignment=TA_CENTER, leading=10),
         ))
 
-        doc.build(elements)
+        # ── Build PDF ────────────────────────────────────────────
+        doc.build(elements, canvasmaker=NumberedCanvas)
         buffer.seek(0)
-        nom_fichier = f"rapport_zone_{zone_nom.replace(' ', '_')}"
+        nom_fichier = f"Rapport_Zone_{zone_nom.replace(' ', '_')}_{date_file}"
         response = HttpResponse(buffer, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{nom_fichier}.pdf"'
         return response
 
     except Exception as e:
-        return HttpResponse(f'Erreur : {str(e)}', status=500)
-
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain',
+            status=500
+        )
 
 # ─── RAPPORT PDF — Toutes les zones ───────────────────────────────────────────
+@login_required
 def api_zones_rapport_pdf(request):
     """Rapport PDF global toutes zones — avec logo SIGR-CA."""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=landscape(A4),
-        leftMargin=1.5 * cm, rightMargin=1.5 * cm,
-        topMargin=2 * cm, bottomMargin=2 * cm,
-    )
-    styles   = getSampleStyleSheet()
-    elements = []
-
-    zone_title = ParagraphStyle(
-        'ZTitle', parent=styles['Heading2'],
-        fontSize=14, textColor=colors.HexColor('#1f6feb'),
-        spaceBefore=16, spaceAfter=6,
-    )
-    small = ParagraphStyle('Small', fontSize=8)
-
     try:
         bureaux       = list(db.bureaux.find())
         materiels_all = (
             list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
         )
 
-        # ── Page de garde avec logo ──
-        _build_header(
-            elements,
-            'RAPPORT GLOBAL DES RESSOURCES',
-            f"Système Intégré de Gestion des Ressources — SIGR-CA  |  "
-            f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}",
-            styles,
+        now_str   = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file = datetime.now().strftime('%Y%m%d_%H%M')
+
+        # ── Mise en page ──────────────────────────────────────────
+        buffer   = io.BytesIO()
+        PAGE_W, PAGE_H = landscape(A4)
+        CONTENT_W = PAGE_W - 3 * cm
+
+        doc = SimpleDocTemplate(
+            buffer, pagesize=landscape(A4),
+            leftMargin=1.5*cm, rightMargin=1.5*cm,
+            topMargin=2*cm, bottomMargin=2*cm,
+            title="Rapport Global des Ressources — SIGR-CA",
+            author="SIGR-CA Système",
+            subject="Rapport toutes zones",
         )
+
+        # ── Registre de styles custom ─────────────────────────────
+        _custom_styles = {}
+
+        def ps(name, **kw):
+            base = kw.pop('parent', 'Normal')
+            stylesheet = getSampleStyleSheet()
+            parent_style = _custom_styles.get(base) or stylesheet[base]
+            p = ParagraphStyle(name, parent=parent_style, **kw)
+            _custom_styles[name] = p
+            return p
+
+        # Styles
+        th        = ps('TH',   fontName='Helvetica-Bold', fontSize=7,
+                        textColor=C_WHITE, alignment=TA_CENTER,
+                        leading=10, spaceAfter=0, spaceBefore=0)
+        th_left   = ps('TH_L', parent='TH', alignment=TA_LEFT)
+        td        = ps('TD',   fontSize=7, alignment=TA_CENTER,
+                        leading=10, textColor=C_BLACK)
+        td_left   = ps('TD_L', parent='TD', alignment=TA_LEFT)
+        td_mono   = ps('TD_M', parent='TD', fontSize=7, fontName='Courier',
+                        alignment=TA_CENTER)
+        sec_style = ps('SEC',  fontName='Helvetica-Bold', fontSize=13,
+                        textColor=C_PURPLE, spaceBefore=18, spaceAfter=8,
+                        leading=17)
+        foot_style = ps('FOOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                         alignment=TA_CENTER, leading=11)
+        label_style = ps('LABEL', fontSize=8, textColor=C_GREY_TEXT,
+                          fontName='Helvetica-Bold', alignment=TA_LEFT)
+        val_style = ps('VAL', fontSize=12, fontName='Helvetica-Bold',
+                        textColor=C_BLUE_MAIN, alignment=TA_LEFT)
+        zone_title_style = ps('ZTITLE', fontName='Helvetica-Bold', fontSize=12,
+                               textColor=C_BLUE_MAIN, spaceBefore=10, spaceAfter=4,
+                               leading=16)
+
+        elements = []
+
+        # ════════════════════════════════════════════
+        #  EN-TÊTE
+        # ════════════════════════════════════════════
+        from django.contrib.staticfiles.finders import find as static_find
+
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_lines = [
+            [Paragraph(
+                '<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                ps('LT', fontSize=22, leading=26, alignment=TA_LEFT)
+            )],
+            [Paragraph(
+                "Système Intégré de Gestion des Ressources<br/>"
+                "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                ps('LS', fontSize=9, leading=13,
+                   textColor=C_GREY_TEXT, alignment=TA_LEFT)
+            )],
+        ]
+        title_tbl = Table(title_lines, colWidths=[14*cm])
+        title_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=4*cm)
+        else:
+            logo_cell = Paragraph(
+                '<font color="#1d4ed8"><b>SIGR</b></font>',
+                ps('FL', fontSize=16, alignment=TA_RIGHT)
+            )
+
+        meta_lines = [
+            [Paragraph(f"<b>Date :</b> {now_str}",
+                       ps('M1', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Zones :</b> {len(bureaux)}",
+                       ps('M2', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Articles :</b> {len(materiels_all)}",
+                       ps('M3', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M4', fontSize=7, textColor=C_RED, alignment=TA_RIGHT))],
+        ]
+        meta_tbl = Table(meta_lines, colWidths=[4.5*cm])
+        meta_tbl.setStyle(TableStyle([
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        ]))
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0), (-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('TOPPADDING',    (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ]))
+
+        header_tbl = Table(
+            [[title_tbl, right_col]],
+            colWidths=[CONTENT_W - 4.5*cm, 4.5*cm]
+        )
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2,
+                                   color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+
+        # ── Bandeau titre ─────────────────────────────────────────
+        elements.append(ColorBand(
+            "  RAPPORT GLOBAL DES RESSOURCES — TOUTES ZONES",
+            CONTENT_W, height=1*cm,
+            bg=C_BLUE_DARK, fg=C_WHITE, font_size=11
+        ))
+        elements.append(Spacer(1, 0.5*cm))
+
+        # ════════════════════════════════════════════
+        #  RÉSUMÉ GLOBAL
+        # ════════════════════════════════════════════
+        elements.append(Paragraph('Résumé global', sec_style))
 
         total_mat = len(materiels_all)
         dispo     = sum(1 for m in materiels_all if m.get('statut') == 'disponible')
+        utilise   = sum(1 for m in materiels_all if m.get('statut') == 'utilise')
         maint     = sum(1 for m in materiels_all if m.get('statut') in ['maintenance', 'hors_service'])
-        lbl_s = ParagraphStyle('Lbl', fontSize=9, textColor=colors.grey)
-        val_s = ParagraphStyle('Val', fontSize=13, fontName='Helvetica-Bold',
-                               textColor=colors.HexColor('#1f6feb'))
-        resume_rows = [
-            [Paragraph('Zones totales',        lbl_s), Paragraph(str(len(bureaux)), val_s)],
-            [Paragraph('Matériel total',        lbl_s), Paragraph(str(total_mat), val_s)],
-            [Paragraph('Disponible',            lbl_s), Paragraph(str(dispo), val_s)],
-            [Paragraph('En maintenance / H.S.', lbl_s), Paragraph(str(maint), val_s)],
+        reforme   = sum(1 for m in materiels_all if m.get('statut') == 'reforme')
+
+        # Valeur totale
+        valeur_totale = sum(
+            float(m.get('valeur', 0)) for m in materiels_all
+            if m.get('valeur') and str(m.get('valeur')).replace('.', '').isdigit()
+        )
+
+        def stat_card(label, value, color=C_BLUE_MAIN):
+            return [
+                Paragraph(label, ps(f'SCL_{label[:6]}', fontSize=8,
+                                    textColor=C_GREY_TEXT, alignment=TA_LEFT)),
+                Paragraph(
+                    f'<font color="#{hex_color(color)}"><b>{value}</b></font>',
+                    ps(f'SCV_{label[:6]}', fontSize=14,
+                       fontName='Helvetica-Bold', alignment=TA_LEFT)
+                ),
+            ]
+
+        resume_data = [
+            stat_card('Total zones',          str(len(bureaux))),
+            stat_card('Total articles',       str(total_mat)),
+            stat_card('Disponibles',          str(dispo),       C_GREEN),
+            stat_card('Utilisés',             str(utilise),     C_BLUE_MAIN),
+            stat_card('En maintenance / HS',  str(maint),       C_AMBER),
+            stat_card('Réformés',             str(reforme),     C_RED),
+            stat_card('Valeur totale (DA)',   f'{valeur_totale:,.0f} DA', C_PURPLE),
         ]
-        t_resume = Table(resume_rows, colWidths=[6 * cm, 21 * cm])
+
+        t_resume = Table(resume_data, colWidths=[3.5*cm, 3.5*cm]*3 + [4*cm])
         t_resume.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0f6ff')),
-            ('BOX',        (0, 0), (-1, -1), 1,   colors.HexColor('#1f6feb')),
-            ('GRID',       (0, 0), (-1, -1), 0.3, colors.HexColor('#cce0ff')),
-            ('PADDING',    (0, 0), (-1, -1), 10),
+            ('BACKGROUND',     (0, 0), (-1, -1), C_BLUE_LIGHT),
+            ('BOX',            (0, 0), (-1, -1), 1, C_BLUE_MAIN),
+            ('GRID',           (0, 0), (-1, -1), 0.4, C_BLUE_MID),
+            ('PADDING',        (0, 0), (-1, -1), 8),
+            ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
         ]))
         elements.append(t_resume)
 
-        # ── Une section par zone ──
-        for bureau in bureaux:
-            zone_nom  = bureau.get('nom', 'Zone')
+        # ── Répartition par catégorie ──
+        categories = {}
+        for m in materiels_all:
+            cat = m.get('categorie', 'Non classé').title()
+            categories[cat] = categories.get(cat, 0) + 1
+
+        if categories:
+            elements.append(Spacer(1, 0.4*cm))
+            cat_data = [[
+                Paragraph('<b>Répartition par catégorie</b>',
+                          ps('CATT', fontSize=8, textColor=C_GREY_TEXT)),
+                Paragraph('<b>Nb</b>',
+                          ps('CATN', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_CENTER)),
+                Paragraph('<b>%</b>',
+                          ps('CATP', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_CENTER)),
+            ]]
+            for cat, cnt in sorted(categories.items(), key=lambda x: -x[1]):
+                pct = round(cnt / total_mat * 100, 1) if total_mat > 0 else 0
+                cat_data.append([
+                    Paragraph(cat, ps(f'CN_{cat[:8]}', fontSize=8)),
+                    Paragraph(str(cnt), ps(f'CC_{cat[:8]}', fontSize=8, alignment=TA_CENTER)),
+                    Paragraph(f'{pct}%', ps(f'CP_{cat[:8]}', fontSize=8, alignment=TA_CENTER)),
+                ])
+
+            t_cat = Table(cat_data, colWidths=[10*cm, 3*cm, 3*cm])
+            t_cat.setStyle(TableStyle([
+                ('GRID',           (0, 0), (-1, -1), 0.4, C_GREY_MID),
+                ('BACKGROUND',     (0, 0), (-1, 0), C_GREY_LIGHT),
+                ('PADDING',        (0, 0), (-1, -1), 5),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+            ]))
+            elements.append(t_cat)
+
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  UNE SECTION PAR ZONE
+        # ════════════════════════════════════════════
+        for idx, bureau in enumerate(bureaux):
+            zone_nom  = bureau.get('nom', 'Zone sans nom')
             mats_zone = [m for m in materiels_all if m.get('zone') == zone_nom]
 
-            elements.append(Spacer(1, 0.8 * cm))
-            elements.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#cce0ff')))
+            if idx > 0:
+                elements.append(Spacer(1, 0.3*cm))
+
+            elements.append(HRFlowable(width='100%', thickness=1.5,
+                                       color=C_BLUE_MID, spaceAfter=6))
+
             elements.append(Paragraph(
-                f"🚪  {zone_nom}  —  {len(mats_zone)} article(s)", zone_title,
+                f"📍  {zone_nom}  —  {len(mats_zone)} article(s)",
+                zone_title_style,
             ))
-            infos = (
-                f"Code : {bureau.get('code_bureau', '—')}   |   "
-                f"Étage : {bureau.get('etage', 'RDC')}   |   "
-                f"Capacité : {bureau.get('capacite_max', 0)} pers   |   "
-                f"Sécurité : {bureau.get('niveau_securite', 'standard').title()}   |   "
-                f"Statut : {bureau.get('statut', 'actif').title()}"
+
+            code_bureau = bureau.get('code_bureau', '—')
+            etage = bureau.get('etage', 'RDC')
+            capacite = bureau.get('capacite_max', 0)
+            securite = bureau.get('niveau_securite', 'standard').title()
+            statut_zone = bureau.get('statut', 'actif').title()
+            description = bureau.get('description', '')
+
+            zone_infos = (
+                f"<b>Code :</b> {code_bureau}  |  "
+                f"<b>Étage :</b> {etage}  |  "
+                f"<b>Capacité :</b> {capacite} pers  |  "
+                f"<b>Sécurité :</b> {securite}  |  "
+                f"<b>Statut :</b> {statut_zone}"
             )
             elements.append(Paragraph(
-                infos,
-                ParagraphStyle('ZInfo', fontSize=9, textColor=colors.grey, spaceAfter=8),
+                zone_infos,
+                ps('ZINFO', fontSize=8, textColor=C_GREY_TEXT, spaceAfter=4, leading=12),
+            ))
+
+            if description:
+                elements.append(Paragraph(
+                    f"<i>{description[:200]}</i>",
+                    ps('ZDESC', fontSize=7, textColor=C_GREY_TEXT, spaceAfter=6, leading=10),
+                ))
+
+            dispo_zone = sum(1 for m in mats_zone if m.get('statut') == 'disponible')
+            maint_zone = sum(1 for m in mats_zone if m.get('statut') in ['maintenance', 'hors_service'])
+            valeur_zone = sum(
+                float(m.get('valeur', 0)) for m in mats_zone
+                if m.get('valeur') and str(m.get('valeur')).replace('.', '').isdigit()
+            )
+
+            elements.append(Paragraph(
+                f"✅ {dispo_zone} dispo  |  ⚠️ {maint_zone} en maintenance/HS  |  "
+                f"💰 Valeur zone : {valeur_zone:,.0f} DA",
+                ps('ZSTATS', fontSize=7.5, textColor=C_BLUE_MAIN, spaceAfter=8, leading=11),
             ))
 
             if mats_zone:
-                hdr_style = ParagraphStyle('H', fontSize=8, fontName='Helvetica-Bold',
-                                           textColor=colors.white)
                 headers = [
-                    'N° Inventaire', 'Nom', 'Catégorie', 'Fournisseur', 'Marque/Modèle',
-                    'N° Série', 'Spécifications', 'Statut', 'Date achat', 'Valeur (DA)',
+                    Paragraph('N° Inventaire', th_left),
+                    Paragraph('Nom', th_left),
+                    Paragraph('Catégorie', th),
+                    Paragraph('Marque/Modèle', th_left),
+                    Paragraph('N° Série', th),
+                    Paragraph('Spécifications', th_left),
+                    Paragraph('Date achat', th),
+                    Paragraph('Valeur (DA)', th),
+                    Paragraph('Statut', th),
                 ]
-                rows = [[Paragraph(h, hdr_style) for h in headers]]
+
                 statut_map = {
-                    'disponible': '✓ Dispo', 'utilise': '→ Utilisé',
-                    'maintenance': '⚠ Maint.', 'hors_service': '✗ H.S.',
+                    'disponible':    '✅ Dispo',
+                    'utilise':       '🔄 Utilisé',
+                    'maintenance':   '⚠️ Maint.',
+                    'hors_service':  '❌ H.S.',
+                    'reforme':       '🗑️ Réformé',
                 }
+
+                rows = [headers]
                 for mat in mats_zone:
                     specs_parts = []
-                    if mat.get('processeur'): specs_parts.append(f"CPU:{mat['processeur']}")
-                    if mat.get('ram'):        specs_parts.append(f"RAM:{mat['ram']}")
-                    if mat.get('stockage'):   specs_parts.append(f"HDD:{mat['stockage']}")
-                    specs = ' / '.join(specs_parts) or '—'
-                    inv_sty = ParagraphStyle('Inv', fontName='Courier', fontSize=8,
-                                             textColor=colors.HexColor('#7b3fe4'))
-                    sn_sty  = ParagraphStyle('Sn', fontName='Courier', fontSize=8)
+                    if mat.get('processeur'): specs_parts.append(f"CPU: {mat['processeur']}")
+                    if mat.get('ram'):        specs_parts.append(f"RAM: {mat['ram']}")
+                    if mat.get('stockage'):   specs_parts.append(f"DD: {mat['stockage']}")
+                    if mat.get('os'):         specs_parts.append(f"OS: {mat['os']}")
+                    specs = ' | '.join(specs_parts) if specs_parts else '—'
+
+                    statut = mat.get('statut', '')
+                    statut_display = statut_map.get(statut, statut.replace('_', ' ').title())
+
+                    valeur = mat.get('valeur', '')
+                    valeur_display = f"{float(valeur):,.0f}" if valeur and str(valeur).replace('.', '').isdigit() else str(valeur) if valeur else '—'
+
                     rows.append([
-                        Paragraph(mat.get('num_inventaire', '—'), inv_sty),
-                        Paragraph(mat.get('nom', '—'), small),
-                        Paragraph(mat.get('categorie', '—').title(), small),
-                        Paragraph(mat.get('fournisseur', '—'), small),
-                        Paragraph(f"{mat.get('marque', '')} {mat.get('modele', '')}".strip() or '—', small),
-                        Paragraph(mat.get('numero_serie', '—'), sn_sty),
-                        Paragraph(specs, small),
-                        Paragraph(statut_map.get(mat.get('statut', ''), mat.get('statut', '')), small),
-                        Paragraph(mat.get('date_achat', '—'), small),
-                        Paragraph(mat.get('valeur', '—'), small),
+                        Paragraph(mat.get('num_inventaire', '—'), td_mono),
+                        Paragraph(mat.get('nom', '—'), td_left),
+                        Paragraph(mat.get('categorie', '—').title(), td),
+                        Paragraph(
+                            f"{mat.get('marque', '')} {mat.get('modele', '')}".strip() or '—',
+                            td_left
+                        ),
+                        Paragraph(mat.get('numero_serie', '—'), td_mono),
+                        Paragraph(specs, td_left),
+                        Paragraph(mat.get('date_achat', '—'), td),
+                        Paragraph(valeur_display, td),
+                        Paragraph(statut_display, td),
                     ])
-                col_widths = [3.5*cm, 3.5*cm, 2.2*cm, 2.5*cm, 3*cm, 2.8*cm, 4*cm, 2*cm, 2*cm, 2.5*cm]
+
+                col_widths = [
+                    2.8*cm, 3*cm, 2.2*cm, 3.5*cm, 2.5*cm,
+                    5*cm, 2.2*cm, 2.2*cm, 2.2*cm,
+                ]
                 t = Table(rows, colWidths=col_widths, repeatRows=1)
                 t.setStyle(TableStyle([
-                    ('BACKGROUND',    (0, 0), (-1, 0),  colors.HexColor('#1f6feb')),
-                    ('TEXTCOLOR',     (0, 0), (-1, 0),  colors.white),
-                    ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#d0d0d0')),
-                    ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor('#f7f9ff')]),
-                    ('PADDING',       (0, 0), (-1, -1), 5),
-                    ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+                    ('BACKGROUND',     (0, 0), (-1, 0), C_BLUE_MAIN),
+                    ('TEXTCOLOR',      (0, 0), (-1, 0), C_WHITE),
+                    ('GRID',           (0, 0), (-1, -1), 0.3, C_GREY_MID),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_BLUE_LIGHT]),
+                    ('PADDING',        (0, 0), (-1, -1), 4),
+                    ('TOPPADDING',     (0, 0), (-1, 0), 8),
+                    ('BOTTOMPADDING',  (0, 0), (-1, 0), 8),
+                    ('TOPPADDING',     (0, 1), (-1, -1), 5),
+                    ('BOTTOMPADDING',  (0, 1), (-1, -1), 5),
+                    ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                    ('BOX',            (0, 0), (-1, -1), 1, C_BLUE_MID),
                 ]))
                 elements.append(t)
             else:
                 elements.append(Paragraph(
-                    'Aucun matériel assigné à cette zone.',
-                    ParagraphStyle('NoMat', fontSize=9, textColor=colors.grey),
+                    '<i>Aucun matériel assigné à cette zone.</i>',
+                    ps('NOMAT', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_LEFT,
+                       spaceBefore=4, spaceAfter=4),
                 ))
 
-        elements.append(Spacer(1, 0.8 * cm))
-        elements.append(HRFlowable(width='100%', thickness=1, color=colors.grey))
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1*cm))
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=C_GREY_MID, spaceAfter=6))
         elements.append(Paragraph(
-            f"Rapport généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — SIGR-CA",
-            ParagraphStyle('Footer', fontSize=8, textColor=colors.grey),
+            f"Document généré automatiquement le <b>{now_str}</b> par le système SIGR-CA.",
+            foot_style,
+        ))
+        elements.append(Paragraph(
+            f"Rapport global — <b>{len(bureaux)} zones</b>, <b>{total_mat} articles</b> — "
+            "Ce document est <b>confidentiel</b> et destiné à un usage interne uniquement. "
+            "Toute reproduction ou diffusion non autorisée est interdite.",
+            ps('CONF', fontSize=7, textColor=C_GREY_TEXT,
+               alignment=TA_CENTER, leading=10),
         ))
 
-        doc.build(elements)
+        # ── Build PDF ────────────────────────────────────────────
+        doc.build(elements, canvasmaker=NumberedCanvas)
         buffer.seek(0)
-        filename = f"rapport_ressources_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        filename = f"Rapport_Zones_{date_file}.pdf"
         response = HttpResponse(buffer, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
 
     except Exception as e:
-        return HttpResponse(f'Erreur : {str(e)}', status=500)
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain',
+            status=500
+        )
 
 
 # ─── Export CSV ───────────────────────────────────────────────────────────────
@@ -3595,87 +4937,78 @@ def api_bureau_stats(request, bureau_id):
 # ====================== API LIVE FEED ======================
 @login_required
 def api_live_feed(request):
-    """API pour le flux live des accès"""
-    from datetime import datetime, timedelta
-    
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Récupérer les derniers logs
-    logs = list(db.acces_logs.find().sort('timestamp', -1).limit(30))
-    logs_data = []
-    
-    for log in logs:
-        emp = db.employees.find_one({'_id': log.get('utilisateur_id')})
-        bureau = db.bureaux.find_one({'_id': log.get('bureau_id')})
-        
-        logs_data.append({
-            'nom': f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or 'Inconnu' if emp else 'Inconnu',
-            'badge': emp.get('badge_id', '???') if emp else '???',
-            'zone': bureau.get('nom', 'Zone inconnue') if bureau else 'Zone inconnue',
+    """
+    Retourne les derniers logs + stats pour le dashboard live.
+    Appelé par live.html toutes les 10 secondes via JS.
+    """
+    one_hour_ago = datetime.now() - timedelta(hours=1)
+    today_start  = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+ 
+    # Derniers logs (30)
+    logs_raw = list(db.acces_logs.find().sort('timestamp', -1).limit(30))
+    logs = []
+    for log in logs_raw:
+        employe = db.employees.find_one({'_id': log.get('utilisateur_id')}) if log.get('utilisateur_id') else None
+        bureau  = db.bureaux.find_one({'_id': log.get('bureau_id')}) if log.get('bureau_id') else None
+ 
+        nom = 'Inconnu'
+        if employe:
+            nom = f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip() or 'Inconnu'
+ 
+        ts = log.get('timestamp')
+        logs.append({
+            'id':       str(log['_id']),
+            'nom':      nom,
+            'zone':     bureau['nom'] if bureau else 'Zone ?',
+            'method':   log.get('type_acces', 'RFID'),
             'resultat': log.get('resultat', 'REFUSE'),
-            'method': log.get('type_acces', 'RFID'),
-            'time': log['timestamp'].strftime('%H:%M:%S') if log.get('timestamp') else '--:--:--',
+            'time':     ts.strftime('%H:%M:%S') if ts else '--:--:--',
+            'badge_id': log.get('badge_id', '???'),
         })
-    
-    # Statistiques du jour
-    acces_ok = db.acces_logs.count_documents({
-        'timestamp': {'$gte': today_start},
-        'resultat': 'AUTORISE'
-    })
-    acces_no = db.acces_logs.count_documents({
-        'timestamp': {'$gte': today_start},
-        'resultat': 'REFUSE'
-    })
-    total = acces_ok + acces_no
-    taux_succes = round((acces_ok / total * 100), 1) if total > 0 else 0
-    
-    # Alertes
-    alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'}) if 'alertes' in db.list_collection_names() else 0
-    
-    return JsonResponse({
-        'logs': logs_data,
-        'stats': {
-            'acces_ok': acces_ok,
-            'acces_no': acces_no,
-            'taux_succes': taux_succes,
-            'alertes': alertes,
-        }
-    })
-
+ 
+    # Stats
+    acces_ok = db.acces_logs.count_documents({'resultat': 'AUTORISE', 'timestamp': {'$gte': one_hour_ago}})
+    acces_no = db.acces_logs.count_documents({'resultat': 'REFUSE',   'timestamp': {'$gte': one_hour_ago}})
+    total    = acces_ok + acces_no
+    alertes  = 0
+    if 'alertes' in db.list_collection_names():
+        alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'})
+ 
+    stats = {
+        'acces_ok':    acces_ok,
+        'acces_no':    acces_no,
+        'taux_succes': round(acces_ok / total * 100, 1) if total > 0 else 0,
+        'alertes':     alertes,
+    }
+ 
+    return JsonResponse({'logs': logs, 'stats': stats})
 
 # ====================== API DÉVERROUILLAGE D'URGENCE ======================
 
 @login_required
+@csrf_exempt
+@require_http_methods(["POST"])
 def api_emergency_unlock(request):
-    if not request.user.is_staff and not request.user.is_superuser:
-        return JsonResponse({'status': 'error', 'message': 'Accès non autorisé'}, status=403)
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Méthode non autorisée'}, status=405)
-    
-    db.system_logs.insert_one({
-        'user_id': request.user.id,
-        'username': request.user.username,
-        'action': 'EMERGENCY_UNLOCK',
-        'timestamp': datetime.now(),
-        'ip': request.META.get('REMOTE_ADDR', ''),
-        'details': "Déverrouillage manuel d'urgence via interface web admin",
-        'severity': 'CRITICAL',
-    })
-    db.equipements.update_many({'statut': 'actif'}, {'$set': {'emergency_unlock': True, 'emergency_at': datetime.now()}})
-    if 'alertes' not in db.list_collection_names():
-        db.create_collection('alertes')
-    db.alertes.insert_one({
-        'type': 'EMERGENCY_UNLOCK',
-        'message': f"Déverrouillage d'urgence activé par {request.user.username}",
-        'statut': 'NON_TRAITEE',
-        'timestamp': datetime.now(),
-        'created_by': request.user.username,
-    })
-    return JsonResponse({
-        'status': 'success',
-        'message': f"Déverrouillage d'urgence activé par {request.user.username}. Action journalisée.",
-    })
-
+    """Journalise et déclenche un déverrouillage d'urgence."""
+    try:
+        db.acces_logs.insert_one({
+            'type_acces':  'URGENCE',
+            'resultat':    'AUTORISE',
+            'message':     'Déverrouillage d\'urgence déclenché',
+            'utilisateur': request.user.username,
+            'timestamp':   datetime.now(),
+        })
+        _creer_alerte(
+            message=f"⚠️ DÉVERROUILLAGE D'URGENCE déclenché par {request.user.username}",
+            zone='SYSTÈME',
+            niveau='CRITICAL'
+        )
+        logger.warning(f"[URGENCE] Déverrouillage déclenché par {request.user.username}")
+        return JsonResponse({'status': 'success', 'message': 'Déverrouillage d\'urgence activé et journalisé'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+ 
+ 
 
 # ====================== API STATISTIQUES TENDANCE ======================
 
@@ -4124,6 +5457,35 @@ def reservation_ajouter(request):
                     'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
                     'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False
                 })
+
+            duree_minutes = int((date_fin - date_debut).total_seconds() / 60)
+
+            if resource_type == 'salle':
+                if duree_minutes < 30:
+                    messages.error(request, "Une salle ne peut pas être réservée moins de 30 minutes.")
+                    return render(request, 'dashboard/reservation_form.html', {
+                        'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
+                        'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False
+                    })
+                if duree_minutes > 1440:
+                    messages.error(request, "Une salle ne peut pas être réservée plus d'une journée (24h maximum).")
+                    return render(request, 'dashboard/reservation_form.html', {
+                        'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
+                        'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False
+                    })
+            else:
+                if duree_minutes < 60:
+                    messages.error(request, "Une ressource ne peut pas être réservée moins d'1 heure.")
+                    return render(request, 'dashboard/reservation_form.html', {
+                        'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
+                        'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False
+                    })
+                if duree_minutes > 525600:
+                    messages.error(request, "Une ressource ne peut pas être réservée plus d'un an.")
+                    return render(request, 'dashboard/reservation_form.html', {
+                        'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
+                        'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False
+                    })
 
             # ── Vérifier les conflits ─────────────────────────────────────────
             conflit = False
@@ -5948,28 +7310,28 @@ def reservation_confirmer(request, reservation_id):
     """Confirmer une réservation et générer un QR code"""
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+
     try:
         from bson import ObjectId
-        from datetime import datetime
+        from datetime import datetime, timedelta
         import qrcode
         from io import BytesIO
         import base64
-        
+
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
         if not reservation:
             messages.error(request, "Réservation non trouvée")
             return redirect('reservation_list')
-        
+
         # Vérifier si déjà confirmée
         if reservation.get('statut') == 'confirmee':
             messages.warning(request, "Cette réservation est déjà confirmée")
             return redirect('reservation_detail', reservation_id=reservation_id)
-        
+
         if request.method == 'POST':
             # Générer le QR code
             qr_data = f"RESA-{reservation_id}-{reservation.get('employe_id')}-{reservation.get('date_debut').strftime('%Y%m%d%H%M')}"
-            
+
             qr = qrcode.QRCode(
                 version=1,
                 error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -5978,24 +7340,24 @@ def reservation_confirmer(request, reservation_id):
             )
             qr.add_data(qr_data)
             qr.make(fit=True)
-            
+
             img = qr.make_image(fill_color="black", back_color="white")
-            
+
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
+
             # Mettre à jour la réservation
             db.reservations.update_one(
                 {'_id': ObjectId(reservation_id)},
                 {'$set': {
-                    'statut': 'confirmee',
-                    'qr_code': qr_base64,
+                    'statut':       'confirmee',
+                    'qr_code':      qr_base64,
                     'confirmed_at': datetime.now(),
                     'confirmed_by': request.user.username,
                 }}
             )
-            
+
             # Récupérer l'employé
             employe_id = reservation.get('employe_id')
             employe = None
@@ -6004,57 +7366,83 @@ def reservation_confirmer(request, reservation_id):
                     employe = db.employees.find_one({'_id': ObjectId(employe_id)})
                 else:
                     employe = db.employees.find_one({'django_user_id': employe_id})
-            except:
+            except Exception:
                 pass
-            
-            # Récupérer la salle
+
+            # Récupérer la salle ou le matériel
             bureau = None
             bureau_id = reservation.get('bureau_id')
             if bureau_id:
                 try:
                     bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
-                except:
+                except Exception:
                     pass
-            bureau_nom = bureau['nom'] if bureau else 'Salle'
-            
+            bureau_nom = bureau['nom'] if bureau else reservation.get('materiel_nom') or 'Ressource'
+
             # === NOTIFICATION À L'EMPLOYÉ (UNE SEULE FOIS) ===
             if employe:
-                # Vérifier si une notification a déjà été envoyée
                 existing_notification = db.notifications.find_one({
-                    'employe_id': str(employe['_id']),
+                    'employe_id':     str(employe['_id']),
                     'reservation_id': str(reservation['_id']),
-                    'categorie': 'confirmation'
+                    'categorie':      'confirmation'
                 })
-                
+
                 if not existing_notification:
-                    notification = {
-                        'employe_id': str(employe['_id']),
-                        'titre': '✅ Réservation confirmée',
-                        'message': f"Votre réservation '{reservation.get('titre', 'Sans titre')}' a été confirmée pour le {reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')} dans la salle {bureau_nom}.",
-                        'categorie': 'confirmation',
-                        'icon': '✅',
-                        'status': 'non_lu',
-                        'action_url': '/employe/reservations/',
+                    db.notifications.insert_one({
+                        'employe_id':     str(employe['_id']),
+                        'titre':          '✅ Réservation confirmée',
+                        'message':        (
+                            f"Votre réservation '{reservation.get('titre', 'Sans titre')}' "
+                            f"a été confirmée pour le "
+                            f"{reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')} "
+                            f"— {bureau_nom}."
+                        ),
+                        'categorie':      'confirmation',
+                        'icon':           '✅',
+                        'status':         'non_lu',
+                        'action_url':     '/employe/reservations/',
                         'reservation_id': str(reservation['_id']),
-                        'created_at': datetime.now()
-                    }
-                    db.notifications.insert_one(notification)
-                    
-                    # Email confirmation — utils_email (Python 3.12 compatible)
+                        'created_at':     datetime.now(),
+                    })
+
+                    # Email de confirmation
                     if employe.get('email'):
                         try:
                             from dashboard.utils_email import email_reservation_confirmee
                             email_reservation_confirmee(employe, reservation, bureau_nom)
                         except Exception as _ee:
                             logger.warning(f"Email confirmation: {_ee}")
-            
+
+            # === RAPPEL J-1 POUR RESSOURCES/MATÉRIEL UNIQUEMENT ===
+            resource_type = reservation.get('resource_type', 'salle')
+            if resource_type != 'salle':
+                # Vérifier qu'un rappel n'existe pas déjà pour cette réservation
+                existing_rappel = db.rappels_email.find_one({
+                    'reservation_id': str(reservation['_id']),
+                    'type': 'retour_ressource',
+                })
+                if not existing_rappel:
+                    rappel_date = reservation['date_fin'] - timedelta(days=1)
+                    db.rappels_email.insert_one({
+                        'reservation_id': str(reservation['_id']),
+                        'employe_id':     str(employe['_id']) if employe else reservation.get('employe_id'),
+                        'employe_email':  employe.get('email', '') if employe else '',
+                        'employe_prenom': employe.get('prenom', '') if employe else '',
+                        'ressource_nom':  bureau_nom,
+                        'date_fin_resa':  reservation['date_fin'],
+                        'type':           'retour_ressource',
+                        'a_envoyer_le':   rappel_date,
+                        'envoye':         False,
+                        'created_at':     datetime.now(),
+                    })
+
             messages.success(request, f"Réservation '{reservation.get('titre')}' confirmée avec QR code généré.")
-            
+
             if request.POST.get('redirect_to') == 'list':
                 return redirect('reservation_list')
             return redirect('reservation_detail', reservation_id=reservation_id)
-        
-        # GET: Récupérer les détails pour l'affichage
+
+        # GET : Récupérer les détails pour l'affichage
         employe = None
         employe_id = reservation.get('employe_id')
         if employe_id:
@@ -6063,23 +7451,23 @@ def reservation_confirmer(request, reservation_id):
                     employe = db.employees.find_one({'_id': ObjectId(employe_id)})
                 else:
                     employe = db.employees.find_one({'django_user_id': employe_id})
-            except:
+            except Exception:
                 pass
-        
+
         bureau = None
         bureau_id = reservation.get('bureau_id')
         if bureau_id:
             try:
                 bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
-            except:
+            except Exception:
                 pass
-        
+
         return render(request, 'dashboard/reservation_confirmer.html', {
             'reservation': reservation,
-            'employe': employe,
-            'bureau': bureau,
+            'employe':     employe,
+            'bureau':      bureau,
         })
-        
+
     except Exception as e:
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('reservation_list')
@@ -6862,22 +8250,33 @@ def api_stats_overview(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
 @login_required
-def api_occupation_stats(request):
-    """API pour les statistiques d'occupation des salles"""
-    if request.method != 'GET':
-        return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
-    try:
-        occupation = get_occupation_stats(request)
-        return JsonResponse({
-            'status': 'success',
-            'data': occupation
+def api_occupation(request):
+    """Retourne l'occupation en temps réel de chaque bureau."""
+    one_hour_ago = datetime.now() - timedelta(hours=1)
+    bureaux_raw  = list(db.bureaux.find())
+    bureaux      = []
+ 
+    for b in bureaux_raw:
+        capacite = b.get('capacite_max', 10)
+        recent   = db.acces_logs.count_documents({
+            'bureau_id':  b['_id'],
+            'resultat':   'AUTORISE',
+            'timestamp':  {'$gte': one_hour_ago}
         })
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
+        occupation = min(recent, capacite)
+        taux       = round(occupation / capacite * 100, 1) if capacite > 0 else 0
+ 
+        bureaux.append({
+            'id':        str(b['_id']),
+            'nom':       b.get('nom', ''),
+            'occupation': occupation,
+            'capacite':  capacite,
+            'taux':      taux,
+        })
+ 
+    return JsonResponse({'bureaux': bureaux})
+ 
 
 @login_required
 def api_top_ressources(request):
@@ -10308,7 +11707,7 @@ def api_stats_export_excel(request):
     wb.save(buffer); buffer.seek(0)
     return HttpResponse(buffer, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={'Content-Disposition': f'attachment; filename="statistiques_{datetime.now().strftime("%Y%m%d")}.xlsx"'})
     # ─── Chemin du logo (à adapter si votre app ne s'appelle pas "dashboard") ────
-LOGO_PATH = os.path.join(settings.MEDIA_ROOT, 'avatars', 'logo SIGR-CA.png')
+LOGO_PATH = os.path.join(settings.STATIC_ROOT, 'img', 'logo.png')
 
 
 def _logo_img(width=4.5 * cm, height=4 * cm):
@@ -10376,4 +11775,86 @@ def _build_header(elements, title_text, subtitle_text, styles):
     elements.append(Spacer(1, 0.3 * cm))
     elements.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#1f6feb')))
     elements.append(Spacer(1, 0.4 * cm))
+
+def send_rappel_retour_ressource():
+    """
+    À appeler chaque jour (cron ou management command).
+    Envoie un rappel à l'employé dont la réservation d'une ressource
+    (matériel) se termine demain — pour qu'il la rende.
+    """
+    from datetime import datetime, timedelta
+
+    maintenant  = datetime.now()
+    demain_debut = (maintenant + timedelta(days=1)).replace(hour=0,  minute=0,  second=0,  microsecond=0)
+    demain_fin   = (maintenant + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+
+    # Réservations de matériel qui se terminent demain
+    reservations = list(db.reservations.find({
+        'resource_type': 'materiel',
+        'statut':        'confirmee',
+        'date_fin':      {'$gte': demain_debut, '$lte': demain_fin},
+    }))
+
+    logger.info(f"[RAPPEL] {len(reservations)} réservation(s) matériel se terminent demain.")
+
+    for resa in reservations:
+        employe_id = resa.get('employe_id')
+        if not employe_id:
+            continue
+
+        try:
+            employe = db.employees.find_one({'_id': employe_id if isinstance(employe_id, ObjectId) else ObjectId(str(employe_id))})
+        except Exception:
+            continue
+
+        if not employe:
+            continue
+
+        prenom      = employe.get('prenom', '')
+        nom         = employe.get('nom', '')
+        titre       = resa.get('titre', 'Sans titre')
+        materiel_nom = resa.get('materiel_nom') or resa.get('bureau_nom', 'Matériel')
+        date_fin    = resa['date_fin']
+        resa_id     = str(resa['_id'])
+
+        message_texte = (
+            f"Bonjour {prenom} {nom},\n\n"
+            f"Votre réservation du matériel « {materiel_nom} » ('{titre}') "
+            f"se termine demain le {date_fin.strftime('%d/%m/%Y à %H:%M')}.\n\n"
+            f"Merci de le restituer avant cette date.\n\n"
+            f"SIGR-CA"
+        )
+
+        # ── Notification en base ──
+        db.notifications.insert_one({
+            'employe_id':       str(employe['_id']),
+            'destinataire':     employe.get('email', ''),
+            'type_notification': 'email',
+            'categorie':        'rappel_retour',
+            'icon':             '📦',
+            'titre':            f"⏰ Rappel : retour de « {materiel_nom} » demain",
+            'message':          message_texte,
+            'statut':           'non_lu',
+            'action_url':       '/employe/reservations/',
+            'reservation_id':   resa_id,
+            'created_at':       datetime.now(),
+        })
+
+        # ── Email ──
+        if employe.get('email'):
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+                send_mail(
+                    f"⏰ Rappel retour matériel — {materiel_nom}",
+                    message_texte,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [employe['email']],
+                    fail_silently=True,
+                )
+                logger.info(f"[RAPPEL] Email envoyé à {employe['email']} pour '{materiel_nom}'")
+            except Exception as e:
+                logger.warning(f"[RAPPEL] Email échoué pour {employe.get('email')}: {e}")
+        else:
+            logger.warning(f"[RAPPEL] Pas d'email pour {prenom} {nom}")
 

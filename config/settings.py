@@ -97,6 +97,7 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -166,3 +167,8 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
     }
 }
+ESP32_API_KEY ="123456789ZAHRA"
+# dans settings.py
+CRONJOBS = [
+    ('0 9 * * *', 'django.core.management.call_command', ['rappel_retour_ressource']),
+]

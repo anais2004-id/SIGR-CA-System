@@ -407,7 +407,49 @@ function checkDispo() {
     submitBtn.disabled = true;
     return;
   }
+  /* ─── Validation durée selon type ─── */
+  var type = document.getElementById('resourceType').value || 'salle';
+  var dureeMin = (new Date(fin) - new Date(debut)) / 60000;
 
+  if (type === 'salle') {
+  if (dureeMin < 30) {
+    indicator.style.display = 'block';
+    indicator.style.background = 'rgba(239,68,68,.08)';
+    indicator.style.border = '1px solid rgba(239,68,68,.2)';
+    indicator.style.color = 'var(--red)';
+    indicator.textContent = '⚠️ Une zone doit être réservée au minimum 30 minutes.';
+    submitBtn.disabled = true;
+    return;
+  }
+  if (dureeMin > 1440) {
+    indicator.style.display = 'block';
+    indicator.style.background = 'rgba(239,68,68,.08)';
+    indicator.style.border = '1px solid rgba(239,68,68,.2)';
+    indicator.style.color = 'var(--red)';
+    indicator.textContent = '⚠️ Une zone ne peut pas être réservée plus d\'une journée (24h max).';
+    submitBtn.disabled = true;
+    return;
+  }
+} else {
+  if (dureeMin < 60) {
+    indicator.style.display = 'block';
+    indicator.style.background = 'rgba(239,68,68,.08)';
+    indicator.style.border = '1px solid rgba(239,68,68,.2)';
+    indicator.style.color = 'var(--red)';
+    indicator.textContent = '⚠️ Une ressource doit être réservée au minimum 1 heure.';
+    submitBtn.disabled = true;
+    return;
+  }
+  if (dureeMin > 525600) {
+    indicator.style.display = 'block';
+    indicator.style.background = 'rgba(239,68,68,.08)';
+    indicator.style.border = '1px solid rgba(239,68,68,.2)';
+    indicator.style.color = 'var(--red)';
+    indicator.textContent = '⚠️ Une ressource ne peut pas être réservée plus d\'un an.';
+    submitBtn.disabled = true;
+    return;
+  }
+}
   clearTimeout(dispoTimer);
   dispoTimer = setTimeout(function() {
     indicator.style.display = 'block';

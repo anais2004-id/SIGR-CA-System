@@ -28,7 +28,7 @@
         <div style="display:flex;align-items:center;gap:24px;padding:20px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:28px;">
           <div id="avatarDrop"
                onclick="document.getElementById('avatarInput').click()"
-               style="width:80px;height:80px;border-radius:50%;background:var(--blue);overflow:hidden;position:relative;cursor:pointer;flex-shrink:0;border:3px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:white;"
+               style="width:80px;height:80px;border-radius:50%;background:var(--blue2);overflow:hidden;position:relative;cursor:pointer;flex-shrink:0;border:3px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:white;"
                title="Cliquer ou glisser une photo">
             <div id="avatarInitials" style="position:absolute;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
               {% if employe.nom %}{{ employe.nom|slice:":1"|upper }}{% if employe.prenom %}{{ employe.prenom|slice:":1"|upper }}{% endif %}{% else %}?{% endif %}
@@ -121,31 +121,35 @@
             <label class="form-label">Date d'embauche</label>
             <input class="form-input" name="date_embauche" type="date" value="{% if employe.date_embauche %}{{ employe.date_embauche|date:'Y-m-d' }}{% endif %}">
           </div>
-          <div class="form-row">
-            <label class="form-label">Type de contrat</label>
-            <select class="form-select" name="type_contrat">
-              <option value="CDI"  {% if employe.type_contrat == 'CDI' or not employe.type_contrat %}selected{% endif %}>CDI</option>
-              <option value="CDD"  {% if employe.type_contrat == 'CDD' %}selected{% endif %}>CDD</option>
-              <option value="Stage"{% if employe.type_contrat == 'Stage' %}selected{% endif %}>Stage</option>
-            </select>
-          </div>
+          
         </div>
 
         <!-- Badge & Accès -->
         <div class="section-label">🪪 Badge & Niveau d'accès</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-row">
-            <label class="form-label">Badge RFID <span style="color:var(--red)">*</span></label>
-            <input class="form-input" name="badge_id" id="inputBadge"
-                   value="{{ employe.badge_id|default:'' }}"
-                   placeholder="RFID-0001" required
-                   pattern="RFID-[A-Z0-9]{4}"
-                   maxlength="9"
-                   style="font-family:var(--mono);text-transform:uppercase;"
-                   title="Format requis : RFID-XXXX (ex : RFID-0001)"
-                   autocomplete="off">
-            <div id="badgeHint" style="font-size:11px;margin-top:6px;font-weight:600;min-height:16px;"></div>
-          </div>
+  <label class="form-label">
+    <i class="fas fa-microchip"></i> Badge RFID <span style="color:var(--red)">*</span>
+  </label>
+  <div class="input-group">
+    <i class="fas fa-microchip input-icon"></i>
+    <input class="form-input" type="text" name="badge_id"
+       id="inputBadge"
+       value="{{ employe.badge_id|default:'' }}"
+       placeholder="XX:XX:XX:XX"
+       required
+       pattern="[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}:[A-Fa-f0-9]{2}"
+       maxlength="11"
+       oninput="formatRFID(this)"
+       style="font-family:var(--mono); letter-spacing: 1px; text-transform:uppercase;"
+       title="Format requis : XX:XX:XX:XX (ex : D7:77:C5:01)"
+       autocomplete="off">
+  </div>
+  <small style="color:var(--text3); font-size:11px; margin-top:6px; display:block;">
+    <i class="fas fa-info-circle"></i> Format : XX:XX:XX:XX (ex: D7:77:C5:02)
+  </small>
+  <div id="badgeHint" style="font-size:11px;margin-top:6px;font-weight:600;min-height:16px;"></div>
+</div>
           <div class="form-row">
             <label class="form-label">Niveau d'accès</label>
             <select class="form-select" name="niveau">
@@ -199,11 +203,11 @@
   user-select:none;
 }
 .day-check-label input:checked + .day-pill {
-  background:var(--blue3); color:var(--blue2); border-color:var(--blue);
+  background:var(--blue3); color:var(--blue2); border-color:var(--blue2);
 }
-.day-check-label:hover .day-pill { border-color:var(--blue); }
+.day-check-label:hover .day-pill { border-color:var(--blue2); }
 #avatarDrop:hover #avatarOverlay { display:flex !important; }
-#avatarDrop.dragover { outline:3px dashed var(--blue); outline-offset:3px; }
+#avatarDrop.dragover { outline:3px dashed var(--blue2); outline-offset:3px; }
 </style>
 
 <script>
@@ -341,11 +345,26 @@ tel?.addEventListener('input', () => {
        : `❌ Format : 10 chiffres commençant par 05, 06 ou 07 (${tel.value.length}/10)`);
 });
 
-// Badge : majuscules + format RFID-XXXX
-const badge = document.getElementById('inputBadge');
-badge?.addEventListener('input', () => {
-  badge.value = badge.value.toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 9);
-  if (badge.value.length === 4 && badge.value === 'RFID') badge.value = 'RFID-';
+function formatRFID(input) {
+  // Garder uniquement les caractères hex
+  let val = input.value.replace(/[^A-Fa-f0-9]/g, '').toUpperCase();
+  
+  // Limiter à 8 caractères hex
+  val = val.substring(0, 8);
+  
+  // Insérer les ":" automatiquement
+  let formatted = '';
+  for (let i = 0; i < val.length; i++) {
+    if (i > 0 && i % 2 === 0) formatted += ':';
+    formatted += val[i];
+  }
+  
+  input.value = formatted;
+}
+
+// Animation du logo au chargement
+document.addEventListener('DOMContentLoaded', function() {
+  createParticles();
 });
 
 // Bloque le submit si formulaire invalide

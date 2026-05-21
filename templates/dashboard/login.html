@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="fr">
 <head>
@@ -378,9 +379,21 @@
 
 <div class="wrap">
   <div class="logo-zone">
-    <div class="logo-circle">
-      <i class="fas fa-shield-alt"></i>
-    </div>
+   <div class="logo-circle" style="
+  background: linear-gradient(135deg, rgba(31,111,235,0.15), rgba(6,182,212,0.15));
+  border: 1px solid rgba(31,111,235,0.3);
+  box-shadow: 0 20px 40px rgba(31,111,235,0.3);
+  padding: 8px;
+">
+  <img src="{% static 'img/logo.png' %}" alt="SIGR-CA" style="
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+    border-radius: 12px;
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 8px rgba(59,130,246,0.5));
+  ">
+</div>
     <div class="logo-title">SIGR-CA</div>
     <div class="logo-sub">Système Intelligent de Gestion des Ressources</div>
   </div>
@@ -445,15 +458,7 @@
         <a href="{% url 'register_employe' %}">Créer mon espace employé</a>
       </div>
 
-      <div class="demo-info">
-        <i class="fas fa-info-circle"></i> <strong>Informations de test</strong>
-        <div class="demo-credentials">
-          <div class="cred-item"><span>👑 Admin:</span> admin / admin123=</div>
-          <div class="cred-item"><span>👤 Employé:</span> zahra / Zahra123=</div>
-        </div>
-        <small style="display: block; margin-top: 8px;">
-          <i class="fas fa-id-card"></i> Créez votre compte avec votre badge RFID
-        </small>
+      
       </div>
 
     </div>

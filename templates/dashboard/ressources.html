@@ -12,17 +12,31 @@
   <button onclick="exportResourcesCSV()" title="Export CSV" class="tb-ico-btn">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
   </button>
-  <button onclick="exportZonesPDF()" title="Rapport PDF" class="tb-ico-btn">
+  <button onclick="exportZonesPDF()" title="Rapport PDF global" class="tb-ico-btn">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
   </button>
-  <button onclick="resOpenModal('zone')"
-    style="height:36px;padding:0 16px;display:inline-flex;align-items:center;gap:6px;background:var(--blue);color:#fff;border:none;border-radius:9px;font-family:var(--font);font-weight:600;font-size:13px;cursor:pointer;transition:all .15s;">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Ajouter
-  </button>
-  <div style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);">
-    <span style="width:6px;height:6px;border-radius:50%;background:var(--purple);display:inline-block;"></span>
-    <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--purple);">{{ total_bureaux|add:total_materiel }} RESSOURCES</span>
+
+  <!-- ▶ BOUTON AJOUTER UNIFIÉ avec dropdown -->
+  <div style="position:relative;" id="addMenuWrap">
+    <button onclick="toggleAddMenu()"
+      style="height:36px;padding:0 16px;display:inline-flex;align-items:center;gap:6px;background:var(--blue);color:#fff;border:none;border-radius:9px;font-family:var(--font);font-weight:600;font-size:13px;cursor:pointer;transition:all .15s;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Ajouter
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div id="addMenu" style="display:none;position:absolute;top:44px;right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;min-width:190px;box-shadow:0 16px 48px rgba(0,0,0,.5);z-index:1000;overflow:hidden;">
+      <button onclick="resOpenModal('zone');toggleAddMenu(false)"
+        style="width:100%;padding:13px 18px;background:transparent;border:none;color:var(--text1);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:background .15s;"
+        onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:18px;">🚪</span> Nouvelle zone
+      </button>
+      <div style="height:1px;background:var(--border);margin:0 12px;"></div>
+      <button onclick="resOpenModal('materiel');toggleAddMenu(false)"
+        style="width:100%;padding:13px 18px;background:transparent;border:none;color:var(--text1);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:background .15s;"
+        onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:18px;">🖥️</span> Nouveau matériel
+      </button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -30,7 +44,6 @@
 {% block content %}
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-
 :root {
   --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
   --bg0:#080d17; --bg1:#0d1320; --bg2:#111827; --bg3:#162032; --bg4:#1c2b40; --bg5:#243347;
@@ -43,16 +56,13 @@
 *,*::before,*::after{box-sizing:border-box;}
 body{font-family:var(--font)!important;background:var(--bg0)!important;}
 .dash-wrap{display:flex;flex-direction:column;gap:20px;padding-bottom:40px;}
-
-/* ── Topbar icon button ── */
 .tb-ico-btn{width:36px;height:36px;border-radius:9px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;}
 .tb-ico-btn:hover{background:var(--bg4);color:var(--text1);border-color:var(--border3);}
 
-/* ── KPI ── */
+/* KPI */
 .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
 @media(max-width:1300px){.kpi-grid{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:768px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
-
 .kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 18px 16px;position:relative;overflow:hidden;transition:transform .25s,box-shadow .25s;cursor:default;}
 .kpi::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top left,var(--kpi-glow,.05) 0%,transparent 65%);pointer-events:none;}
 .kpi:hover{transform:translateY(-4px);box-shadow:var(--kpi-shadow,none);}
@@ -64,27 +74,26 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
 .kpi-sub{font-size:11px;color:var(--text3);}
 .kpi-bar{margin-top:12px;height:3px;background:var(--bg4);border-radius:2px;overflow:hidden;}
 .kpi-bar-fill{height:100%;background:var(--kpi-grad);border-radius:2px;transition:width 1s ease;}
+.kpi.blue  {--kpi-color:var(--blue);  --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6);--kpi-glow:rgba(59,130,246,.06);--kpi-shadow:0 0 20px rgba(59,130,246,.25);--kpi-icon-bg:rgba(59,130,246,.12);--kpi-icon-border:rgba(59,130,246,.22);--kpi-glow-text:rgba(59,130,246,.4);}
+.kpi.green {--kpi-color:var(--green); --kpi-grad:linear-gradient(90deg,#059669,#10b981);--kpi-glow:rgba(16,185,129,.06);--kpi-shadow:0 0 20px rgba(16,185,129,.25);--kpi-icon-bg:rgba(16,185,129,.12);--kpi-icon-border:rgba(16,185,129,.22);--kpi-glow-text:rgba(16,185,129,.4);}
+.kpi.amber {--kpi-color:var(--amber); --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b);--kpi-glow:rgba(245,158,11,.06);--kpi-shadow:0 0 20px rgba(245,158,11,.25);--kpi-icon-bg:rgba(245,158,11,.12);--kpi-icon-border:rgba(245,158,11,.22);--kpi-glow-text:rgba(245,158,11,.4);}
+.kpi.purple{--kpi-color:var(--purple);--kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6);--kpi-glow:rgba(139,92,246,.06);--kpi-shadow:0 0 20px rgba(139,92,246,.25);--kpi-icon-bg:rgba(139,92,246,.12);--kpi-icon-border:rgba(139,92,246,.22);--kpi-glow-text:rgba(139,92,246,.4);}
+.kpi.red   {--kpi-color:var(--red);   --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444);--kpi-glow:rgba(239,68,68,.06);--kpi-shadow:0 0 20px rgba(239,68,68,.25);--kpi-icon-bg:rgba(239,68,68,.12);--kpi-icon-border:rgba(239,68,68,.22);--kpi-glow-text:rgba(239,68,68,.4);}
 
-.kpi.blue  {--kpi-color:var(--blue);  --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6);--kpi-glow:rgba(59,130,246,.06); --kpi-shadow:0 0 20px rgba(59,130,246,.25); --kpi-icon-bg:rgba(59,130,246,.12); --kpi-icon-border:rgba(59,130,246,.22); --kpi-glow-text:rgba(59,130,246,.4);}
-.kpi.green {--kpi-color:var(--green); --kpi-grad:linear-gradient(90deg,#059669,#10b981);--kpi-glow:rgba(16,185,129,.06); --kpi-shadow:0 0 20px rgba(16,185,129,.25); --kpi-icon-bg:rgba(16,185,129,.12); --kpi-icon-border:rgba(16,185,129,.22); --kpi-glow-text:rgba(16,185,129,.4);}
-.kpi.amber {--kpi-color:var(--amber); --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b);--kpi-glow:rgba(245,158,11,.06);  --kpi-shadow:0 0 20px rgba(245,158,11,.25); --kpi-icon-bg:rgba(245,158,11,.12); --kpi-icon-border:rgba(245,158,11,.22); --kpi-glow-text:rgba(245,158,11,.4);}
-.kpi.purple{--kpi-color:var(--purple);--kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6);--kpi-glow:rgba(139,92,246,.06); --kpi-shadow:0 0 20px rgba(139,92,246,.25); --kpi-icon-bg:rgba(139,92,246,.12); --kpi-icon-border:rgba(139,92,246,.22); --kpi-glow-text:rgba(139,92,246,.4);}
-.kpi.red   {--kpi-color:var(--red);   --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444);--kpi-glow:rgba(239,68,68,.06);   --kpi-shadow:0 0 20px rgba(239,68,68,.25);  --kpi-icon-bg:rgba(239,68,68,.12);  --kpi-icon-border:rgba(239,68,68,.22);  --kpi-glow-text:rgba(239,68,68,.4);}
-
-/* ── Tabs ── */
+/* Tabs */
 .res-tabs{display:flex;gap:4px;background:var(--bg3);padding:5px;border-radius:12px;border:1px solid var(--border);margin-bottom:0;}
 .res-tab{flex:1;padding:11px 20px;border-radius:9px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:var(--font);display:flex;align-items:center;justify-content:center;gap:8px;}
 .res-tab.active{background:var(--bg2);color:var(--text1);box-shadow:0 2px 8px rgba(0,0,0,.3);}
 .res-tab:hover:not(.active){color:var(--text1);}
 
-/* ── Filters bar ── */
+/* Filters */
 .filters-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
 .res-search{flex:1;min-width:200px;padding:10px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text1);font-size:13px;font-family:var(--font);outline:none;transition:all .15s;}
 .res-search:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.12);}
 .res-search::placeholder{color:var(--text3);}
 .res-select{padding:10px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text1);font-size:13px;font-family:var(--font);outline:none;cursor:pointer;min-width:150px;}
 
-/* ── Zone cards ── */
+/* Zone cards */
 .zones-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;}
 .zone-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .2s;cursor:pointer;}
 .zone-card:hover{transform:translateY(-3px);border-color:var(--border3);box-shadow:0 8px 30px rgba(0,0,0,.3);}
@@ -100,16 +109,16 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
 .zone-fill.high{background:var(--red);}
 .zone-foot{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;}
 .zone-meta-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;font-family:var(--mono);}
-.tag-pub  {background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);}
-.tag-std  {background:rgba(59,130,246,.1);color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
-.tag-rest {background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2);}
-.tag-crit {background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.tag-pub{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);}
+.tag-std{background:rgba(59,130,246,.1);color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
+.tag-rest{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2);}
+.tag-crit{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);}
 
-/* ── Materiel cards ── */
+/* Materiel cards */
 .materiel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
 .mat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .2s;}
 .mat-card:hover{transform:translateY(-3px);border-color:var(--border3);box-shadow:0 8px 30px rgba(0,0,0,.3);}
-.mat-img{width:100%;height:120px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden;position:relative;}
+.mat-img{width:100%;height:130px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden;position:relative;}
 .mat-img img{width:100%;height:100%;object-fit:cover;}
 .mat-img-overlay{position:absolute;top:8px;right:8px;}
 .mat-hdr{padding:13px 15px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;}
@@ -118,10 +127,10 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
 .mat-body{padding:14px 15px;}
 .mat-row{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);margin-bottom:5px;}
 .mat-row strong{color:var(--text1);}
-.inv-badge{display:inline-block;font-family:var(--mono);font-size:11px;background:rgba(139,92,246,.12);color:var(--purple);border:1px solid rgba(139,92,246,.2);border-radius:6px;padding:2px 9px;font-weight:600;}
+.inv-badge{display:inline-block;font-family:var(--mono);font-size:11px;background:rgba(139,92,246,.12);color:var(--purple);border:1px solid rgba(139,92,246,.2);border-radius:6px;padding:2px 9px;font-weight:600;letter-spacing:.5px;}
 .mat-foot{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:5px;justify-content:flex-end;}
 
-/* ── Status badges ── */
+/* Status badges */
 .sbadge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--mono);letter-spacing:.5px;}
 .s-dispo  {background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.2);}
 .s-utilise{background:rgba(59,130,246,.12);color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
@@ -131,7 +140,7 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
 .occ-mid  {background:rgba(245,158,11,.12);color:var(--amber);}
 .occ-full {background:rgba(239,68,68,.12);color:var(--red);}
 
-/* ── Buttons ── */
+/* Buttons */
 .btn{padding:7px 13px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:11.5px;font-family:var(--font);transition:all .15s;display:inline-flex;align-items:center;gap:5px;text-decoration:none;}
 .btn-primary{background:var(--blue);color:#fff;}
 .btn-primary:hover{background:var(--blue2);}
@@ -141,38 +150,55 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
 .btn-danger:hover{background:rgba(239,68,68,.1);}
 .btn-sm{padding:5px 10px;font-size:11px;}
 
-/* ── Empty state ── */
+/* Empty state */
 .empty-state{text-align:center;padding:60px 20px;grid-column:1/-1;color:var(--text3);}
 .empty-ico{font-size:52px;margin-bottom:12px;opacity:.4;}
 
-/* ── Modal overlay ── */
+/* Modal overlay */
 .res-modal-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,23,.88);backdrop-filter:blur(6px);align-items:center;justify-content:center;}
 .res-modal-overlay.open{display:flex;}
-.res-modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:560px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.55);animation:resModalIn .22s cubic-bezier(.22,1,.36,1);}
+.res-modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:640px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.55);animation:resModalIn .22s cubic-bezier(.22,1,.36,1);}
 @keyframes resModalIn{from{opacity:0;transform:translateY(18px) scale(.97);}to{opacity:1;transform:none;}}
 .res-modal-head{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:1;}
 .res-modal-title{font-weight:700;font-size:16px;color:var(--text1);}
 .res-modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;}
 .res-modal-close:hover{background:var(--bg4);color:var(--text1);}
 .res-modal-body{padding:24px;}
-.res-modal-foot{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg2);}
+.res-modal-foot{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg2);position:sticky;bottom:0;}
 
-/* ── Form elements ── */
+/* Form */
 .form-group{margin-bottom:16px;}
 .form-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:6px;}
 .form-control{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-size:13px;font-family:var(--font);outline:none;transition:all .15s;}
 .form-control:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.1);}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.form-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.section-divider{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:20px 0 12px;display:flex;align-items:center;gap:8px;}
+.section-divider::after{content:'';flex:1;height:1px;background:var(--border);}
 
-/* ── Toast ── */
+/* N° Inventaire preview */
+.inv-preview-box{background:rgba(139,92,246,.06);border:1px dashed rgba(139,92,246,.3);border-radius:8px;padding:12px 16px;margin-top:8px;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2);}
+.inv-preview-box strong{font-family:var(--mono);font-size:15px;color:var(--purple);letter-spacing:1px;}
+
+/* Photo upload */
+.photo-upload-area{border:2px dashed var(--border2);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:var(--bg3);}
+.photo-upload-area:hover{border-color:var(--blue);background:var(--bg4);}
+.photo-upload-area.has-preview{padding:0;border-style:solid;}
+.photo-upload-area .photo-preview{width:100%;height:140px;object-fit:cover;border-radius:8px;display:block;}
+.photo-upload-overlay{position:absolute;inset:0;background:rgba(8,13,23,.7);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;opacity:0;transition:opacity .2s;}
+.photo-upload-area.has-preview:hover .photo-upload-overlay{opacity:1;}
+
+/* Specs section */
+.specs-box{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:4px;}
+
+/* Toast */
 .res-toast{position:fixed;bottom:24px;right:24px;padding:13px 20px;border-radius:10px;font-size:13px;color:#fff;font-weight:600;z-index:99999;opacity:0;transform:translateY(10px);transition:.3s;max-width:380px;pointer-events:none;font-family:var(--font);}
-
 *{scrollbar-width:thin;scrollbar-color:var(--bg5) transparent;}
 </style>
 
 <div class="dash-wrap">
 
-  <!-- KPI STRIP -->
+  <!-- KPI -->
   <div class="kpi-grid">
     <div class="kpi blue">
       <div class="kpi-accent"></div>
@@ -223,7 +249,7 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
     </button>
   </div>
 
-  <!-- ══════════════════ PANEL ZONES ══════════════════ -->
+  <!-- ══ PANEL ZONES ══ -->
   <div id="panelZones">
     <div class="filters-bar" style="margin-bottom:16px;">
       <input type="text" id="searchZone" class="res-search" placeholder="🔍 Rechercher une zone..." oninput="filterZones()">
@@ -241,7 +267,10 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
         <option value="restreint">🟠 Restreint</option>
         <option value="critique">🔴 Critique</option>
       </select>
-      <button class="btn btn-primary btn-sm" onclick="resOpenModal('zone')">+ Zone</button>
+      <button class="btn btn-primary btn-sm" onclick="resOpenModal('zone')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Zone
+      </button>
     </div>
 
     <div class="zones-grid" id="zonesGrid">
@@ -318,7 +347,7 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
     </div>
   </div>
 
-  <!-- ══════════════════ PANEL MATÉRIEL ══════════════════ -->
+  <!-- ══ PANEL MATÉRIEL ══ -->
   <div id="panelMateriel" style="display:none;">
     <div class="filters-bar" style="margin-bottom:16px;">
       <input type="text" id="searchMateriel" class="res-search" placeholder="🔍 Nom, inventaire, série, fournisseur..." oninput="filterMateriel()">
@@ -340,7 +369,10 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
         <option value="maintenance">🔧 Maintenance</option>
         <option value="hors_service">❌ Hors service</option>
       </select>
-      <button class="btn btn-primary btn-sm" onclick="resOpenModal('materiel')">+ Matériel</button>
+      <button class="btn btn-primary btn-sm" onclick="resOpenModal('materiel')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Matériel
+      </button>
     </div>
 
     <div class="materiel-grid" id="materielGrid">
@@ -351,7 +383,8 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
            data-nom="{{ mat.nom|lower }} {{ mat.num_inventaire|default:''|lower }} {{ mat.numero_serie|default:''|lower }} {{ mat.fournisseur|default:''|lower }}">
 
         <div class="mat-img">
-          {% if mat.photo %}<img src="{{ mat.photo }}" alt="{{ mat.nom }}">
+          {% if mat.photo %}
+            <img src="{% if mat.photo|slice:':4' == 'http' %}{{ mat.photo }}{% else %}/media/{{ mat.photo }}{% endif %}" alt="{{ mat.nom }}" loading="lazy">
           {% elif mat.categorie == 'informatique' %}💻
           {% elif mat.categorie == 'mobilier' %}🪑
           {% elif mat.categorie == 'audiovisuel' %}📽️
@@ -361,10 +394,10 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
           {% elif mat.categorie == 'laboratoire' %}🔬
           {% else %}📦{% endif %}
           <div class="mat-img-overlay">
-            {% if mat.statut == 'disponible' %}<span class="sbadge s-dispo">✅</span>
-            {% elif mat.statut == 'utilise' %}<span class="sbadge s-utilise">🔄</span>
-            {% elif mat.statut == 'maintenance' %}<span class="sbadge s-maint">🔧</span>
-            {% else %}<span class="sbadge s-hs">❌</span>{% endif %}
+            {% if mat.statut == 'disponible' %}<span class="sbadge s-dispo">✅ Dispo</span>
+            {% elif mat.statut == 'utilise' %}<span class="sbadge s-utilise">🔄 Utilisé</span>
+            {% elif mat.statut == 'maintenance' %}<span class="sbadge s-maint">🔧 Maint.</span>
+            {% else %}<span class="sbadge s-hs">❌ H.S.</span>{% endif %}
           </div>
         </div>
 
@@ -424,9 +457,7 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
 
 </div><!-- /dash-wrap -->
 
-<!-- ══════════════════════════════════════════
-     MODAL ZONE
-══════════════════════════════════════════ -->
+<!-- ══ MODAL ZONE ══ -->
 <div class="res-modal-overlay" id="resModalZone" onclick="if(event.target===this)resCloseModal('zone');">
   <div class="res-modal">
     <div class="res-modal-head">
@@ -437,7 +468,7 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
       <input type="hidden" id="resZoneId">
       <div class="form-grid">
         <div class="form-group">
-          <label class="form-label">Nom de la zone *</label>
+          <label class="form-label">Nom de la zone <span style="color:var(--red)">*</span></label>
           <input type="text" id="resZoneNom" class="form-control" placeholder="Salle de réunion A">
         </div>
         <div class="form-group">
@@ -482,25 +513,26 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════
-     MODAL MATÉRIEL
-══════════════════════════════════════════ -->
+<!-- ══ MODAL MATÉRIEL — VERSION AMÉLIORÉE ══ -->
 <div class="res-modal-overlay" id="resModalMateriel" onclick="if(event.target===this)resCloseModal('materiel');">
-  <div class="res-modal">
+  <div class="res-modal" style="width:700px;">
     <div class="res-modal-head">
       <span class="res-modal-title" id="resMatModalTitle">🖥️ Nouveau matériel</span>
       <button class="res-modal-close" type="button" onclick="resCloseModal('materiel');">✕</button>
     </div>
     <div class="res-modal-body">
       <input type="hidden" id="resMatId">
+
+      <!-- ── Informations générales ── -->
+      <div class="section-divider">📋 Informations générales</div>
       <div class="form-grid">
         <div class="form-group">
-          <label class="form-label">Nom *</label>
+          <label class="form-label">Nom <span style="color:var(--red)">*</span></label>
           <input type="text" id="resMatNom" class="form-control" placeholder="Ordinateur Dell Latitude">
         </div>
         <div class="form-group">
           <label class="form-label">Catégorie</label>
-          <select id="resMatCategorie" class="form-control">
+          <select id="resMatCategorie" class="form-control" onchange="resUpdateInvPreview();resToggleSpecs();">
             <option value="informatique">💻 Informatique</option>
             <option value="mobilier">🪑 Mobilier</option>
             <option value="audiovisuel">📽️ Audiovisuel</option>
@@ -512,20 +544,20 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">N° Inventaire</label>
-          <input type="text" id="resMatInventaire" class="form-control" placeholder="INV-2024-001" style="font-family:var(--mono);">
+          <label class="form-label">Marque</label>
+          <input type="text" id="resMatMarque" class="form-control" placeholder="Dell" oninput="resUpdateInvPreview()">
         </div>
         <div class="form-group">
-          <label class="form-label">N° Série</label>
+          <label class="form-label">Modèle</label>
+          <input type="text" id="resMatModele" class="form-control" placeholder="Latitude 5540">
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° de série</label>
           <input type="text" id="resMatSerie" class="form-control" placeholder="SN-XXXXX" style="font-family:var(--mono);">
         </div>
         <div class="form-group">
-          <label class="form-label">Fournisseur</label>
-          <input type="text" id="resMatFournisseur" class="form-control" placeholder="Dell Technologies">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Marque / Modèle</label>
-          <input type="text" id="resMatMarque" class="form-control" placeholder="Dell Latitude 5540">
+          <label class="form-label">Date d'achat</label>
+          <input type="date" id="resMatDateAchat" class="form-control" onchange="resSyncAnnee()">
         </div>
         <div class="form-group">
           <label class="form-label">Zone assignée</label>
@@ -545,21 +577,104 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
             <option value="hors_service">❌ Hors service</option>
           </select>
         </div>
-        <div class="form-group" style="grid-column:1/-1;">
-          <label class="form-label">Spécifications techniques (optionnel)</label>
-          <div class="form-grid" style="gap:10px;">
-            <input type="text" id="resMatCPU" class="form-control" placeholder="Processeur / CPU">
-            <input type="text" id="resMatRAM" class="form-control" placeholder="Mémoire RAM">
-            <input type="text" id="resMatHDD" class="form-control" placeholder="Stockage">
-            <input type="text" id="resMatOS"  class="form-control" placeholder="Système d'exploitation">
-          </div>
+        <div class="form-group">
+          <label class="form-label">Fournisseur</label>
+          <input type="text" id="resMatFournisseur" class="form-control" placeholder="Dell Technologies" oninput="resUpdateInvPreview()">
         </div>
-        <div class="form-group" style="grid-column:1/-1;">
-          <label class="form-label">Description / Remarques</label>
-          <textarea id="resMatDesc" class="form-control" rows="2" placeholder="Notes supplémentaires..."></textarea>
+        <div class="form-group">
+          <label class="form-label">Valeur d'achat (DA)</label>
+          <input type="text" id="resMatValeur" class="form-control" placeholder="150 000">
         </div>
       </div>
-    </div>
+
+      <!-- ── N° Inventaire : [FOURNISSEUR-]PREFIX-ANNEE-NNNNN ── -->
+      <div class="section-divider">🏷️ Numéro d'inventaire</div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Format : <span style="font-family:var(--mono);color:var(--purple);">[FOURNISSEUR-]CAT-ANNÉE-NNNNN</span> &nbsp;— généré automatiquement à partir du fournisseur renseigné ci-dessus</div>
+        <div class="form-grid">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Année d'inventaire</label>
+            <input type="number" id="resMatAnneeInv" class="form-control" style="font-family:var(--mono);" oninput="resUpdateInvPreview()">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">N° séquentiel (optionnel — auto si vide)</label>
+            <input type="number" id="resMatSeqInv" class="form-control" placeholder="auto" style="font-family:var(--mono);" oninput="resUpdateInvPreview()">
+          </div>
+        </div>
+        <div class="inv-preview-box" style="margin-top:12px;">
+          <span>Aperçu :</span>
+          <strong id="resInvPreview">—</strong>
+          <span style="font-size:11px;color:var(--text3);margin-left:auto;">Modifiable si besoin ↓</span>
+        </div>
+        <div class="form-group" style="margin-top:10px;margin-bottom:0;">
+          <label class="form-label">N° inventaire final (éditable manuellement)</label>
+          <input type="text" id="resMatInventaire" class="form-control" placeholder="DELL-INF-2026-00001" style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--purple);" oninput="this.dataset.manual='1'">
+        </div>
+      </div>
+
+      <!-- ── Photo ── -->
+      <div class="section-divider">📷 Photo du matériel</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Téléverser une image</label>
+          <div class="photo-upload-area" id="photoUploadArea" onclick="document.getElementById('resMatPhotoFile').click()">
+            <img src="" alt="" class="photo-preview" id="photoPreviewImg" style="display:none;">
+            <div class="photo-upload-overlay" id="photoOverlay">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <span style="color:#fff;font-size:12px;font-weight:600;">Changer</span>
+            </div>
+            <div id="photoPlaceholder" style="pointer-events:none;">
+              <div style="font-size:32px;margin-bottom:8px;">📷</div>
+              <div style="font-size:12px;color:var(--text2);font-weight:600;">Cliquer pour ajouter une photo</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px;">JPG, PNG, WEBP — max 5 Mo</div>
+            </div>
+          </div>
+          <input type="file" id="resMatPhotoFile" accept="image/*" style="display:none;" onchange="resHandlePhotoUpload(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ou URL de l'image</label>
+          <input type="text" id="resMatPhoto" class="form-control" placeholder="https://..." oninput="resPreviewFromUrl(this.value)">
+          <div style="font-size:10px;color:var(--text3);margin-top:6px;">Si une image est uploadée, elle sera utilisée en priorité</div>
+          <div id="resPhotoMsg" style="font-size:11px;color:var(--green);margin-top:8px;display:none;"></div>
+        </div>
+      </div>
+
+      <!-- ── Spécifications techniques (conditionnel) ── -->
+      <div id="resTechSpecs" style="display:none;">
+        <div class="section-divider">⚙️ Spécifications techniques</div>
+        <div class="specs-box">
+          <div class="form-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Processeur (CPU)</label>
+              <input type="text" id="resMatCPU" class="form-control" placeholder="Intel Core i7-1255U">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Mémoire RAM</label>
+              <input type="text" id="resMatRAM" class="form-control" placeholder="16 Go DDR4">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Stockage</label>
+              <input type="text" id="resMatHDD" class="form-control" placeholder="512 Go SSD NVMe">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Système d'exploitation</label>
+              <input type="text" id="resMatOS" class="form-control" placeholder="Windows 11 Pro">
+            </div>
+            <div class="form-group" style="margin-bottom:0;grid-column:1/-1;">
+              <label class="form-label">Écran / Résolution</label>
+              <input type="text" id="resMatEcran" class="form-control" placeholder='14" FHD 1920×1080'>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Description ── -->
+      <div class="section-divider">📝 Description / Remarques</div>
+      <div class="form-group">
+        <textarea id="resMatDesc" class="form-control" rows="3" placeholder="État, accessoires inclus, garantie, notes..."></textarea>
+      </div>
+
+    </div><!-- /modal-body -->
     <div class="res-modal-foot">
       <button class="btn btn-ghost" type="button" onclick="resCloseModal('materiel');">Annuler</button>
       <button class="btn btn-primary" type="button" onclick="resSaveMateriel();" id="resBtnSaveMat">
@@ -570,12 +685,29 @@ body{font-family:var(--font)!important;background:var(--bg0)!important;}
   </div>
 </div>
 
-<!-- TOAST -->
 <div class="res-toast" id="restoast"></div>
 
 <script>
 const RES_CSRF = '{{ csrf_token }}';
 var materielsData = {{ materiels_json|safe|default:'[]' }};
+
+// Prefixes catégories
+const CAT_PREFIXES = {
+  informatique:'INF', mobilier:'MOB', audiovisuel:'AUD',
+  imprimante:'IMP', securite:'SEC', vehicule:'VEH',
+  laboratoire:'LAB', autre:'MAT'
+};
+
+/* ══ Menu Ajouter ══ */
+var _addMenuOpen = false;
+function toggleAddMenu(force) {
+  _addMenuOpen = (force !== undefined) ? force : !_addMenuOpen;
+  document.getElementById('addMenu').style.display = _addMenuOpen ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('addMenuWrap');
+  if (wrap && !wrap.contains(e.target)) toggleAddMenu(false);
+});
 
 /* ══ Onglets ══ */
 function resTab(tab, el) {
@@ -609,6 +741,97 @@ function filterMateriel() {
   });
 }
 
+/* ══ N° Inventaire — identique au backend _generer_num_inventaire ══
+   Format: [FOURNISSEUR-]PREFIX-ANNEE-NNNNN
+   Ex: DELL-INF-2026-00001  ou  INF-2026-00001
+*/
+function resUpdateInvPreview() {
+  var fournisseur = (document.getElementById('resMatFournisseur')?.value || '')
+                    .trim().toUpperCase().replace(/\s+/g,'-').slice(0,10);
+  var cat    = document.getElementById('resMatCategorie')?.value || 'informatique';
+  var prefix = CAT_PREFIXES[cat] || 'MAT';
+  var annee  = document.getElementById('resMatAnneeInv')?.value || new Date().getFullYear();
+  var seq    = document.getElementById('resMatSeqInv')?.value;
+  var seqNum = seq ? String(seq).padStart(5,'0') : 'XXXXX';
+  var preview = fournisseur
+    ? fournisseur + '-' + prefix + '-' + annee + '-' + seqNum
+    : prefix + '-' + annee + '-' + seqNum;
+  document.getElementById('resInvPreview').textContent = preview;
+  var inv = document.getElementById('resMatInventaire');
+  if (!inv.dataset.manual) inv.value = preview.replace('XXXXX','');
+}
+
+function resSyncAnnee() {
+  var d = document.getElementById('resMatDateAchat')?.value;
+  if (d) { document.getElementById('resMatAnneeInv').value = d.split('-')[0]; resUpdateInvPreview(); }
+}
+
+// Marquer le champ inventaire comme édité manuellement
+document.addEventListener('DOMContentLoaded', function(){
+  var inv = document.getElementById('resMatInventaire');
+  if (inv) inv.addEventListener('input', function(){ this.dataset.manual = '1'; });
+  // Init année
+  document.getElementById('resMatAnneeInv').value = new Date().getFullYear();
+  resUpdateInvPreview();
+  resToggleSpecs();
+});
+
+/* ══ Specs techniques ══ */
+function resToggleSpecs() {
+  var cat = document.getElementById('resMatCategorie')?.value;
+  var show = ['informatique','audiovisuel','imprimante','laboratoire'].includes(cat);
+  document.getElementById('resTechSpecs').style.display = show ? 'block' : 'none';
+}
+
+/* ══ Photo upload ══ */
+var _photoBase64 = null;
+
+function resHandlePhotoUpload(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) { resToast('Image trop lourde (max 5 Mo)', 'err'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    _photoBase64 = e.target.result;
+    showPhotoPreview(e.target.result);
+    document.getElementById('resPhotoMsg').style.display = 'block';
+    document.getElementById('resPhotoMsg').textContent = '✅ Image prête : ' + file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+function showPhotoPreview(src) {
+  var img = document.getElementById('photoPreviewImg');
+  var area = document.getElementById('photoUploadArea');
+  var ph = document.getElementById('photoPlaceholder');
+  img.src = src;
+  img.style.display = 'block';
+  ph.style.display = 'none';
+  area.classList.add('has-preview');
+}
+
+function resPreviewFromUrl(url) {
+  if (!url) return;
+  var img = document.getElementById('photoPreviewImg');
+  var area = document.getElementById('photoUploadArea');
+  var ph = document.getElementById('photoPlaceholder');
+  img.src = url;
+  img.onerror = function(){ img.style.display='none'; ph.style.display='block'; area.classList.remove('has-preview'); };
+  img.onload  = function(){ img.style.display='block'; ph.style.display='none'; area.classList.add('has-preview'); };
+}
+
+function resetPhotoUI() {
+  _photoBase64 = null;
+  var img = document.getElementById('photoPreviewImg');
+  var area = document.getElementById('photoUploadArea');
+  var ph = document.getElementById('photoPlaceholder');
+  img.src = ''; img.style.display = 'none';
+  ph.style.display = 'block';
+  area.classList.remove('has-preview');
+  document.getElementById('resMatPhotoFile').value = '';
+  document.getElementById('resPhotoMsg').style.display = 'none';
+}
+
 /* ══ Modal helpers ══ */
 function resOpenModal(type) {
   if (type === 'zone') {
@@ -626,9 +849,11 @@ function resOpenModal(type) {
     document.getElementById('resMatId').value          = '';
     document.getElementById('resMatNom').value         = '';
     document.getElementById('resMatInventaire').value  = '';
+    delete document.getElementById('resMatInventaire').dataset.manual;
     document.getElementById('resMatSerie').value       = '';
     document.getElementById('resMatFournisseur').value = '';
     document.getElementById('resMatMarque').value      = '';
+    document.getElementById('resMatModele').value      = '';
     document.getElementById('resMatZone').value        = '';
     document.getElementById('resMatStatut').value      = 'disponible';
     document.getElementById('resMatCategorie').value   = 'informatique';
@@ -636,8 +861,18 @@ function resOpenModal(type) {
     document.getElementById('resMatRAM').value         = '';
     document.getElementById('resMatHDD').value         = '';
     document.getElementById('resMatOS').value          = '';
+    document.getElementById('resMatEcran').value       = '';
     document.getElementById('resMatDesc').value        = '';
+    document.getElementById('resMatPhoto').value       = '';
+    document.getElementById('resMatDateAchat').value   = '';
+    document.getElementById('resMatValeur').value      = '';
+    // resMatEntreprise supprimé — on utilise resMatFournisseur directement
+    document.getElementById('resMatAnneeInv').value    = new Date().getFullYear();
+    document.getElementById('resMatSeqInv').value      = '';
     document.getElementById('resMatModalTitle').textContent = '🖥️ Nouveau matériel';
+    resetPhotoUI();
+    resUpdateInvPreview();
+    resToggleSpecs();
     document.getElementById('resModalMateriel').classList.add('open');
     document.body.style.overflow = 'hidden';
   }
@@ -652,7 +887,6 @@ function resCloseModal(type) {
   document.body.style.overflow = '';
 }
 
-/* Échap */
 document.addEventListener('keydown', function(e){
   if (e.key !== 'Escape') return;
   resCloseModal('zone');
@@ -673,7 +907,7 @@ function resEditZone(id, nom, code, etage, capacite, securite, desc) {
   document.body.style.overflow = 'hidden';
 }
 
-/* ══ Zone : sauvegarder (POST vers Django) ══ */
+/* ══ Zone : sauvegarder ══ */
 function resSaveZone() {
   var nom = document.getElementById('resZoneNom').value.trim();
   if (!nom) { resToast('Le nom est obligatoire', 'err'); return; }
@@ -689,19 +923,17 @@ function resSaveZone() {
   formData.append('capacite_max',    document.getElementById('resZoneCapacite').value);
   formData.append('niveau_securite', document.getElementById('resZoneSecurite').value);
   formData.append('description',     document.getElementById('resZoneDesc').value.trim());
+  if (id) formData.append('bureau_id', id);
 
-  var url = id ? '/bureaux/' + id + '/modifier/' : '/bureaux/ajouter/';
+  var url = '/bureaux/ajouter/';
   fetch(url, { method: 'POST', body: formData })
-    .then(function(r){
-      if (r.ok || r.redirected) {
-        resToast('✅ Zone enregistrée', 'ok');
-        resCloseModal('zone');
-        setTimeout(function(){ location.reload(); }, 700);
-      } else {
-        resToast('Erreur serveur : ' + r.status, 'err');
-      }
+    .then(function(r){ return r.ok || r.redirected ? r : Promise.reject(r.status); })
+    .then(function(){
+      resToast('✅ Zone enregistrée', 'ok');
+      resCloseModal('zone');
+      setTimeout(function(){ location.reload(); }, 700);
     })
-    .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); })
+    .catch(function(e){ resToast('Erreur serveur : ' + e, 'err'); })
     .finally(function(){ btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Enregistrer'; });
 }
 
@@ -715,7 +947,7 @@ function resDeleteZone(id, name) {
     .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); });
 }
 
-/* ══ Matériel : édition (charge depuis JSON local) ══ */
+/* ══ Matériel : édition ══ */
 function resEditMateriel(id) {
   var mat = null;
   for (var i = 0; i < materielsData.length; i++) {
@@ -728,7 +960,8 @@ function resEditMateriel(id) {
   document.getElementById('resMatInventaire').value  = mat.num_inventaire || '';
   document.getElementById('resMatSerie').value       = mat.numero_serie || '';
   document.getElementById('resMatFournisseur').value = mat.fournisseur || '';
-  document.getElementById('resMatMarque').value      = (mat.marque || '') + (mat.modele ? ' ' + mat.modele : '');
+  document.getElementById('resMatMarque').value      = mat.marque || '';
+  document.getElementById('resMatModele').value      = mat.modele || '';
   document.getElementById('resMatZone').value        = mat.zone || '';
   document.getElementById('resMatStatut').value      = mat.statut || 'disponible';
   document.getElementById('resMatCategorie').value   = mat.categorie || 'autre';
@@ -736,59 +969,114 @@ function resEditMateriel(id) {
   document.getElementById('resMatRAM').value         = mat.ram || '';
   document.getElementById('resMatHDD').value         = mat.stockage || '';
   document.getElementById('resMatOS').value          = mat.os || '';
+  document.getElementById('resMatEcran').value       = mat.ecran || '';
   document.getElementById('resMatDesc').value        = mat.description || '';
+  document.getElementById('resMatPhoto').value       = mat.photo || '';
+  document.getElementById('resMatDateAchat').value   = mat.date_achat || '';
+  document.getElementById('resMatValeur').value      = mat.valeur || '';
+  document.getElementById('resMatAnneeInv').value    = mat.annee_inv || new Date().getFullYear();
+  document.getElementById('resMatSeqInv').value      = mat.seq_inv || '';
+
+  // Restaurer la preview du numéro d'inventaire existant
+  if (mat.num_inventaire) {
+    document.getElementById('resMatInventaire').dataset.manual = '1';
+    document.getElementById('resMatInventaire').value = mat.num_inventaire;
+    document.getElementById('resInvPreview').textContent = mat.num_inventaire;
+  } else {
+    delete document.getElementById('resMatInventaire').dataset.manual;
+    resUpdateInvPreview();
+  }
+
+  // Photo
+  resetPhotoUI();
+  if (mat.photo) {
+    var src = mat.photo.startsWith('http') ? mat.photo : '/media/' + mat.photo;
+    showPhotoPreview(src);
+    document.getElementById('resMatPhoto').value = mat.photo;
+  }
+
   document.getElementById('resMatModalTitle').textContent = '✏️ Modifier : ' + (mat.nom || '');
+  resToggleSpecs();
   document.getElementById('resModalMateriel').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
 
 /* ══ Matériel : sauvegarder ══ */
-function resSaveMateriel() {
+async function resSaveMateriel() {
   var nom = document.getElementById('resMatNom').value.trim();
   if (!nom) { resToast('Le nom est obligatoire', 'err'); return; }
+
   var id  = document.getElementById('resMatId').value;
   var btn = document.getElementById('resBtnSaveMat');
-  btn.disabled = true; btn.textContent = 'Enregistrement...';
+  btn.disabled = true; btn.innerHTML = '⏳ Enregistrement...';
 
+  // Upload photo si fichier sélectionné
+  var photoPath = document.getElementById('resMatPhoto').value.trim();
+  if (_photoBase64) {
+    try {
+      var uploadResp = await fetch('/api/materiel/upload-photo/', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-CSRFToken':RES_CSRF},
+        body: JSON.stringify({photo_data: _photoBase64})
+      });
+      var uploadData = await uploadResp.json();
+      if (uploadData.status === 'success') photoPath = uploadData.path;
+    } catch(e) { /* si l'upload échoue, on continue avec l'URL */ }
+  }
+
+  var invFinal = document.getElementById('resMatInventaire').value.trim();
+  // BUG FIX : fournisseur = champ fournisseur direct (pas "entreprise" qui ne correspond pas au backend)
+  var fournisseurVal = document.getElementById('resMatFournisseur').value.trim();
   var payload = {
-    id:           id || null,
+    id:           id || '',
     nom:          nom,
     categorie:    document.getElementById('resMatCategorie').value,
-    num_inventaire: document.getElementById('resMatInventaire').value.trim(),
-    numero_serie: document.getElementById('resMatSerie').value.trim(),
-    fournisseur:  document.getElementById('resMatFournisseur').value.trim(),
+    fournisseur:  fournisseurVal,
     marque:       document.getElementById('resMatMarque').value.trim(),
+    modele:       document.getElementById('resMatModele').value.trim(),
+    numero_serie: document.getElementById('resMatSerie').value.trim(),
+    date_achat:   document.getElementById('resMatDateAchat').value,
+    valeur:       document.getElementById('resMatValeur').value.trim(),
     zone:         document.getElementById('resMatZone').value,
     statut:       document.getElementById('resMatStatut').value,
     processeur:   document.getElementById('resMatCPU').value.trim(),
     ram:          document.getElementById('resMatRAM').value.trim(),
     stockage:     document.getElementById('resMatHDD').value.trim(),
     os:           document.getElementById('resMatOS').value.trim(),
+    ecran:        document.getElementById('resMatEcran').value.trim(),
     description:  document.getElementById('resMatDesc').value.trim(),
+    photo:        photoPath,
+    num_inventaire: invFinal,
+    // Pour la génération côté serveur (fournisseur = même valeur, annee et seq pour l'auto-génération)
+    annee_inv:    document.getElementById('resMatAnneeInv').value,
+    seq_inv:      document.getElementById('resMatSeqInv').value,
   };
 
-  fetch('/api/materiel/ajouter/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': RES_CSRF },
-    body: JSON.stringify(payload)
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
+  try {
+    var r = await fetch('/api/materiel/ajouter/', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken':RES_CSRF},
+      body: JSON.stringify(payload)
+    });
+    var d = await r.json();
     if (d.status === 'success') {
-      resToast('✅ Matériel enregistré', 'ok');
+      resToast('✅ Matériel ' + (id ? 'modifié' : 'ajouté') + ' — N° ' + (d.num_inventaire || invFinal), 'ok');
       resCloseModal('materiel');
-      setTimeout(function(){ location.reload(); }, 700);
+      setTimeout(function(){ location.reload(); }, 800);
     } else {
       resToast(d.message || 'Erreur serveur', 'err');
     }
-  })
-  .catch(function(e){ resToast('Erreur : ' + e.message, 'err'); })
-  .finally(function(){ btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Enregistrer'; });
+  } catch(e) {
+    resToast('Erreur réseau : ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Enregistrer';
+  }
 }
 
 /* ══ Matériel : supprimer ══ */
 function resDeleteMateriel(id, name) {
-  if (!confirm('Supprimer "' + name + '" ?')) return;
+  if (!confirm('Supprimer "' + name + '" ?\nCette action est irréversible.')) return;
   fetch('/api/materiel/' + id + '/supprimer/', {
     method: 'DELETE', headers: { 'X-CSRFToken': RES_CSRF }
   })
@@ -801,10 +1089,10 @@ function resDeleteMateriel(id, name) {
 }
 
 /* ══ Exports ══ */
-function exportMaterielPDF(id)      { resToast('📄 Génération PDF...', 'info'); window.open('/api/materiel/' + id + '/pdf/', '_blank'); }
-function exportZonePDF(id, nom)     { resToast('📄 Génération rapport zone...', 'info'); window.open('/api/zone/' + id + '/pdf/', '_blank'); }
-function exportZonesPDF()           { resToast('📄 Génération rapport global...', 'info'); window.open('/api/zones/rapport-pdf/', '_blank'); }
-function exportResourcesCSV()       { window.location.href = '/api/ressources/export-csv/'; }
+function exportMaterielPDF(id)  { resToast('📄 Génération PDF...', 'info'); window.open('/api/materiel/' + id + '/pdf/', '_blank'); }
+function exportZonePDF(id, nom) { resToast('📄 Génération rapport zone...', 'info'); window.open('/api/zone/' + id + '/pdf/', '_blank'); }
+function exportZonesPDF()       { resToast('📄 Génération rapport global...', 'info'); window.open('/api/zones/rapport-pdf/', '_blank'); }
+function exportResourcesCSV()   { window.location.href = '/api/ressources/export-csv/'; }
 
 /* ══ Toast ══ */
 function resToast(msg, type) {
@@ -813,12 +1101,12 @@ function resToast(msg, type) {
   t.style.background = type === 'ok' ? '#10b981' : type === 'err' ? '#ef4444' : '#3b82f6';
   t.style.opacity = '1'; t.style.transform = 'translateY(0)';
   clearTimeout(t._timer);
-  t._timer = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(10px)'; }, 3000);
+  t._timer = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(10px)'; }, 3500);
 }
 
-/* ══ KPI counter animation ══ */
+/* ══ KPI animation ══ */
 document.querySelectorAll('.kpi-val').forEach(function(el){
-  var text = el.textContent.replace(/\s/g,' ');
+  var text = el.textContent;
   var num = parseInt(text.replace(/[^0-9]/g,''), 10);
   if (isNaN(num) || num === 0) return;
   var duration = 900, step = num / duration * 16, current = 0;

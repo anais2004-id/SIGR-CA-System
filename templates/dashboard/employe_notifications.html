@@ -339,7 +339,7 @@ body, .dashboard-body { font-family: var(--font) !important; background: var(--b
   <div class="stats-row">
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <span class="badge b-blue">📊 Total : {{ notifications|length }}</span>
-      <span class="badge b-amber">🟡 Non lues : {{ unread_count|default:"0" }}</span>
+      
       {% if notifications|length > 0 %}
       <span class="badge b-green">✅ Lues : {{ notifications|length|add:"-unread_count"|default:"0" }}</span>
       {% endif %}
@@ -402,10 +402,7 @@ body, .dashboard-body { font-family: var(--font) !important; background: var(--b
         <div class="empty-state-icon">🔔</div>
         <div class="empty-state-title">Aucune notification</div>
         <div class="empty-state-sub">Les notifications concernant vos réservations et alertes apparaîtront ici</div>
-        <button class="btn-primary" onclick="sendTestNotification()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          Envoyer une notification test
-        </button>
+        
       </div>
     {% endif %}
   </div>
