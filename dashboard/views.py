@@ -1321,11 +1321,11 @@ def employe_ajouter(request):
                 'employe': request.POST, 'jours_semaine': JOURS,
             })
 
-        if not re.match(r'^RFID-[A-Z0-9]{4}$', badge_id):
-            messages.error(request, "Le badge doit être au format RFID-XXXX (ex : RFID-0001).")
+        if not re.match(r'^[A-F0-9]{2}:[A-F0-9]{2}:[A-F0-9]{2}:[A-F0-9]{2}$', badge_id):
+            messages.error(request, "Le badge doit être au format XX:XX:XX:XX (ex : D7:77:C5:01).")
             return render(request, 'dashboard/employe_form.html', {
-                'employe': request.POST, 'jours_semaine': JOURS,
-            })
+            'employe': request.POST, 'jours_semaine': JOURS,
+        })
 
         if db.employees.find_one({'badge_id': badge_id}):
             messages.error(request, f"Le badge {badge_id} est déjà attribué.")
