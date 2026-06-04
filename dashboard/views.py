@@ -229,90 +229,93 @@ def employe_espace(request):
     """Tableau de bord employé amélioré"""
     if request.user.is_staff or request.user.is_superuser:
         return redirect('dashboard')
-    
+
     from datetime import datetime, timedelta
-    
+
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
-    
+
     if not employe:
         messages.error(request, "Profil employé introuvable. Contactez l'administrateur.")
         logout(request)
         return redirect('login')
-    
-    employe['id'] = str(employe['_id'])
-    utilisateur_id = employe['_id']
-    
-    # Statistiques globales
-    total_acces = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id})
+
+    employe['id']      = str(employe['_id'])
+    utilisateur_id     = employe['_id']           # ObjectId — identique à employe_mon_historique
+    utilisateur_id_str = str(utilisateur_id)
+
+    # ── Statistiques globales ────────────────────────────────────────────────
+    total_acces     = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id})
     acces_autorises = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id, 'resultat': 'AUTORISE'})
-    acces_refuses = total_acces - acces_autorises
-    taux_succes = round((acces_autorises / total_acces * 100) if total_acces > 0 else 0, 1)
-    
-    # Statistiques du mois
-    start_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    acces_refuses   = total_acces - acces_autorises
+    taux_succes     = round(min(100, acces_autorises / total_acces * 100) if total_acces > 0 else 0, 1)
+
+    # ── Statistiques du mois ─────────────────────────────────────────────────
+    start_month      = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     total_acces_mois = db.acces_logs.count_documents({
         'utilisateur_id': utilisateur_id,
-        'timestamp': {'$gte': start_month}
+        'timestamp':      {'$gte': start_month}
     })
-    
-    # Jours actifs (corrigé - utilise aggregate au lieu de distinct)
-    pipeline = [
-        {'$match': {'utilisateur_id': utilisateur_id}},
-        {'$group': {
-            '_id': {
-                'year': {'$year': '$timestamp'},
-                'month': {'$month': '$timestamp'},
-                'day': {'$dayOfMonth': '$timestamp'}
-            }
-        }},
-        {'$count': 'total_days'}
-    ]
-    
+
+    # ── Jours actifs ─────────────────────────────────────────────────────────
     try:
-        result = list(db.acces_logs.aggregate(pipeline))
+        pipeline_jours = [
+            {'$match': {'utilisateur_id': utilisateur_id}},
+            {'$group': {
+                '_id': {
+                    'year':  {'$year':       '$timestamp'},
+                    'month': {'$month':      '$timestamp'},
+                    'day':   {'$dayOfMonth': '$timestamp'},
+                }
+            }},
+            {'$count': 'total_days'}
+        ]
+        result             = list(db.acces_logs.aggregate(pipeline_jours))
         jours_actifs_count = result[0]['total_days'] if result else 0
-    except:
+    except Exception:
         jours_actifs_count = 0
-    
-    # Heures totales (approximatif)
-    heures_totales = round(total_acces * 0.5, 1)  # ~30min par accès
-    
-    # Accès récents
+
+    # ── Heures totales (approx. 30 min par accès) ────────────────────────────
+    heures_totales = round(total_acces * 0.5, 1)
+
+    # ── Accès récents ────────────────────────────────────────────────────────
     acces = list(db.acces_logs.find({'utilisateur_id': utilisateur_id}).sort('timestamp', -1).limit(10))
     for a in acces:
-        bureau = db.bureaux.find_one({'_id': a.get('bureau_id')})
+        bureau        = db.bureaux.find_one({'_id': a.get('bureau_id')})
         a['bureau_nom'] = bureau['nom'] if bureau else 'Zone inconnue'
         if not a.get('type_acces'):
             a['type_acces'] = 'RFID'
-    
-    # Réservations
-    reservations = list(db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1))
-    now = datetime.now()
-    a_venir = 0
+
+    # ── Réservations ─────────────────────────────────────────────────────────
+    reservations = list(
+        db.reservations.find({'employe_id': utilisateur_id_str}).sort('date_debut', -1)
+    )
+    now                  = datetime.now()
+    a_venir              = 0
     reservations_a_venir = []
-    prochaine_resa = None
-    
+    prochaine_resa       = None
+
     for r in reservations:
-        r['id'] = str(r['_id'])
-        bureau = db.bureaux.find_one({'_id': r.get('bureau_id')})
+        r['id']        = str(r['_id'])
+        bureau         = db.bureaux.find_one({'_id': r.get('bureau_id')})
         r['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
-        
+
         if r.get('statut') == 'confirmee' and r.get('date_debut') and r['date_debut'] > now:
             a_venir += 1
             reservations_a_venir.append(r)
             if not prochaine_resa:
                 prochaine_resa = r
-    
-    # Suggestions personnalisées
-    # Calculer le jour le plus fréquent
+
+    # ── Suggestions personnalisées ───────────────────────────────────────────
+
+    # Jour le plus fréquent
     frequent_day = "mercredi"
     try:
         day_pipeline = [
             {'$match': {'utilisateur_id': utilisateur_id}},
             {'$group': {
-                '_id': {'$dayOfWeek': '$timestamp'},
+                '_id':   {'$dayOfWeek': '$timestamp'},
                 'count': {'$sum': 1}
             }},
             {'$sort': {'count': -1}},
@@ -320,16 +323,18 @@ def employe_espace(request):
         ]
         day_result = list(db.acces_logs.aggregate(day_pipeline))
         if day_result:
-            days_map = {1: 'lundi', 2: 'mardi', 3: 'mercredi', 4: 'jeudi', 5: 'vendredi', 6: 'samedi', 7: 'dimanche'}
+            # MongoDB $dayOfWeek : 1=dimanche, 2=lundi … 7=samedi
+            days_map     = {1: 'dimanche', 2: 'lundi', 3: 'mardi', 4: 'mercredi',
+                            5: 'jeudi', 6: 'vendredi', 7: 'samedi'}
             frequent_day = days_map.get(day_result[0]['_id'], 'mercredi')
-    except:
+    except Exception:
         pass
-    
+
     # Salle recommandée
     recommended_room = "Salle de réunion A"
     try:
         room_pipeline = [
-            {'$match': {'employe_id': str(employe['_id']), 'statut': 'confirmee'}},
+            {'$match': {'employe_id': utilisateur_id_str, 'statut': 'confirmee'}},
             {'$group': {'_id': '$bureau_id', 'count': {'$sum': 1}}},
             {'$sort': {'count': -1}},
             {'$limit': 1}
@@ -339,16 +344,16 @@ def employe_espace(request):
             bureau = db.bureaux.find_one({'_id': room_result[0]['_id']})
             if bureau:
                 recommended_room = bureau.get('nom', 'Salle de réunion')
-    except:
+    except Exception:
         pass
-    
-    # Meilleur créneau
-    best_time = "09h00-11h00"
+
+    # Meilleur créneau horaire
+    best_time = "09h00-10h00"
     try:
         hour_pipeline = [
             {'$match': {'utilisateur_id': utilisateur_id}},
             {'$group': {
-                '_id': {'$hour': '$timestamp'},
+                '_id':   {'$hour': '$timestamp'},
                 'count': {'$sum': 1}
             }},
             {'$sort': {'count': -1}},
@@ -357,48 +362,79 @@ def employe_espace(request):
         hour_result = list(db.acces_logs.aggregate(hour_pipeline))
         if hour_result:
             peak_hour = hour_result[0]['_id']
-            best_time = f"{peak_hour:02d}h00-{peak_hour+1:02d}h00"
-    except:
+            best_time = f"{peak_hour:02d}h00-{(peak_hour + 1):02d}h00"
+    except Exception:
         pass
-    
-    # Taux d'occupation
-    occupancy_rate = 35
+
+    # Taux d'occupation actuel
+    occupancy_rate = 15
     try:
-        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago     = datetime.now() - timedelta(hours=1)
         total_occupation = db.acces_logs.count_documents({'timestamp': {'$gte': one_hour_ago}})
-        occupancy_rate = min(100, round(total_occupation / 10)) if total_occupation > 0 else 15
-    except:
+        occupancy_rate   = min(100, round(total_occupation / 10 * 100)) if total_occupation > 0 else 15
+    except Exception:
         pass
-    
-    # Bureaux disponibles
+
+    # ── Notifications non lues ───────────────────────────────────────────────
+    notifs_count = 0
+    try:
+        notifs_count = db.notifications.count_documents({
+            'employe_id': utilisateur_id_str,   # string, pas ObjectId
+            'status':     {'$ne': 'lu'}          # tout ce qui n'est pas 'lu'
+    })
+    except Exception:
+        notifs_count = 0
+
+    # ── Bureaux (formulaire réservation) ─────────────────────────────────────
     bureaux = list(db.bureaux.find())
     for b in bureaux:
-        b['id'] = str(b['_id'])
+        b['id']           = str(b['_id'])
         b['capacite_max'] = b.get('capacite_max', 10)
-    
-    return render(request, 'dashboard/employe_espace.html', {
-        'employe': employe,
-        'acces': acces,
-        'reservations': reservations,
-        'reservations_a_venir': reservations_a_venir[:5],
-        'total_acces': total_acces,
-        'total_acces_mois': total_acces_mois,
-        'acces_autorises': acces_autorises,
-        'acces_refuses': acces_refuses,
-        'taux_succes': taux_succes,
-        'a_venir': a_venir,
-        'prochaine_resa': prochaine_resa,
-        'bureaux': bureaux,
-        'jours_actifs': jours_actifs_count,
-        'heures_totales': heures_totales,
-        'frequent_day': frequent_day,
-        'recommended_room': recommended_room,
-        'best_time': best_time,
-        'occupancy_rate': occupancy_rate,
-        'now': datetime.now(),
-    })
 
+    return render(request, 'dashboard/employe_espace.html', {
+        'employe':              employe,
+        'acces':                acces,
+        'reservations':         reservations,
+        'reservations_a_venir': reservations_a_venir[:5],
+        'prochaine_resa':       prochaine_resa,
+        'bureaux':              bureaux,
+        # Statistiques
+        'total_acces':          total_acces,
+        'total_acces_mois':     total_acces_mois,
+        'acces_autorises':      acces_autorises,
+        'acces_refuses':        acces_refuses,
+        'taux_succes':          taux_succes,
+        'jours_actifs':         jours_actifs_count,
+        'heures_totales':       heures_totales,
+        'a_venir':              a_venir,
+        # Suggestions
+        'frequent_day':         frequent_day,
+        'recommended_room':     recommended_room,
+        'best_time':            best_time,
+        'occupancy_rate':       occupancy_rate,
+        # Notifications
+        'notifs_count':         notifs_count,
+        # Divers
+        'now':                  datetime.now(),
+    })
 # dashboard/views.py - Modifiez la fonction employe_mes_reservations
+@login_required
+def api_employe_notif_unread_count(request):
+    from django.http import JsonResponse
+    if request.user.is_staff or request.user.is_superuser:
+        return JsonResponse({'count': 0})
+    
+    employe = db.employees.find_one({'django_user_id': request.user.id})
+    if not employe:
+        employe = db.employees.find_one({'django_username': request.user.username})
+    if not employe:
+        return JsonResponse({'count': 0})
+    
+    count = db.notifications.count_documents({
+        'employe_id': str(employe['_id']),
+        'status':     {'$ne': 'lu'}
+    })
+    return JsonResponse({'count': count})
 @login_required
 def employe_mes_reservations(request):
     if request.user.is_staff:
@@ -636,19 +672,28 @@ def employe_mes_reservations(request):
         r.setdefault('qr_code', None)
 
     now = datetime.now()
-    actives = sum(
-        1 for r in reservations
-        if r.get('statut') == 'confirmee'
-        and r.get('date_debut') and r.get('date_fin')
-        and r['date_debut'] <= now <= r['date_fin']
-    )
-    a_venir = sum(
-        1 for r in reservations
-        if r.get('statut') == 'confirmee'
-        and r.get('date_debut') and r['date_debut'] > now
-    )
-    en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+    employe_id_str = str(employe['_id'])
 
+    # Comptage direct MongoDB — plus fiable que la liste Python
+    total_confirmees = db.reservations.count_documents({
+        'employe_id': employe_id_str,
+        'statut':     'confirmee'
+    })
+    a_venir = db.reservations.count_documents({
+        'employe_id': employe_id_str,
+        'statut':     'confirmee',
+        'date_debut': {'$gt': now}
+    })
+    actives = db.reservations.count_documents({
+        'employe_id': employe_id_str,
+        'statut':     'confirmee',
+        'date_debut': {'$lte': now},
+        'date_fin':   {'$gte': now}
+    })
+    en_attente = db.reservations.count_documents({
+        'employe_id': employe_id_str,
+        'statut':     'en_attente'
+})
     bureaux = list(db.bureaux.find())
     for b in bureaux:
         b['id']           = str(b['_id'])
@@ -682,6 +727,7 @@ def employe_mes_reservations(request):
         'a_venir':           a_venir,
         'en_attente':        en_attente,
         'reservations_json': reservations_json,
+        'total_confirmees':  total_confirmees,
     })
 @login_required
 def employe_annuler_reservation(request, reservation_id):
@@ -758,9 +804,491 @@ def employe_annuler_reservation(request, reservation_id):
             messages.error(request, f"Erreur: {str(e)}")
     
     return redirect('employe_mes_reservations')
+# ═══════════════════════════════════════════════════════════════
+#  EXPORT CSV — RÉSERVATIONS
+# ═══════════════════════════════════════════════════════════════
+import csv
+from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
+from datetime import datetime
+
+@login_required
+def reservations_export_csv(request):
+    if request.user.is_staff:
+        return redirect('dashboard')
+
+    # ── Même logique que employe_mes_reservations ──────────────
+    employe = db.employees.find_one({'django_user_id': request.user.id}) \
+              or db.employees.find_one({'django_username': request.user.username})
+
+    if not employe:
+        return HttpResponse("Profil employé introuvable.", status=403)
+
+    reservations = list(
+        db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1)
+    )
+
+    now_str  = datetime.now().strftime('%Y%m%d_%H%M')
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="Reservations_{now_str}.csv"'
+    response.write('\ufeff')  # BOM UTF-8 pour Excel
+
+    writer = csv.writer(response)
+    writer.writerow([
+        'Titre', 'Salle / Ressource', 'Type',
+        'Début', 'Fin', 'Participants', 'Statut', 'Description', 'Créé le'
+    ])
+
+    for r in reservations:
+        debut    = r.get('date_debut')
+        fin      = r.get('date_fin')
+        created  = r.get('created_at')
+        writer.writerow([
+            r.get('titre', ''),
+            r.get('bureau_nom', r.get('materiel_nom', '—')),
+            r.get('resource_type', 'salle'),
+            debut.strftime('%d/%m/%Y %H:%M')   if hasattr(debut,   'strftime') else '—',
+            fin.strftime('%d/%m/%Y %H:%M')     if hasattr(fin,     'strftime') else '—',
+            r.get('nb_participants', 1),
+            r.get('statut', ''),
+            r.get('description', ''),
+            created.strftime('%d/%m/%Y %H:%M') if hasattr(created, 'strftime') else '—',
+        ])
+
+    return response
 
 
+# ═══════════════════════════════════════════════════════════════
+#  EXPORT PDF — RÉSERVATIONS
+# ═══════════════════════════════════════════════════════════════
+from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    HRFlowable, KeepTogether
+)
+from reportlab.platypus.flowables import Flowable
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.pdfgen import canvas as rl_canvas
+import io
+from datetime import datetime
 
+C_BLUE_DARK  = colors.HexColor('#0f172a')
+C_BLUE_MAIN  = colors.HexColor('#1d4ed8')
+C_BLUE_LIGHT = colors.HexColor('#dbeafe')
+C_BLUE_MID   = colors.HexColor('#3b82f6')
+C_PURPLE     = colors.HexColor('#7c3aed')
+C_GREEN      = colors.HexColor('#059669')
+C_AMBER      = colors.HexColor('#d97706')
+C_RED        = colors.HexColor('#dc2626')
+C_GREY_LIGHT = colors.HexColor('#f8fafc')
+C_GREY_MID   = colors.HexColor('#e2e8f0')
+C_GREY_TEXT  = colors.HexColor('#64748b')
+C_WHITE      = colors.white
+C_BLACK      = colors.HexColor('#0f172a')
+
+
+class _NumberedCanvas(rl_canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        n = len(self._saved_page_states)
+        for i, state in enumerate(self._saved_page_states):
+            self.__dict__.update(state)
+            self._draw_footer(i + 1, n)
+            rl_canvas.Canvas.showPage(self)
+        rl_canvas.Canvas.save(self)
+
+    def _draw_footer(self, page_num, total):
+        w, _ = A4
+        self.setFillColor(C_GREY_TEXT)
+        self.setFont('Helvetica', 8)
+        self.drawCentredString(w / 2, 1.2 * cm,
+            f"Page {page_num} / {total}  —  SIGR-CA — Document confidentiel")
+        self.setStrokeColor(C_GREY_MID)
+        self.setLineWidth(0.5)
+        self.line(2*cm, 1.6*cm, w - 2*cm, 1.6*cm)
+
+
+class _ColorBand(Flowable):
+    def __init__(self, text, width, height=0.9*cm,
+                 bg=C_BLUE_DARK, fg=C_WHITE, font_size=11):
+        super().__init__()
+        self.text = text
+        self.band_width = width
+        self.band_height = height
+        self.bg = bg; self.fg = fg; self.font_size = font_size
+
+    def wrap(self, *args):
+        return self.band_width, self.band_height
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(self.bg)
+        c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+        c.setFillColor(self.fg)
+        c.setFont('Helvetica-Bold', self.font_size)
+        c.drawString(0.4*cm, 0.25*cm, self.text)
+
+
+def _fmt(val):
+    if val is None:
+        return '—'
+    if hasattr(val, 'strftime'):
+        return val.strftime('%d/%m/%Y %H:%M')
+    return str(val)
+
+@login_required
+def reservations_export_pdf(request):
+    """Export PDF réservations — même structure exacte que api_employes_export_pdf."""
+    import io, os, traceback
+    from datetime import datetime
+    from django.http import HttpResponse
+    from django.contrib.staticfiles.finders import find as static_find
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        Image, HRFlowable, KeepTogether,
+    )
+    from reportlab.platypus.flowables import Flowable
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    try:
+        # ── Couleurs ──────────────────────────────────────────────
+        C_BLUE_DARK  = colors.HexColor('#0f172a')
+        C_BLUE_MAIN  = colors.HexColor('#1d4ed8')
+        C_BLUE_LIGHT = colors.HexColor('#dbeafe')
+        C_BLUE_MID   = colors.HexColor('#3b82f6')
+        C_PURPLE     = colors.HexColor('#7c3aed')
+        C_GREEN      = colors.HexColor('#059669')
+        C_AMBER      = colors.HexColor('#d97706')
+        C_RED        = colors.HexColor('#dc2626')
+        C_GREY_LIGHT = colors.HexColor('#f8fafc')
+        C_GREY_MID   = colors.HexColor('#e2e8f0')
+        C_GREY_TEXT  = colors.HexColor('#64748b')
+        C_WHITE      = colors.white
+        C_BLACK      = colors.HexColor('#0f172a')
+
+        # ── Numérotation des pages ────────────────────────────────
+        class NumberedCanvas(rl_canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._saved_page_states = []
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+            def save(self):
+                n = len(self._saved_page_states)
+                for i, state in enumerate(self._saved_page_states):
+                    self.__dict__.update(state)
+                    self._draw_footer(i + 1, n)
+                    rl_canvas.Canvas.showPage(self)
+                rl_canvas.Canvas.save(self)
+            def _draw_footer(self, page_num, total_pages):
+                w, _ = A4
+                self.setFillColor(colors.HexColor('#64748b'))
+                self.setFont('Helvetica', 8)
+                self.drawCentredString(w / 2, 1.2 * cm,
+                    f"Page {page_num} / {total_pages}  —  SIGR-CA — Document confidentiel")
+                self.setStrokeColor(colors.HexColor('#e2e8f0'))
+                self.setLineWidth(0.5)
+                self.line(2 * cm, 1.6 * cm, w - 2 * cm, 1.6 * cm)
+
+        # ── Bande colorée ─────────────────────────────────────────
+        class ColorBand(Flowable):
+            def __init__(self, text, width, height=0.9*cm,
+                         bg=None, fg=None, font_size=11):
+                super().__init__()
+                self.text       = text
+                self.band_width  = width
+                self.band_height = height
+                self.bg         = bg or colors.HexColor('#0f172a')
+                self.fg         = fg or colors.white
+                self.font_size  = font_size
+            def wrap(self, *args):
+                return self.band_width, self.band_height
+            def draw(self):
+                c = self.canv
+                c.setFillColor(self.bg)
+                c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+                c.setFillColor(self.fg)
+                c.setFont('Helvetica-Bold', self.font_size)
+                c.drawString(0.4 * cm, 0.25 * cm, self.text)
+
+        # ── hex_color helper (identique à export employés) ────────
+        def hex_color(c):
+            try:
+                return f'{int(c.red*255):02x}{int(c.green*255):02x}{int(c.blue*255):02x}'
+            except Exception:
+                return '0f172a'
+
+        # ── Données ───────────────────────────────────────────────
+        employe = (
+            db.employees.find_one({'django_user_id': request.user.id})
+            or db.employees.find_one({'django_username': request.user.username})
+        )
+        if not employe:
+            return HttpResponse("Profil employé introuvable.", status=403)
+
+        emp_nom = f"{employe.get('prenom', '')} {employe.get('nom', '')}".strip()
+
+        reservations = list(
+            db.reservations.find({'employe_id': str(employe['_id'])})
+            .sort('date_debut', -1)
+        )
+
+        now_str   = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file = datetime.now().strftime('%Y%m%d_%H%M')
+
+        # ── Document ──────────────────────────────────────────────
+        buffer    = io.BytesIO()
+        PAGE_W, _ = A4
+        CONTENT_W = PAGE_W - 4 * cm   # 17 cm exactement
+
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title=f"Réservations — {emp_nom}",
+            author="SIGR-CA Système",
+        )
+
+        # ── Styles ────────────────────────────────────────────────
+        _sty = {}
+        def ps(name, **kw):
+            base = kw.pop('parent', 'Normal')
+            sheet = getSampleStyleSheet()
+            parent = _sty.get(base) or sheet.get(base, sheet['Normal'])
+            p = ParagraphStyle(name, parent=parent, **kw)
+            _sty[name] = p
+            return p
+
+        th       = ps('TH',  fontName='Helvetica-Bold', fontSize=9,
+                       textColor=C_WHITE, alignment=TA_CENTER, leading=12)
+        th_left  = ps('THL', parent='TH', alignment=TA_LEFT)
+        td       = ps('TD',  fontSize=9, alignment=TA_CENTER, leading=12, textColor=C_BLACK)
+        td_left  = ps('TDL', parent='TD', alignment=TA_LEFT)
+        td_mono  = ps('TDM', parent='TD', fontSize=8, fontName='Courier')
+        sec_sty  = ps('SEC', fontName='Helvetica-Bold', fontSize=12,
+                       textColor=C_PURPLE, spaceBefore=20, spaceAfter=8, leading=16)
+        foot_sty = ps('FOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                       alignment=TA_CENTER, leading=11)
+
+        _NO_PAD = TableStyle([
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 1),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 1),
+        ])
+
+        elements = []
+
+        # ════════════════════════════════════════════
+        #  EN-TÊTE  (identique à export employés)
+        # ════════════════════════════════════════════
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_tbl = Table([
+            [Paragraph('<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                       ps('LT', fontSize=22, leading=26, alignment=TA_LEFT))],
+            [Paragraph("Système Intégré de Gestion des Ressources<br/>"
+                       "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                       ps('LS', fontSize=9, leading=13,
+                          textColor=C_GREY_TEXT, alignment=TA_LEFT))],
+        ], colWidths=[11*cm])
+        title_tbl.setStyle(_NO_PAD)
+
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=2.6*cm)
+        else:
+            logo_cell = Paragraph('<font color="#1d4ed8"><b>SIGR</b></font>',
+                                  ps('FL', fontSize=18, alignment=TA_RIGHT))
+
+        meta_tbl = Table([
+            [Paragraph(f"<b>Employé :</b> {emp_nom}",
+                       ps('M0', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Date :</b> {now_str}",
+                       ps('M1', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Réservations :</b> {len(reservations)}",
+                       ps('M2', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M3', fontSize=8, textColor=C_RED, alignment=TA_RIGHT))],
+        ], colWidths=[4.5*cm])
+        meta_tbl.setStyle(_NO_PAD)
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0),(-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 2),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 2),
+        ]))
+
+        # colWidths : 12.5 + 4.5 = 17cm = CONTENT_W ✓
+        header_tbl = Table([[title_tbl, right_col]],
+                           colWidths=[12.5*cm, 4.5*cm])
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0),(-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 0),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2,
+                                   color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+        elements.append(ColorBand(
+            f"  MES RÉSERVATIONS — {emp_nom.upper()}",
+            CONTENT_W, height=1.1*cm,
+            bg=C_BLUE_DARK, fg=C_WHITE, font_size=12,
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  TABLEAU PRINCIPAL
+        # ════════════════════════════════════════════
+        elements.append(KeepTogether([Paragraph('Liste des réservations', sec_sty)]))
+
+        STATUT_MAP = {
+            'confirmee':  ('#059669', '✔ Confirmée'),
+            'en_attente': ('#d97706', '⏳ En attente'),
+            'annulee':    ('#dc2626', '✖ Annulée'),
+            'terminee':   ('#64748b', '■ Terminée'),
+        }
+
+        # colWidths : 4.3+3.2+2.7+2.7+1.3+2.8 = 17cm = CONTENT_W ✓
+        col_widths = [4.3*cm, 3.2*cm, 2.7*cm, 2.7*cm, 1.3*cm, 2.8*cm]
+        data = [[
+            Paragraph('Titre',  th_left),
+            Paragraph('Salle',  th),
+            Paragraph('Début',  th),
+            Paragraph('Fin',    th),
+            Paragraph('Part.',  th),
+            Paragraph('Statut', th),
+        ]]
+
+        for r in reservations:
+            statut = r.get('statut', '')
+            color, label = STATUT_MAP.get(statut, ('#64748b', statut))
+            bureau = r.get('bureau_nom') or r.get('materiel_nom') or '—'
+            debut  = r.get('date_debut')
+            fin    = r.get('date_fin')
+            data.append([
+                Paragraph(f"<b>{r.get('titre') or '—'}</b>", td_left),
+                Paragraph(str(bureau), td),
+                Paragraph(debut.strftime('%d/%m/%Y %H:%M') if hasattr(debut,'strftime') else '—', td_mono),
+                Paragraph(fin.strftime('%d/%m/%Y %H:%M')   if hasattr(fin,  'strftime') else '—', td_mono),
+                Paragraph(str(r.get('nb_participants', 1)), td),
+                Paragraph(f'<font color="{color}"><b>{label}</b></font>', td),
+            ])
+
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0,0), (-1,0),   C_BLUE_MAIN),
+            ('TEXTCOLOR',      (0,0), (-1,0),   C_WHITE),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1),  [C_WHITE, C_BLUE_LIGHT]),
+            ('GRID',           (0,0), (-1,-1),  0.4, C_GREY_MID),
+            ('LINEBELOW',      (0,0), (-1,0),   1.5, C_BLUE_MAIN),
+            ('TOPPADDING',     (0,0), (-1,0),   10),
+            ('BOTTOMPADDING',  (0,0), (-1,0),   10),
+            ('TOPPADDING',     (0,1), (-1,-1),  7),
+            ('BOTTOMPADDING',  (0,1), (-1,-1),  7),
+            ('LEFTPADDING',    (0,0), (-1,-1),  7),
+            ('VALIGN',         (0,0), (-1,-1),  'MIDDLE'),
+            ('BOX',            (0,0), (-1,-1),  1, C_BLUE_MID),
+        ]))
+        elements.append(tbl)
+
+        # ════════════════════════════════════════════
+        #  RÉSUMÉ STATISTIQUE — tableau plat, SANS Spacer en cellule
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1*cm))
+        elements.append(Paragraph('Résumé statistique', sec_sty))
+
+        total      = len(reservations)
+        confirmees = sum(1 for r in reservations if r.get('statut') == 'confirmee')
+        en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+        annulees   = sum(1 for r in reservations if r.get('statut') == 'annulee')
+        terminees  = sum(1 for r in reservations if r.get('statut') == 'terminee')
+        salles     = sum(1 for r in reservations if r.get('resource_type','salle') == 'salle')
+        materiels  = sum(1 for r in reservations if r.get('resource_type') == 'materiel')
+
+        def stat_row(label, value, value_color=C_BLACK):
+            hv = hex_color(value_color)
+            return [
+                Paragraph(label, ps(f'SL{label[:4]}', fontSize=9,
+                                    textColor=C_GREY_TEXT, alignment=TA_LEFT)),
+                Paragraph(f'<font color="#{hv}"><b>{value}</b></font>',
+                          ps(f'SV{label[:4]}', fontSize=10,
+                             alignment=TA_RIGHT, fontName='Helvetica-Bold')),
+            ]
+
+        # Un seul tableau plat — colWidths : 10 + 7 = 17cm = CONTENT_W ✓
+        stats_data = [
+            stat_row('Total réservations',  str(total)),
+            stat_row('Confirmées',          str(confirmees),  C_GREEN),
+            stat_row('En attente',          str(en_attente),  C_AMBER),
+            stat_row('Annulées',            str(annulees),    C_RED),
+            stat_row('Terminées',           str(terminees),   C_GREY_TEXT),
+            stat_row('Salles réservées',    str(salles)),
+            stat_row('Matériels réservés',  str(materiels)),
+        ]
+
+        stats_tbl = Table(stats_data, colWidths=[10*cm, 7*cm])
+        stats_tbl.setStyle(TableStyle([
+            ('ROWBACKGROUNDS', (0,0),(-1,-1), [C_WHITE, C_GREY_LIGHT]),
+            ('GRID',           (0,0),(-1,-1), 0.4, C_GREY_MID),
+            ('TOPPADDING',     (0,0),(-1,-1), 7),
+            ('BOTTOMPADDING',  (0,0),(-1,-1), 7),
+            ('LEFTPADDING',    (0,0),(-1,-1), 10),
+            ('RIGHTPADDING',   (0,0),(-1,-1), 10),
+            ('VALIGN',         (0,0),(-1,-1), 'MIDDLE'),
+            ('BOX',            (0,0),(-1,-1), 1, C_GREY_MID),
+        ]))
+        elements.append(stats_tbl)
+
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE DOCUMENT
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1.2*cm))
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=C_GREY_MID, spaceAfter=6))
+        elements.append(Paragraph(
+            f"Document généré automatiquement le <b>{now_str}</b> par le système SIGR-CA.",
+            foot_sty))
+        elements.append(Paragraph(
+            "Ce document est <b>confidentiel</b> et destiné à un usage interne uniquement.",
+            ps('CF2', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_CENTER, leading=10)))
+
+        doc.build(elements, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="Reservations_{emp_nom.replace(" ","_")}_{date_file}.pdf"')
+        return response
+
+    except Exception as e:
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain', status=500)
 @login_required
 def employe_mon_historique(request):
     if request.user.is_staff:
@@ -6675,21 +7203,21 @@ def employe_profil(request):
     """Modification du profil employé"""
     if request.user.is_staff:
         return redirect('dashboard')
-    
+
     from datetime import datetime, timedelta
-    
+
     # Récupérer l'employé
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
-    
+
     if not employe:
         messages.error(request, "Profil employé introuvable.")
         return redirect('login')
-    
+
     employe['id'] = str(employe['_id'])
     utilisateur_id = employe['_id']
-    
+
     # === STATISTIQUES ===
     total_acces = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id})
     acces_autorises = db.acces_logs.count_documents({
@@ -6697,47 +7225,47 @@ def employe_profil(request):
         'resultat': 'AUTORISE'
     })
     acces_refuses = total_acces - acces_autorises
-    taux_succes = round((acces_autorises / total_acces * 100) if total_acces > 0 else 0, 1)
+    taux_succes = round(min(100, (acces_autorises / total_acces * 100)) if total_acces > 0 else 0, 1)
     reservations_count = db.reservations.count_documents({'employe_id': str(employe['_id'])})
-    
+
     # Accès du mois
     start_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     acces_mois = db.acces_logs.count_documents({
         'utilisateur_id': utilisateur_id,
         'timestamp': {'$gte': start_month}
     })
-    
+
     # Dernier accès
     dernier_acces_doc = db.acces_logs.find_one(
         {'utilisateur_id': utilisateur_id},
         sort=[('timestamp', -1)]
     )
     dernier_acces = dernier_acces_doc['timestamp'] if dernier_acces_doc else None
-    
+
     # Jours actifs
     try:
         pipeline = [
             {'$match': {'utilisateur_id': utilisateur_id}},
             {'$group': {
                 '_id': {
-                    'year': {'$year': '$timestamp'},
-                    'month': {'$month': '$timestamp'},
-                    'day': {'$dayOfMonth': '$timestamp'}
+                    'year':  {'$year':        '$timestamp'},
+                    'month': {'$month':       '$timestamp'},
+                    'day':   {'$dayOfMonth':  '$timestamp'}
                 }
             }},
             {'$count': 'total_days'}
         ]
         result = list(db.acces_logs.aggregate(pipeline))
         jours_actifs = result[0]['total_days'] if result else 0
-    except:
+    except Exception:
         jours_actifs = 0
-    
+
     # Préférences
     preferences = employe.get('preferences_notifications', {})
     if not preferences:
         preferences = {'email': True, 'rappel': True}
-    
-    # Récupérer les sessions actives de l'utilisateur
+
+    # Sessions actives
     active_sessions = []
     try:
         from dashboard.models import UserSession
@@ -6746,28 +7274,30 @@ def employe_profil(request):
             is_active=True,
             logout_time__isnull=True
         ).order_by('-last_activity')
-        
+
         for session in sessions:
             active_sessions.append({
-                'id': session.id,
-                'device_type': session.device_type or 'desktop',
-                'ip_address': session.ip_address or '—',
-                'login_time': session.login_time.strftime('%d/%m/%Y %H:%M:%S'),
+                'id':            session.id,
+                'device_type':   session.device_type or 'desktop',
+                'ip_address':    session.ip_address or '—',
+                'login_time':    session.login_time.strftime('%d/%m/%Y %H:%M:%S'),
                 'last_activity': session.last_activity.strftime('%d/%m/%Y %H:%M:%S'),
-                'is_current': session.session_key == request.session.session_key
+                'is_current':    session.session_key == request.session.session_key
             })
-    except:
+    except Exception:
         active_sessions = []
-    
-    # Traitement POST
+
+    # ============================================================
+    # TRAITEMENT POST
+    # ============================================================
     if request.method == 'POST':
-        # Vérifier quelle action est demandée
+
+        # ── Changement de mot de passe ───────────────────────────
         if 'change_password' in request.POST:
-            # Changement de mot de passe
-            old_password = request.POST.get('old_password', '')
+            old_password  = request.POST.get('old_password', '')
             new_password1 = request.POST.get('new_password1', '')
             new_password2 = request.POST.get('new_password2', '')
-            
+
             if not request.user.check_password(old_password):
                 messages.error(request, "L'ancien mot de passe est incorrect.")
             elif len(new_password1) < 6:
@@ -6780,19 +7310,19 @@ def employe_profil(request):
                 from django.contrib.auth import update_session_auth_hash
                 update_session_auth_hash(request, request.user)
                 messages.success(request, "Mot de passe changé avec succès.")
-            
+
             return redirect('employe_profil')
-        
+
+        # ── Mise à jour des préférences ──────────────────────────
         elif 'update_preferences' in request.POST:
-            # Mise à jour des préférences
-            notif_email = request.POST.get('notif_email') == 'on'
+            notif_email  = request.POST.get('notif_email')  == 'on'
             notif_rappel = request.POST.get('notif_rappel') == 'on'
-            
+
             db.employees.update_one(
                 {'_id': employe['_id']},
                 {'$set': {
                     'preferences_notifications': {
-                        'email': notif_email,
+                        'email':  notif_email,
                         'rappel': notif_rappel
                     },
                     'updated_at': datetime.now()
@@ -6800,62 +7330,77 @@ def employe_profil(request):
             )
             messages.success(request, "Préférences mises à jour.")
             return redirect('employe_profil')
-        
+
+        # ── Mise à jour du profil (infos + photo) ────────────────
         else:
-            # Mise à jour du profil
             try:
-                prenom = request.POST.get('prenom', '').strip()
-                nom = request.POST.get('nom', '').strip()
-                email = request.POST.get('email', '').strip()
-                telephone = request.POST.get('telephone', '').strip()
-                poste = request.POST.get('poste', '').strip()
+                prenom      = request.POST.get('prenom', '').strip()
+                nom         = request.POST.get('nom', '').strip()
+                email       = request.POST.get('email', '').strip()
+                telephone   = request.POST.get('telephone', '').strip()
+                poste       = request.POST.get('poste', '').strip()
                 departement = request.POST.get('departement', '').strip()
-                
+
                 if not prenom or not nom:
                     messages.error(request, "Le nom et le prénom sont requis.")
                     return redirect('employe_profil')
-                
+
                 update_data = {
-                    'nom': nom,
-                    'prenom': prenom,
-                    'email': email,
-                    'telephone': telephone,
-                    'poste': poste,
+                    'nom':         nom,
+                    'prenom':      prenom,
+                    'email':       email,
+                    'telephone':   telephone,
+                    'poste':       poste,
                     'departement': departement,
-                    'updated_at': datetime.now()
+                    'updated_at':  datetime.now()
                 }
-                
+
+                # Photo de profil
+                if 'photo' in request.FILES:
+                    import base64 as b64mod
+                    photo_file = request.FILES['photo']
+                    if photo_file.size > 2 * 1024 * 1024:
+                        messages.error(request, "La photo ne doit pas dépasser 2 Mo.")
+                        return redirect('employe_profil')
+                    allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+                    if photo_file.content_type not in allowed:
+                        messages.error(request, "Format accepté : JPG, PNG, WEBP.")
+                        return redirect('employe_profil')
+                    photo_b64 = b64mod.b64encode(photo_file.read()).decode('utf-8')
+                    update_data['photo'] = f"data:{photo_file.content_type};base64,{photo_b64}"
+
                 db.employees.update_one({'_id': employe['_id']}, {'$set': update_data})
-                
-                # Mettre à jour l'utilisateur Django
+
                 user = request.user
                 user.first_name = prenom
-                user.last_name = nom
-                user.email = email
+                user.last_name  = nom
+                user.email      = email
                 user.save()
-                
+
                 messages.success(request, "Profil mis à jour avec succès.")
-                
+
             except Exception as e:
                 messages.error(request, f"Erreur: {str(e)}")
-            
-            return redirect('employe_profil')
-    
-    return render(request, 'dashboard/employe_profil.html', {
-        'employe': employe,
-        'user': request.user,
-        'total_acces': total_acces,
-        'acces_autorises': acces_autorises,
-        'acces_refuses': acces_refuses,
-        'taux_succes': taux_succes,
-        'reservations_count': reservations_count,
-        'acces_mois': acces_mois,
-        'jours_actifs': jours_actifs,
-        'dernier_acces': dernier_acces,
-        'preferences': preferences,
-        'active_sessions': active_sessions,
-    })
 
+            return redirect('employe_profil')
+
+    # ============================================================
+    # AFFICHAGE GET
+    # ============================================================
+    return render(request, 'dashboard/employe_profil.html', {
+        'employe':           employe,
+        'user':              request.user,
+        'total_acces':       total_acces,
+        'acces_autorises':   acces_autorises,
+        'acces_refuses':     acces_refuses,
+        'taux_succes':       taux_succes,
+        'reservations_count': reservations_count,
+        'acces_mois':        acces_mois,
+        'jours_actifs':      jours_actifs,
+        'dernier_acces':     dernier_acces,
+        'preferences':       preferences,
+        'active_sessions':   active_sessions,
+    })
 @login_required
 def employe_change_password(request):
     """Changer le mot de passe de l'employé - Version améliorée"""
@@ -8212,79 +8757,291 @@ def api_hour_stats(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
         # ====================== PLAN DES ZONES ======================
-
 @login_required
 def employe_plan_zones(request):
-    """Plan interactif des zones et bureaux"""
+    """Plan interactif des zones et matériels — côté employé"""
     if request.user.is_staff:
         return redirect('dashboard')
-    
+
+    from datetime import datetime, timedelta
+
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
-    
-    # Récupérer toutes les zones
+
+    now = datetime.now()
+
+    # ═══════════════════════════════════════════════════════════════
+    # ZONES / BUREAUX
+    # ═══════════════════════════════════════════════════════════════
     bureaux = list(db.bureaux.find())
     for b in bureaux:
         b['id'] = str(b['_id'])
-        b['capacite_max'] = b.get('capacite_max', 10)
-        
-        # Calculer occupation en temps réel
-        one_hour_ago = datetime.now() - timedelta(hours=1)
-        recent = db.acces_logs.count_documents({
+
+        # Activité sur la dernière heure
+        one_hour_ago = now - timedelta(hours=1)
+        recent_acces = db.acces_logs.count_documents({
             'bureau_id': b['_id'],
             'timestamp': {'$gte': one_hour_ago}
         })
-        b['occupation'] = min(recent, b['capacite_max'])
-        b['taux_occupation'] = round((b['occupation'] / b['capacite_max'] * 100), 1) if b['capacite_max'] > 0 else 0
-    
-    # Niveaux/étages
-    etages = sorted(set(b.get('etage', 0) for b in bureaux))
-    
-    return render(request, 'dashboard/employe_plan_zones.html', {
-        'employe': employe,
-        'bureaux': bureaux,
-        'etages': etages,
-        'user': request.user,
-    })
-    # ====================== BADGE VIRTUEL ======================
+        b['acces_recents'] = recent_acces
 
+        # Niveau d'activité
+        if recent_acces == 0:
+            b['niveau'] = 'low'
+        elif recent_acces <= 5:
+            b['niveau'] = 'mid'
+        else:
+            b['niveau'] = 'high'
+
+        # Dernière activité
+        last_log = db.acces_logs.find_one(
+            {'bureau_id': b['_id']},
+            sort=[('timestamp', -1)]
+        )
+        b['derniere_activite'] = last_log['timestamp'].strftime('%d/%m %H:%M') if last_log else None
+
+        # Réservations actives en ce moment
+        b['reservations_actives'] = db.reservations.count_documents({
+            'bureau_id': b['_id'],
+            'statut':    'confirmee',
+            'date_debut': {'$lte': now},
+            'date_fin':   {'$gte': now},
+        })
+
+        # Prochaine réservation
+        next_resa = db.reservations.find_one(
+            {'bureau_id': b['_id'], 'statut': 'confirmee', 'date_debut': {'$gt': now}},
+            sort=[('date_debut', 1)]
+        )
+        b['prochaine_resa'] = next_resa['date_debut'].strftime('%d/%m à %H:%M') if next_resa else None
+
+        # Accès du jour (depuis minuit)
+        start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        b['acces_jour'] = db.acces_logs.count_documents({
+            'bureau_id': b['_id'],
+            'timestamp': {'$gte': start_today}
+        })
+
+        b.setdefault('type_zone',       'Salle')
+        b.setdefault('niveau_securite', 'Standard')
+        b.setdefault('responsable',     None)
+        b.setdefault('etage',           0)
+        b.setdefault('equipements',     [])
+        b.setdefault('description',     '')
+        b.setdefault('code_bureau',     '')
+
+    etages = sorted(set(b.get('etage', 0) for b in bureaux))
+
+    # ═══════════════════════════════════════════════════════════════
+    # MATÉRIELS
+    # ═══════════════════════════════════════════════════════════════
+    if 'materiels' not in db.list_collection_names():
+        db.create_collection('materiels')
+
+    materiels = list(db.materiels.find())
+    for m in materiels:
+        m['id'] = str(m['_id'])
+
+        # ── Normalisation de la photo ────────────────────────────
+        photo = m.get('photo') or ''
+        if photo and not photo.startswith('data:'):
+            # Détection du type MIME via les premiers octets base64
+            if photo.startswith('/9j') or photo.startswith('FFD8') or photo.startswith('ffd8'):
+                mime = 'image/jpeg'
+            elif photo.startswith('iVBOR'):
+                mime = 'image/png'
+            elif photo.startswith('R0lG'):
+                mime = 'image/gif'
+            elif photo.startswith('UklG') or photo.startswith('AAAA'):
+                mime = 'image/webp'
+            else:
+                mime = 'image/jpeg'  # fallback
+            photo = f'data:{mime};base64,{photo}'
+        m['photo'] = photo
+        # ─────────────────────────────────────────────────────────
+
+        # Réservation active en ce moment sur ce matériel
+        m['reservation_active'] = db.reservations.count_documents({
+            'materiel_id': m['_id'],
+            'statut':      'confirmee',
+            'date_debut':  {'$lte': now},
+            'date_fin':    {'$gte': now},
+        })
+
+        # Prochaine réservation du matériel
+        next_m = db.reservations.find_one(
+            {'materiel_id': m['_id'], 'statut': 'confirmee', 'date_debut': {'$gt': now}},
+            sort=[('date_debut', 1)]
+        )
+        m['prochaine_resa'] = next_m['date_debut'].strftime('%d/%m à %H:%M') if next_m else None
+
+        m.setdefault('statut',         'disponible')
+        m.setdefault('categorie',      'autre')
+        m.setdefault('description',    '')
+        m.setdefault('zone',           '')
+        m.setdefault('marque',         '')
+        m.setdefault('modele',         '')
+        m.setdefault('processeur',     '')
+        m.setdefault('ram',            '')
+        m.setdefault('stockage',       '')
+        m.setdefault('os',             '')
+        m.setdefault('ecran',          '')
+        m.setdefault('num_inventaire', '')
+
+    categories_mat = sorted(set(m.get('categorie', 'autre') for m in materiels))
+
+    # ═══════════════════════════════════════════════════════════════
+    # STATISTIQUES GLOBALES
+    # ═══════════════════════════════════════════════════════════════
+    total_zones   = len(bureaux)
+    zones_libres  = sum(1 for b in bureaux if b['niveau'] == 'low')
+    zones_moderes = sum(1 for b in bureaux if b['niveau'] == 'mid')
+    zones_actives = sum(1 for b in bureaux if b['niveau'] == 'high')
+    total_acces_h = sum(b['acces_recents'] for b in bureaux)
+
+    total_materiels  = len(materiels)
+    mat_disponibles  = sum(1 for m in materiels if m['statut'] == 'disponible' and m['reservation_active'] == 0)
+    mat_utilises     = sum(1 for m in materiels if m['reservation_active'] > 0)
+    mat_maintenance  = sum(1 for m in materiels if m['statut'] in ('maintenance', 'hors_service'))
+
+    return render(request, 'dashboard/employe_plan_zones.html', {
+        'employe':         employe,
+        'bureaux':         bureaux,
+        'etages':          etages,
+        'materiels':       materiels,
+        'categories_mat':  categories_mat,
+        'user':            request.user,
+        'now':             now,
+        # Stats zones
+        'total_zones':     total_zones,
+        'zones_libres':    zones_libres,
+        'zones_moderes':   zones_moderes,
+        'zones_actives':   zones_actives,
+        'total_acces_h':   total_acces_h,
+        # Stats matériels
+        'total_materiels': total_materiels,
+        'mat_disponibles': mat_disponibles,
+        'mat_utilises':    mat_utilises,
+        'mat_maintenance': mat_maintenance,
+    })
+    #============= BADGE VIRTUEL ======================#
 @login_required
 def employe_badge_virtuel(request):
-    """Badge virtuel avec QR code permanent"""
+    """Badge virtuel avec QR code, stats d'accès et horaires"""
     if request.user.is_staff:
         return redirect('dashboard')
-    
+
+    from datetime import datetime, timedelta
+
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
-    
     if not employe:
         return redirect('login')
-    
+
     employe['id'] = str(employe['_id'])
-    
-    # Récupérer les zones accessibles
+
+    # ── Photo employé ─────────────────────────────────────────────
+    photo = employe.get('photo') or ''
+    if photo and not photo.startswith('data:'):
+        if photo.startswith('/9j') or photo.startswith('ffd8') or photo.startswith('FFD8'):
+            mime = 'image/jpeg'
+        elif photo.startswith('iVBOR'):
+            mime = 'image/png'
+        elif photo.startswith('R0lG'):
+            mime = 'image/gif'
+        else:
+            mime = 'image/jpeg'
+        photo = f'data:{mime};base64,{photo}'
+    employe['photo'] = photo
+
+    now = datetime.now()
+    emp_id = employe['_id']
+
+    # ── Statistiques d'accès ───────────────────────────────────────
+    total_acces  = db.acces_logs.count_documents({'utilisateur_id': emp_id})
+    total_succes = db.acces_logs.count_documents({'utilisateur_id': emp_id, 'resultat': 'succes'})
+    taux_succes  = round((total_succes / total_acces * 100)) if total_acces > 0 else 0
+
+    start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_week  = now - timedelta(days=7)
+
+    acces_aujourd_hui = db.acces_logs.count_documents({
+        'utilisateur_id': emp_id,
+        'timestamp': {'$gte': start_today},
+    })
+    acces_semaine = db.acces_logs.count_documents({
+        'utilisateur_id': emp_id,
+        'timestamp': {'$gte': start_week},
+    })
+
+    # ── Derniers accès (10 derniers) ───────────────────────────────
+    derniers_acces_raw = list(db.acces_logs.find(
+        {'utilisateur_id': emp_id},
+        sort=[('timestamp', -1)],
+        limit=10,
+    ))
+    derniers_acces = []
+    for log in derniers_acces_raw:
+        bureau = db.bureaux.find_one({'_id': log.get('bureau_id')})
+        derniers_acces.append({
+            'zone':     bureau['nom'] if bureau else 'Zone inconnue',
+            'resultat': log.get('resultat', 'succes'),
+            'heure':    log['timestamp'].strftime('%H:%M'),
+            'date':     log['timestamp'].strftime('%d/%m'),
+        })
+
+    # ── Zones accessibles ──────────────────────────────────────────
     zones_accessibles = list(db.bureaux.find())
     for z in zones_accessibles:
         z['id'] = str(z['_id'])
-    
-    # Horaires d'accès
+        z.setdefault('niveau_securite', 'standard')
+        z.setdefault('description', 'Zone de travail')
+        z.setdefault('etage', 0)
+
+    # ── Validité du badge ──────────────────────────────────────────
+    expiration_year    = 2026
+    badge_expiration   = f'31/12/{expiration_year}'
+    badge_validite_pct = 65
+    date_creation = employe.get('date_creation') or employe.get('date_embauche')
+    if date_creation:
+        try:
+            if hasattr(date_creation, 'year'):
+                total_days = (datetime(expiration_year, 12, 31) - datetime(date_creation.year, 1, 1)).days
+                elapsed    = (now - datetime(date_creation.year, 1, 1)).days
+                badge_validite_pct = min(100, round(elapsed / total_days * 100)) if total_days > 0 else 65
+        except Exception:
+            pass
+
+    # ── Horaires d'accès ───────────────────────────────────────────
     horaires_acces = {
-        'lundi': {'debut': '08:00', 'fin': '18:00'},
-        'mardi': {'debut': '08:00', 'fin': '18:00'},
-        'mercredi': {'debut': '08:00', 'fin': '18:00'},
-        'jeudi': {'debut': '08:00', 'fin': '18:00'},
-        'vendredi': {'debut': '08:00', 'fin': '18:00'},
-        'samedi': {'debut': '09:00', 'fin': '13:00'},
-        'dimanche': {'debut': 'Fermé', 'fin': 'Fermé'},
+        'Lundi':    {'debut': '08:00', 'fin': '18:00', 'ouvert': True},
+        'Mardi':    {'debut': '08:00', 'fin': '18:00', 'ouvert': True},
+        'Mercredi': {'debut': '08:00', 'fin': '18:00', 'ouvert': True},
+        'Jeudi':    {'debut': '08:00', 'fin': '18:00', 'ouvert': True},
+        'Vendredi': {'debut': '08:00', 'fin': '17:00', 'ouvert': True},
+        'Samedi':   {'debut': '09:00', 'fin': '13:00', 'ouvert': True},
+        'Dimanche': {'debut': '—',     'fin': '—',     'ouvert': False},
     }
-    
+    jours_fr  = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+    jour_actuel = jours_fr[now.weekday()]
+
     return render(request, 'dashboard/employe_badge_virtuel.html', {
-        'employe': employe,
-        'zones_accessibles': zones_accessibles,
-        'horaires_acces': horaires_acces,
+        'employe':            employe,
+        'zones_accessibles':  zones_accessibles,
+        'horaires_acces':     horaires_acces,
+        'jour_actuel':        jour_actuel,
+        'derniers_acces':     derniers_acces,
+        'total_acces':        total_acces,
+        'taux_succes':        taux_succes,
+        'acces_aujourd_hui':  acces_aujourd_hui,
+        'acces_semaine':      acces_semaine,
+        'badge_expiration':   badge_expiration,
+        'badge_validite_pct': badge_validite_pct,
+        'now':                now,
     })
+
     # ====================== CENTRE D'AIDE ======================
 
 @login_required
@@ -8438,8 +9195,7 @@ def api_bureau_suggestions(request, bureau_id):
         {'date': 'Jeudi', 'debut': '14:00', 'fin': '15:00', 'taux': 10, 'disponibilite': 'Peu fréquenté'},
     ]
     return JsonResponse({'suggestions': suggestions})
-        # ====================== Chatbot IA ======================
-# dashboard/views.py - Ajoutez ces fonctions
+
 # ====================== Chatbot IA ======================
 import json, re
 from datetime import datetime, timedelta
@@ -8449,9 +9205,6 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import ChatbotConversation, ChatbotMessage
 
 
-
-
-
 @login_required
 def api_chatbot_message(request):
     """API pour le chatbot employé"""
@@ -8459,9 +9212,9 @@ def api_chatbot_message(request):
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     try:
-        data = json.loads(request.body)
-        user_message = data.get('message', '').strip()
-        conversation_id = data.get('conversation_id', '')
+        data             = json.loads(request.body)
+        user_message     = data.get('message', '').strip()
+        conversation_id  = data.get('conversation_id', '')
 
         if not user_message:
             return JsonResponse({'error': 'Message vide'}, status=400)
@@ -8477,7 +9230,7 @@ def api_chatbot_message(request):
         ChatbotMessage.objects.create(
             conversation=conversation,
             role='user',
-            content=user_message
+            content=user_message,
         )
 
         response_data = process_chatbot_message(request.user, user_message, conversation)
@@ -8487,16 +9240,16 @@ def api_chatbot_message(request):
             role='assistant',
             content=response_data['message'],
             intent=response_data.get('intent', ''),
-            entities=response_data.get('entities', {})
+            entities=response_data.get('entities', {}),
         )
 
         return JsonResponse({
-            'status': 'success',
-            'message': response_data['message'],
-            'intent': response_data.get('intent', ''),
-            'data': response_data.get('data', {}),
+            'status':          'success',
+            'message':         response_data['message'],
+            'intent':          response_data.get('intent', ''),
+            'data':            response_data.get('data', {}),
             'conversation_id': conversation.id,
-            'suggestions': response_data.get('suggestions', [])
+            'suggestions':     response_data.get('suggestions', []),
         })
 
     except Exception as e:
@@ -8507,18 +9260,43 @@ def api_chatbot_message(request):
 @login_required
 def api_chatbot_conversations(request):
     """Récupérer l'historique des conversations"""
-    conversations = ChatbotConversation.objects.filter(user=request.user, is_active=True).order_by('-updated_at')[:10]
+    conversations = (
+        ChatbotConversation.objects
+        .filter(user=request.user, is_active=True)
+        .order_by('-updated_at')[:10]
+    )
     data = []
     for conv in conversations:
         last_message = conv.messages.filter(role='assistant').last()
         data.append({
-            'id': conv.id,
-            'created_at': conv.created_at.strftime('%d/%m/%Y %H:%M'),
-            'last_message': last_message.content[:100] if last_message else '',
-            'message_count': conv.messages.count()
+            'id':            conv.id,
+            'created_at':    conv.created_at.strftime('%d/%m/%Y %H:%M'),
+            'last_message':  last_message.content[:100] if last_message else '',
+            'message_count': conv.messages.count(),
         })
     return JsonResponse({'conversations': data})
 
+
+@login_required
+def api_chatbot_conversation_detail(request, conversation_id):
+    """Détail d'une conversation"""
+    try:
+        conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
+        msgs = []
+        for msg in conversation.messages.all():
+            msgs.append({
+                'role':       msg.role,
+                'content':    msg.content,
+                'created_at': msg.created_at.strftime('%H:%M'),
+            })
+        return JsonResponse({'messages': msgs, 'conversation_id': conversation.id})
+    except ChatbotConversation.DoesNotExist:
+        return JsonResponse({'error': 'Conversation non trouvée'}, status=404)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_available_rooms():
     """Liste des salles avec leurs vrais IDs MongoDB."""
@@ -8546,26 +9324,32 @@ def process_chatbot_message(user, message, conversation):
         return _keyword_response(user, message, conversation)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Réponse IA (Gemini)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _ai_response(user, message, conversation):
-    """Gemini + detection bloc d'action pour creer une reservation reelle."""
+    """Gemini + détection bloc d'action pour créer une réservation réelle."""
     import os
     from google import genai
     from google.genai import types
 
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY non configuree")
+        raise RuntimeError("GEMINI_API_KEY non configurée")
 
     client = genai.Client(api_key=api_key)
 
     # Contexte salles
     salles = get_available_rooms()
     if salles:
-        salles_txt = "\n".join([f"- {s['nom']} (id={s['id']}, capacite {s['capacite']})" for s in salles[:10]])
+        salles_txt = "\n".join(
+            [f"- {s['nom']} (id={s['id']}, capacite {s['capacite']})" for s in salles[:10]]
+        )
     else:
         salles_txt = "Aucune salle"
 
-    # Contexte reservations utilisateur
+    # Contexte réservations utilisateur
     mes_resa_txt = "Aucune"
     employe = None
     try:
@@ -8574,50 +9358,59 @@ def _ai_response(user, message, conversation):
         if not employe:
             employe = db.employees.find_one({'django_username': user.username})
         if employe:
-            resa = list(db.reservations.find({'employe_id': str(employe['_id'])}).sort('date_debut', -1).limit(5))
+            resa = list(
+                db.reservations
+                .find({'employe_id': str(employe['_id'])})
+                .sort('date_debut', -1)
+                .limit(5)
+            )
             if resa:
                 lines = []
                 for r in resa:
-                    bid = r.get('bureau_id')
+                    bid    = r.get('bureau_id')
                     bureau = db.bureaux.find_one({'_id': ObjectId(bid) if isinstance(bid, str) else bid}) if bid else None
-                    nom_b = bureau['nom'] if bureau else 'Salle'
-                    date_str = r['date_debut'].strftime('%d/%m %H:%M') if r.get('date_debut') else '?'
-                    lines.append(f"- {r.get('titre','Sans titre')} | {nom_b} | {date_str} | {r.get('statut','?')}")
+                    nom_b  = bureau['nom'] if bureau else 'Salle'
+                    date_s = r['date_debut'].strftime('%d/%m %H:%M') if r.get('date_debut') else '?'
+                    lines.append(
+                        f"- {r.get('titre','Sans titre')} | {nom_b} | {date_s} | {r.get('statut','?')}"
+                    )
                 mes_resa_txt = "\n".join(lines)
     except Exception:
         pass
 
-    prenom = user.first_name or user.username
-    today_iso = datetime.now().strftime('%Y-%m-%d')
+    prenom      = user.first_name or user.username
+    today_iso   = datetime.now().strftime('%Y-%m-%d')
     today_label = datetime.now().strftime('%A %d %B %Y')
 
     system_prompt = (
-        "Tu es l'assistant intelligent de SIGR-CA (gestion d'acces et reservation de salles).\n\n"
+        "Tu es l'assistant intelligent de SIGR-CA (gestion d'accès et réservation de salles).\n\n"
         f"CONTEXTE :\n- Utilisateur : {prenom}\n- Date du jour : {today_label} (ISO: {today_iso})\n\n"
         f"SALLES DISPONIBLES (utilise EXACTEMENT ces noms et ids) :\n{salles_txt}\n\n"
-        f"RESERVATIONS DE L'UTILISATEUR :\n{mes_resa_txt}\n\n"
-        "REGLES :\n"
-        "1. Reponds en francais, tutoie l'utilisateur, sois concis (3-6 lignes), emojis avec parcimonie.\n"
-        "2. Pour reserver, collecte progressivement : salle, date, heure debut, heure fin, nombre de participants.\n"
+        f"RÉSERVATIONS DE L'UTILISATEUR :\n{mes_resa_txt}\n\n"
+        "RÈGLES :\n"
+        "1. Réponds en français, tutoie l'utilisateur, sois concis (3-6 lignes), emojis avec parcimonie.\n"
+        "2. Pour réserver, collecte progressivement : salle, date, heure debut, heure fin, nombre de participants.\n"
         "3. N'invente JAMAIS une salle absente de la liste ci-dessus.\n"
-        "4. Pour annuler, dis d'aller dans Mes reservations.\n\n"
-        "IMPORTANT - CREATION DE RESERVATION :\n"
-        "Des que tu as les 5 champs (salle, date, heure_debut, heure_fin, participants),\n"
-        "tu DOIS terminer ta reponse par un bloc d'action exactement dans ce format :\n\n"
+        "4. Pour annuler, dis d'aller dans Mes réservations.\n"
+        "5. IMPORTANT : les réservations créées sont EN ATTENTE de validation par un administrateur.\n"
+        "   Informe toujours l'utilisateur que sa réservation sera confirmée après validation admin.\n\n"
+        "IMPORTANT - CRÉATION DE RÉSERVATION :\n"
+        "Dès que tu as les 5 champs (salle, date, heure_debut, heure_fin, participants),\n"
+        "tu DOIS terminer ta réponse par un bloc d'action exactement dans ce format :\n\n"
         "```action\n"
         '{"type":"create_reservation","bureau_id":"<id_de_la_salle>","date":"YYYY-MM-DD",'
         '"heure_debut":"HH:MM","heure_fin":"HH:MM","participants":N,"titre":"<titre court>"}\n'
         "```\n\n"
-        f"Exemple pour aujourd'hui de 16h00 a 16h30 :\n"
+        f"Exemple pour aujourd'hui de 16h00 à 16h30 :\n"
         "```action\n"
         '{"type":"create_reservation","bureau_id":"<id_exact_de_la_liste>","date":"'
-        + today_iso + '","heure_debut":"16:00","heure_fin":"16:30","participants":3,"titre":"Reunion"}\n'
+        + today_iso + '","heure_debut":"16:00","heure_fin":"16:30","participants":3,"titre":"Réunion"}\n'
         "```\n\n"
-        "N'inclus le bloc action QUE quand tu as les 5 infos. Sinon continue a demander."
+        "N'inclus le bloc action QUE quand tu as les 5 infos. Sinon continue à demander."
     )
 
-    # Memoire conversationnelle
-    contents = []
+    # Mémoire conversationnelle
+    contents  = []
     last_msgs = list(conversation.messages.order_by('-created_at')[:12])
     last_msgs.reverse()
     for m in last_msgs:
@@ -8635,54 +9428,71 @@ def _ai_response(user, message, conversation):
             max_output_tokens=500,
         ),
     )
-    reply = (response.text or "").strip() or "Je n'ai pas pu generer de reponse."
+    reply = (response.text or "").strip() or "Je n'ai pas pu générer de réponse."
 
-    # Detection du bloc action
+    # ── Détection du bloc action ──────────────────────────────────
     action_match = re.search(r'```action\s*(\{.*?\})\s*```', reply, re.DOTALL)
     if action_match and employe:
         try:
             action_data = json.loads(action_match.group(1))
             if action_data.get('type') == 'create_reservation':
-                ok, info = _create_reservation_from_chat(employe, action_data)
+                ok, info = _create_reservation_from_chat(user, employe, action_data)
+                # Supprimer le bloc technique de la réponse visible
                 clean_reply = re.sub(r'```action\s*\{.*?\}\s*```', '', reply, flags=re.DOTALL).strip()
                 if ok:
-                    reply = clean_reply + "\n\nReservation enregistree avec succes ! Numero : " + info
+                    reply = (
+                        clean_reply +
+                        f"\n\n✅ Demande de réservation envoyée ! (Référence : {info})\n"
+                        "⏳ Elle est actuellement **en attente de validation** par un administrateur. "
+                        "Tu recevras une notification dès qu'elle sera confirmée."
+                    )
                 else:
-                    reply = clean_reply + "\n\nImpossible d'enregistrer : " + info
+                    reply = clean_reply + f"\n\n❌ Impossible d'enregistrer la réservation : {info}"
         except Exception as e:
             import traceback; traceback.print_exc()
             print(f"Erreur parsing action : {e}")
 
     msg_lower = message.lower()
-    if any(k in msg_lower for k in ['reserver', 'salle']):
-        suggestions = ["Mes reservations", "Voir disponibilites", "Aide"]
-    elif 'mes' in msg_lower or 'reservation' in msg_lower:
-        suggestions = ["Nouvelle reservation", "Annuler", "Aide"]
+    if any(k in msg_lower for k in ['réserver', 'reserver', 'salle']):
+        suggestions = ["Mes réservations", "Voir disponibilités", "Aide"]
+    elif 'mes' in msg_lower or 'réservation' in msg_lower or 'reservation' in msg_lower:
+        suggestions = ["Nouvelle réservation", "Annuler", "Aide"]
     else:
-        suggestions = ["Reserver", "Mes reservations", "Aide"]
+        suggestions = ["Réserver", "Mes réservations", "Aide"]
 
     return {
-        'intent': 'ai_gemini',
-        'message': reply,
+        'intent':    'ai_gemini',
+        'message':   reply,
         'suggestions': suggestions,
-        'entities': {'model': 'gemini-2.5-flash'},
+        'entities':  {'model': 'gemini-2.5-flash'},
     }
 
 
-def _create_reservation_from_chat(employe, data):
-    """Cree reellement la reservation en base. Retourne (ok, info)."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Création de réservation depuis le chat
+# STATUT = 'en_attente'  →  l'admin doit valider
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _create_reservation_from_chat(user, employe, data):
+    """
+    Crée la réservation en base avec statut 'en_attente'.
+    Envoie les notifications à l'employé ET aux admins.
+    Retourne (ok: bool, info: str).
+    """
     from bson import ObjectId
+
     try:
         bureau_id_str = str(data.get('bureau_id', '')).strip()
         date_str      = str(data.get('date', '')).strip()
         heure_debut   = str(data.get('heure_debut', '')).strip()
         heure_fin     = str(data.get('heure_fin', '')).strip()
         participants  = int(data.get('participants', 1))
-        titre         = str(data.get('titre', 'Reservation')).strip() or 'Reservation'
+        titre         = str(data.get('titre', 'Réservation')).strip() or 'Réservation'
 
         if not (bureau_id_str and date_str and heure_debut and heure_fin):
-            return False, "informations incompletes"
+            return False, "informations incomplètes"
 
+        # ── Vérification salle ────────────────────────────────────
         try:
             bureau_oid = ObjectId(bureau_id_str)
         except Exception:
@@ -8692,16 +9502,30 @@ def _create_reservation_from_chat(employe, data):
         if not bureau:
             return False, "salle introuvable"
 
-        date_debut = datetime.strptime(f"{date_str} {heure_debut}", '%Y-%m-%d %H:%M')
-        date_fin   = datetime.strptime(f"{date_str} {heure_fin}",   '%Y-%m-%d %H:%M')
+        # ── Parsing dates ─────────────────────────────────────────
+        try:
+            date_debut = datetime.strptime(f"{date_str} {heure_debut}", '%Y-%m-%d %H:%M')
+            date_fin   = datetime.strptime(f"{date_str} {heure_fin}",   '%Y-%m-%d %H:%M')
+        except ValueError:
+            return False, "format de date/heure invalide (attendu YYYY-MM-DD et HH:MM)"
 
         if date_fin <= date_debut:
-            return False, "l'heure de fin doit etre apres l'heure de debut"
+            return False, "l'heure de fin doit être après l'heure de début"
 
+        if date_debut < datetime.now():
+            return False, "impossible de réserver dans le passé"
+
+        # ── Durée minimale 30 min ─────────────────────────────────
+        duree_minutes = int((date_fin - date_debut).total_seconds() / 60)
+        if duree_minutes < 30:
+            return False, "durée minimale de 30 minutes requise"
+
+        # ── Capacité ──────────────────────────────────────────────
         cap = bureau.get('capacite_max', bureau.get('capacite', 999))
         if participants > cap:
-            return False, f"trop de participants ({participants} > capacite {cap})"
+            return False, f"trop de participants ({participants} > capacité {cap})"
 
+        # ── Conflit de créneaux (confirmée OU en_attente) ─────────
         conflit = db.reservations.find_one({
             'bureau_id':  bureau_oid,
             'statut':     {'$in': ['confirmee', 'en_attente']},
@@ -8709,60 +9533,153 @@ def _create_reservation_from_chat(employe, data):
             'date_fin':   {'$gt': date_debut},
         })
         if conflit:
-            return False, f"creneau deja occupe sur {bureau.get('nom')}"
+            return False, f"créneau déjà occupé sur « {bureau.get('nom')} »"
 
-        new_resa = {
-            'employe_id':      str(employe['_id']),
-            'bureau_id':       bureau_oid,
+        # ── Création de la réservation — statut EN ATTENTE ────────
+        employe_nom = f"{employe.get('prenom', '')} {employe.get('nom', '')}".strip()
+
+        reservation_data = {
             'titre':           titre,
+            'description':     'Réservation créée via chatbot IA',
+            'employe_id':      str(employe['_id']),
+            'employe_nom':     employe_nom,
+            'bureau_id':       bureau_oid,
+            'bureau_nom':      bureau.get('nom', ''),
+            'resource_type':   'salle',
+            'resource_id':     bureau_oid,
             'date_debut':      date_debut,
             'date_fin':        date_fin,
             'nb_participants': participants,
-            'statut':          'confirmee',
+            'statut':          'en_attente',        # ← TOUJOURS en_attente
+            'qr_code':         None,
             'cree_par':        'chatbot',
             'created_at':      datetime.now(),
+            'created_by':      user.username,
         }
-        result = db.reservations.insert_one(new_resa)
-        return True, str(result.inserted_id)
+
+        result       = db.reservations.insert_one(reservation_data)
+        reservation_id = str(result.inserted_id)
+
+        # ── Notification à l'employé ──────────────────────────────
+        db.notifications.insert_one({
+            'employe_id':     str(employe['_id']),
+            'titre':          '📝 Réservation créée',
+            'message':        (
+                f"Votre réservation « {titre} » a été créée via le chatbot "
+                f"et est en attente de validation par un administrateur."
+            ),
+            'categorie':      'reservation',
+            'icon':           '📝',
+            'status':         'non_lu',
+            'action_url':     '/employe/reservations/',
+            'reservation_id': reservation_id,
+            'created_at':     datetime.now(),
+        })
+
+        # ── Notifications aux admins ──────────────────────────────
+        ressource_label = f"🚪 Salle : {bureau.get('nom', '')}"
+        admin_message_email = (
+            f"🆕 NOUVELLE RÉSERVATION EN ATTENTE (via chatbot)\n\n"
+            f"👤 Employé  : {employe_nom}\n"
+            f"📋 Titre    : {titre}\n"
+            f"{ressource_label}\n"
+            f"📅 Date     : {date_debut.strftime('%d/%m/%Y')}\n"
+            f"⏰ Horaire  : {date_debut.strftime('%H:%M')} → {date_fin.strftime('%H:%M')}\n"
+            f"👥 Participants : {participants}\n\n"
+            f"🔗 Traiter : /reservations/"
+        )
+
+        try:
+            from django.contrib.auth import get_user_model
+            User   = get_user_model()
+            admins = User.objects.filter(is_staff=True, is_active=True)
+
+            for admin in admins:
+                db.admin_notifications.insert_one({
+                    'admin_id':       admin.id,
+                    'titre':          '🆕 Nouvelle réservation en attente (chatbot)',
+                    'message':        (
+                        f"{employe_nom} a demandé une réservation pour « {titre} » "
+                        f"({ressource_label}) le {date_debut.strftime('%d/%m/%Y à %H:%M')}."
+                    ),
+                    'categorie':      'reservation',
+                    'icon':           '🆕',
+                    'status':         'non_lu',
+                    'action_url':     f'/reservations/{reservation_id}/',
+                    'reservation_id': reservation_id,
+                    'created_at':     datetime.now(),
+                })
+                if admin.email:
+                    try:
+                        from dashboard.utils_email import envoyer_email
+                        envoyer_email(
+                            admin.email,
+                            f"🆕 Nouvelle réservation (chatbot) — {titre}",
+                            admin_message_email,
+                        )
+                    except Exception as _ee:
+                        print(f"Email admin échoué : {_ee}")
+        except Exception as _e:
+            print(f"Notifications admins échouées : {_e}")
+
+        return True, reservation_id
 
     except Exception as e:
         import traceback; traceback.print_exc()
         return False, str(e)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Fallback mots-clés (si Gemini est indisponible)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _keyword_response(user, message, conversation):
-    """Fallback mots-cles si Gemini est indisponible."""
-    msg = message.lower()
+    """Fallback mots-clés si Gemini est indisponible."""
+    msg    = message.lower()
     prenom = user.first_name or user.username
 
     if any(k in msg for k in ['bonjour', 'salut', 'hello', 'coucou', 'hey']):
         return {
-            'intent': 'bonjour',
-            'message': f"Bonjour {prenom} ! Je suis ton assistant SIGR-CA. Comment puis-je t'aider ?",
-            'suggestions': ["Reserver une salle", "Mes reservations", "Aide"],
+            'intent':      'bonjour',
+            'message':     f"Bonjour {prenom} ! Je suis ton assistant SIGR-CA. Comment puis-je t'aider ?",
+            'suggestions': ["Réserver une salle", "Mes réservations", "Aide"],
         }
     if any(k in msg for k in ['merci', 'thanks']):
-        return {'intent': 'merci', 'message': "Avec plaisir !", 'suggestions': ["Reserver", "Mes reservations"]}
-    if any(k in msg for k in ['reserver', 'reservation', 'salle']):
+        return {
+            'intent':      'merci',
+            'message':     "Avec plaisir ! 😊",
+            'suggestions': ["Réserver", "Mes réservations"],
+        }
+    if any(k in msg for k in ['réserver', 'reserver', 'réservation', 'reservation', 'salle']):
         salles = get_available_rooms()
         if salles:
             txt = "\n".join([f"- {s['nom']} (cap. {s['capacite']})" for s in salles[:5]])
             return {
-                'intent': 'reserver',
-                'message': f"Voici les salles disponibles :\n\n{txt}\n\nLaquelle t'interesse ?",
-                'suggestions': ["Mes reservations", "Aide"],
+                'intent':  'reserver',
+                'message': (
+                    f"Voici les salles disponibles :\n\n{txt}\n\n"
+                    "Laquelle t'intéresse ? Indique aussi la date, les horaires et le nombre de participants.\n\n"
+                    "⚠️ Note : ta réservation sera en **attente de validation** par un administrateur."
+                ),
+                'suggestions': ["Mes réservations", "Aide"],
             }
         return {'intent': 'reserver', 'message': "Aucune salle disponible.", 'suggestions': ["Aide"]}
     if any(k in msg for k in ['aide', 'help']):
         return {
-            'intent': 'aide',
-            'message': "Je peux : reserver une salle, voir tes reservations, t'aider sur les acces.",
-            'suggestions': ["Reserver", "Mes reservations"],
+            'intent':  'aide',
+            'message': (
+                "Je peux t'aider à :\n"
+                "- 📅 **Réserver une salle** (les réservations sont validées par un admin)\n"
+                "- 📋 **Consulter tes réservations**\n"
+                "- 🔑 **Informations sur tes accès**\n\n"
+                "Que souhaites-tu faire ?"
+            ),
+            'suggestions': ["Réserver", "Mes réservations"],
         }
     return {
-        'intent': 'general',
-        'message': "Je n'ai pas bien compris. Peux-tu reformuler ?",
-        'suggestions': ["Reserver une salle", "Mes reservations", "Aide"],
+        'intent':      'general',
+        'message':     "Je n'ai pas bien compris. Peux-tu reformuler ?",
+        'suggestions': ["Réserver une salle", "Mes réservations", "Aide"],
     }
 
 

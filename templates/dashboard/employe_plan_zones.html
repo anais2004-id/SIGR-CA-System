@@ -1,498 +1,947 @@
 {% extends "base.html" %}
 
 {% block title %}Plan des zones · SIGR-CA{% endblock %}
-{% block page_title %}Plan interactif des zones{% endblock %}
-{% block page_sub %}Occupation en temps réel{% endblock %}
+{% block page_title %}Plan interactif{% endblock %}
+{% block page_sub %}Zones & Matériels · {{ now|date:"d/m/Y H:i" }}{% endblock %}
 {% block nav_emp_plan %}active{% endblock %}
 
 {% block topbar_actions %}
-<div style="display:flex; gap:10px; align-items:center;">
-  <select id="etageFilter" onchange="filterByEtage()"
-    style="padding:7px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-size:12px;font-family:var(--font);cursor:pointer;outline:none;">
+<div style="display:flex;gap:10px;align-items:center;">
+  <div style="position:relative;">
+    <input id="searchInput" oninput="applyFilters()" placeholder="Rechercher…"
+      style="padding:7px 12px 7px 32px;background:var(--bg3);border:1px solid var(--border2);
+             border-radius:8px;color:var(--text1);font-size:12px;font-family:var(--font);
+             outline:none;width:180px;transition:border-color .18s;"
+      onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor=''">
+    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text3);">🔍</span>
+  </div>
+  <select id="etageFilter" onchange="applyFilters()"
+    style="padding:7px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+           color:var(--text1);font-size:12px;font-family:var(--font);cursor:pointer;outline:none;">
     <option value="all">Tous les étages</option>
-    {% for etage in etages %}
-    <option value="{{ etage }}">Étage {{ etage }}</option>
-    {% endfor %}
+    {% for etage in etages %}<option value="{{ etage }}">Étage {{ etage }}</option>{% endfor %}
   </select>
-  <button onclick="refreshOccupation()" id="refresh-btn"
-    style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .2s;font-size:16px;"
-    title="Actualiser">
-    ↻
-  </button>
-  <div class="live-pill" id="live-pill">
-    <span class="live-dot"></span>
-    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">LIVE</span>
+  <select id="statutFilter" onchange="applyFilters()"
+    style="padding:7px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+           color:var(--text1);font-size:12px;font-family:var(--font);cursor:pointer;outline:none;">
+    <option value="all">Tous</option>
+    <option value="low">🟢 Libre / Disponible</option>
+    <option value="mid">🟡 Modéré</option>
+    <option value="high">🔴 Actif</option>
+    <option value="maintenance" class="opt-maint" style="display:none;">🔧 Maintenance</option>
+  </select>
+  <select id="catFilter" onchange="applyFilters()"
+    style="padding:7px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+           color:var(--text1);font-size:12px;font-family:var(--font);cursor:pointer;outline:none;display:none;">
+    <option value="all">Toutes catégories</option>
+    {% for cat in categories_mat %}<option value="{{ cat }}">{{ cat|title }}</option>{% endfor %}
+  </select>
+  <button onclick="refreshAll()" id="refresh-btn"
+    style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);
+           color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+           transition:all .2s;font-size:16px;" title="Actualiser">↻</button>
+  <div style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:20px;
+              background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);">
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--green);
+                 animation:pulse-dot 1.8s ease-in-out infinite;display:inline-block;"></span>
+    <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green);">LIVE</span>
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
 <style>
-  /* ═══════════════════════════════════════
-     FONTS & TOKENS
-  ═══════════════════════════════════════ */
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-  :root {
-    --font: 'Space Grotesk', sans-serif;
-    --mono: 'JetBrains Mono', monospace;
-    --bg0: #080d17;
-    --bg1: #0d1320;
-    --bg2: #111827;
-    --bg3: #162032;
-    --bg4: #1c2b40;
-    --bg5: #243347;
-    --border:  rgba(99,140,185,.12);
-    --border2: rgba(99,140,185,.18);
-    --border3: rgba(99,140,185,.28);
-    --text1: #e8edf5;
-    --text2: #8fa3bc;
-    --text3: #56708a;
-    --blue:   #3b82f6;
-    --blue2:  #60a5fa;
-    --cyan:   #06b6d4;
-    --green:  #10b981;
-    --amber:  #f59e0b;
-    --red:    #ef4444;
-    --purple: #8b5cf6;
-    --glow-blue:   0 0 20px rgba(59,130,246,.25);
-    --glow-green:  0 0 20px rgba(16,185,129,.25);
-    --glow-amber:  0 0 20px rgba(245,158,11,.25);
-    --glow-red:    0 0 20px rgba(239,68,68,.25);
-    --radius: 14px;
-    --radius-sm: 8px;
-  }
+:root {
+  --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
+  --bg0:#080d17;--bg1:#0d1320;--bg2:#111827;--bg3:#162032;--bg4:#1c2b40;--bg5:#243347;
+  --border:rgba(99,140,185,.12);--border2:rgba(99,140,185,.18);--border3:rgba(99,140,185,.28);
+  --text1:#e8edf5;--text2:#8fa3bc;--text3:#56708a;
+  --blue:#3b82f6;--blue2:#60a5fa;--cyan:#06b6d4;
+  --green:#10b981;--amber:#f59e0b;--red:#ef4444;--purple:#8b5cf6;
+  --radius:14px;--radius-sm:8px;
+}
+*,*::before,*::after{box-sizing:border-box;}
+body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!important;}
 
-  body, .dashboard-body { font-family: var(--font) !important; background: var(--bg0) !important; }
+@keyframes pulse-dot{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,.5)}50%{opacity:.7;box-shadow:0 0 0 5px rgba(16,185,129,0)}}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes modal-in{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
 
-  .live-pill {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 6px 14px; border-radius: 20px; cursor: default;
-    background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.3);
-    font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--green);
-    font-family: var(--mono);
-  }
-  .live-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
-    animation: pulse-dot 1.8s ease-in-out infinite;
-  }
-  @keyframes pulse-dot {
-    0%,100% { opacity:1; box-shadow: 0 0 0 0 rgba(16,185,129,.5); }
-    50%      { opacity:.7; box-shadow: 0 0 0 5px rgba(16,185,129,0); }
-  }
+.dash-wrap{display:flex;flex-direction:column;gap:20px;padding-bottom:40px;}
 
-  /* ═══════════════════════════════════════
-     LAYOUT
-  ═══════════════════════════════════════ */
-  .dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+/* ══ SUMMARY BAR ══════════════════════════════ */
+.summary-bar{display:flex;align-items:stretch;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.summary-seg{flex:1;padding:18px 14px;text-align:center;border-right:1px solid var(--border);transition:background .18s;cursor:default;}
+.summary-seg:last-child{border-right:none;}
+.summary-seg:hover{background:var(--bg3);}
+.summary-seg-val{font-family:var(--mono);font-size:28px;font-weight:700;line-height:1;margin-bottom:4px;}
+.summary-seg-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);}
+.summary-seg-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+.summary-seg.blue   .summary-seg-val{color:var(--blue2);}
+.summary-seg.green  .summary-seg-val{color:var(--green);}
+.summary-seg.amber  .summary-seg-val{color:var(--amber);}
+.summary-seg.red    .summary-seg-val{color:var(--red);}
+.summary-seg.cyan   .summary-seg-val{color:var(--cyan);}
+.summary-seg.purple .summary-seg-val{color:var(--purple);}
 
-  .section-label {
-    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
-    color: var(--text3); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
-  }
-  .section-label::after { content:''; flex:1; height:1px; background:var(--border); }
+/* ══ TABS ════════════════════════════════════ */
+.plan-tabs{display:flex;gap:4px;background:var(--bg3);padding:5px;border-radius:12px;border:1px solid var(--border);}
+.plan-tab{flex:1;padding:11px 20px;border-radius:9px;border:none;background:transparent;color:var(--text2);
+  font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:var(--font);
+  display:flex;align-items:center;justify-content:center;gap:8px;}
+.plan-tab.active{background:var(--bg2);color:var(--text1);box-shadow:0 2px 8px rgba(0,0,0,.3);}
+.plan-tab:hover:not(.active){color:var(--text1);}
+.tab-count{font-size:10px;font-family:var(--mono);background:var(--bg4);
+  padding:2px 7px;border-radius:20px;border:1px solid var(--border2);}
+.plan-tab.active .tab-count{background:rgba(59,130,246,.15);color:var(--blue2);border-color:rgba(59,130,246,.25);}
 
-  /* ═══════════════════════════════════════
-     KPI STRIP
-  ═══════════════════════════════════════ */
-  .kpi-strip {
-    display: grid; grid-template-columns: repeat(4,1fr); gap: 14px;
-  }
-  @media (max-width:900px) { .kpi-strip { grid-template-columns:repeat(2,1fr); } }
+/* ══ LÉGENDE ═════════════════════════════════ */
+.legend-bar{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 20px;display:flex;flex-wrap:wrap;gap:20px;align-items:center;}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);}
+.legend-dot{width:9px;height:9px;border-radius:50%;}
+.legend-dot.low  {background:var(--green); box-shadow:0 0 5px rgba(16,185,129,.5);}
+.legend-dot.mid  {background:var(--amber); box-shadow:0 0 5px rgba(245,158,11,.5);}
+.legend-dot.high {background:var(--red);   box-shadow:0 0 5px rgba(239,68,68,.5);}
+.legend-dot.maint{background:var(--purple);box-shadow:0 0 5px rgba(139,92,246,.5);}
+.legend-dot.bleu {background:var(--blue2); box-shadow:0 0 5px rgba(59,130,246,.5);}
 
-  .kpi-mini {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 18px 16px;
-    position: relative; overflow: hidden; transition: transform .2s, box-shadow .2s;
-  }
-  .kpi-mini:hover { transform: translateY(-3px); box-shadow: var(--kpi-sh,none); }
-  .kpi-mini-accent { position:absolute;top:0;left:0;right:0;height:2px;background:var(--kpi-gr); box-shadow: 0 0 10px var(--kpi-c); }
-  .kpi-mini-label { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:8px; }
-  .kpi-mini-val { font-family:var(--mono);font-size:28px;font-weight:700;color:var(--kpi-c);line-height:1; }
-  .kpi-mini-sub { font-size:10.5px;color:var(--text3);margin-top:4px; }
+/* ══ GRILLE ══════════════════════════════════ */
+.plan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;}
 
-  .kpi-mini.green { --kpi-c:var(--green); --kpi-gr:linear-gradient(90deg,#059669,#10b981); --kpi-sh:var(--glow-green); }
-  .kpi-mini.amber { --kpi-c:var(--amber); --kpi-gr:linear-gradient(90deg,#d97706,#f59e0b); --kpi-sh:var(--glow-amber); }
-  .kpi-mini.red   { --kpi-c:var(--red);   --kpi-gr:linear-gradient(90deg,#dc2626,#ef4444); --kpi-sh:var(--glow-red);   }
-  .kpi-mini.blue  { --kpi-c:var(--blue);  --kpi-gr:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-sh:var(--glow-blue);  }
+/* ══ ZONE CARD ═══════════════════════════════ */
+.zone-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;transition:all .25s;display:flex;flex-direction:column;animation:fadeInUp .35s ease both;}
+.zone-card:nth-child(1){animation-delay:.04s}.zone-card:nth-child(2){animation-delay:.08s}
+.zone-card:nth-child(3){animation-delay:.12s}.zone-card:nth-child(4){animation-delay:.16s}
+.zone-card:nth-child(5){animation-delay:.20s}.zone-card:nth-child(6){animation-delay:.24s}
+.zone-card:nth-child(7){animation-delay:.28s}.zone-card:nth-child(8){animation-delay:.32s}
+.zone-card:hover{transform:translateY(-5px);box-shadow:0 16px 40px rgba(0,0,0,.4);border-color:var(--border3);}
+.zone-card.low:hover {border-color:var(--green);box-shadow:0 8px 28px rgba(16,185,129,.15);}
+.zone-card.mid:hover {border-color:var(--amber);box-shadow:0 8px 28px rgba(245,158,11,.15);}
+.zone-card.high:hover{border-color:var(--red);  box-shadow:0 8px 28px rgba(239,68,68,.15);}
+.z-accent{height:3px;}
+.zone-card.low  .z-accent{background:linear-gradient(90deg,#059669,#10b981);}
+.zone-card.mid  .z-accent{background:linear-gradient(90deg,#d97706,#f59e0b);}
+.zone-card.high .z-accent{background:linear-gradient(90deg,#dc2626,#ef4444);}
+.z-head{padding:14px 16px;background:var(--bg3);border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.z-name{font-size:14px;font-weight:700;color:var(--text1);line-height:1.3;}
+.z-desc{font-size:10.5px;color:var(--text3);margin-top:3px;}
+.z-tags-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
+.z-etage-tag{font-size:9px;font-weight:700;font-family:var(--mono);color:var(--text3);
+  background:var(--bg4);padding:2px 8px;border-radius:20px;border:1px solid var(--border2);}
+.z-type-tag{font-size:9px;font-weight:700;font-family:var(--mono);padding:2px 8px;border-radius:20px;
+  background:rgba(59,130,246,.1);color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
+.z-body{padding:14px 16px;flex:1;}
+.z-status-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.z-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:10.5px;font-weight:700;font-family:var(--mono);}
+.z-badge.low {background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);}
+.z-badge.mid {background:rgba(245,158,11,.1); color:var(--amber);border:1px solid rgba(245,158,11,.2);}
+.z-badge.high{background:rgba(239,68,68,.1);  color:var(--red);  border:1px solid rgba(239,68,68,.2);}
+.z-acces-pill{font-family:var(--mono);font-size:10.5px;color:var(--text3);
+  background:var(--bg4);padding:3px 9px;border-radius:20px;border:1px solid var(--border);}
+.z-activity{margin-bottom:12px;}
+.z-activity-label{font-size:9.5px;color:var(--text3);font-weight:600;margin-bottom:5px;
+  text-transform:uppercase;letter-spacing:.5px;}
+.z-bar-track{background:var(--bg4);border-radius:6px;height:4px;overflow:hidden;}
+.z-bar-fill{height:100%;border-radius:6px;transition:width .8s ease;}
+.zone-card.low  .z-bar-fill{background:linear-gradient(90deg,#059669,#10b981);}
+.zone-card.mid  .z-bar-fill{background:linear-gradient(90deg,#d97706,#f59e0b);}
+.zone-card.high .z-bar-fill{background:linear-gradient(90deg,#dc2626,#ef4444);}
+.z-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px;}
+.z-info-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;}
+.z-info-cell-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:2px;}
+.z-info-cell-val{font-size:11.5px;font-weight:600;color:var(--text1);font-family:var(--mono);}
+.z-info-cell-val.green{color:var(--green);}
+.z-next-resa{display:flex;align-items:center;gap:7px;background:rgba(59,130,246,.07);
+  border:1px solid rgba(59,130,246,.15);border-radius:var(--radius-sm);
+  padding:7px 9px;margin-bottom:8px;font-size:10.5px;color:var(--blue2);}
+.z-chips{display:flex;flex-wrap:wrap;gap:5px;}
+.z-chip{background:var(--bg4);border:1px solid var(--border);border-radius:5px;
+  padding:2px 7px;font-size:10px;color:var(--text3);font-family:var(--mono);}
+.z-foot{padding:10px 16px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:8px;}
+.z-btn-resa{flex:1;text-align:center;padding:8px 10px;background:var(--blue);color:#fff;
+  border-radius:var(--radius-sm);text-decoration:none;font-size:11.5px;font-weight:700;
+  font-family:var(--font);transition:all .18s;display:flex;align-items:center;
+  justify-content:center;gap:5px;border:none;cursor:pointer;}
+.z-btn-resa:hover{background:var(--blue2);transform:translateY(-1px);box-shadow:0 4px 12px rgba(59,130,246,.3);}
+.z-btn-detail{padding:8px 12px;background:var(--bg4);color:var(--text2);border:1px solid var(--border2);
+  border-radius:var(--radius-sm);font-size:11.5px;font-weight:700;cursor:pointer;
+  transition:all .18s;font-family:var(--font);display:flex;align-items:center;gap:5px;}
+.z-btn-detail:hover{background:var(--bg5);color:var(--text1);border-color:var(--border3);}
 
-  /* ═══════════════════════════════════════
-     LÉGENDE
-  ═══════════════════════════════════════ */
-  .legend-bar {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 20px;
-    display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
-  }
-  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
-  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .legend-dot.low  { background: var(--green); box-shadow: 0 0 6px rgba(16,185,129,.5); }
-  .legend-dot.mid  { background: var(--amber); box-shadow: 0 0 6px rgba(245,158,11,.5); }
-  .legend-dot.high { background: var(--red);   box-shadow: 0 0 6px rgba(239,68,68,.5); }
+/* ══ MATÉRIEL CARD ═══════════════════════════ */
+.mat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;transition:all .25s;display:flex;flex-direction:column;animation:fadeInUp .35s ease both;}
+.mat-card:nth-child(1){animation-delay:.04s}.mat-card:nth-child(2){animation-delay:.08s}
+.mat-card:nth-child(3){animation-delay:.12s}.mat-card:nth-child(4){animation-delay:.16s}
+.mat-card:nth-child(5){animation-delay:.20s}.mat-card:nth-child(6){animation-delay:.24s}
+.mat-card:nth-child(7){animation-delay:.28s}.mat-card:nth-child(8){animation-delay:.32s}
+.mat-card:hover{transform:translateY(-5px);box-shadow:0 16px 40px rgba(0,0,0,.4);border-color:var(--border3);}
+.mat-card.dispo:hover  {border-color:var(--green); box-shadow:0 8px 28px rgba(16,185,129,.12);}
+.mat-card.utilise:hover{border-color:var(--blue2); box-shadow:0 8px 28px rgba(59,130,246,.12);}
+.mat-card.maint:hover  {border-color:var(--purple);box-shadow:0 8px 28px rgba(139,92,246,.12);}
+.mat-accent{height:3px;}
+.mat-card.dispo   .mat-accent{background:linear-gradient(90deg,#059669,#10b981);}
+.mat-card.utilise .mat-accent{background:linear-gradient(90deg,#1d4ed8,#3b82f6);}
+.mat-card.maint   .mat-accent{background:linear-gradient(90deg,#7c3aed,#8b5cf6);}
+.mat-img-wrap{width:100%;height:120px;background:var(--bg4);display:flex;align-items:center;
+  justify-content:center;font-size:44px;overflow:hidden;position:relative;}
+.mat-img-wrap img{width:100%;height:100%;object-fit:cover;}
+.mat-img-badge{position:absolute;top:8px;right:8px;}
+.mat-head{padding:12px 15px;background:var(--bg3);border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.mat-name{font-size:13px;font-weight:700;color:var(--text1);flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mat-cat-badge{font-size:9.5px;padding:2px 8px;border-radius:20px;background:rgba(59,130,246,.12);
+  color:var(--blue2);border:1px solid rgba(59,130,246,.2);font-family:var(--mono);font-weight:700;flex-shrink:0;}
+.mat-body{padding:13px 15px;flex:1;}
+.mat-row{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text2);margin-bottom:5px;}
+.mat-row strong{color:var(--text1);}
+.mat-divider{height:1px;background:var(--border);margin:10px 0;}
+.mat-specs-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}
+.mat-spec{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 8px;}
+.mat-spec-label{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:2px;}
+.mat-spec-val{font-size:11px;font-weight:600;color:var(--text1);font-family:var(--mono);}
+.mat-status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border-radius:20px;font-size:10px;font-weight:700;font-family:var(--mono);}
+.mat-status-badge.dispo  {background:rgba(16,185,129,.1);color:var(--green); border:1px solid rgba(16,185,129,.2);}
+.mat-status-badge.utilise{background:rgba(59,130,246,.1); color:var(--blue2);border:1px solid rgba(59,130,246,.2);}
+.mat-status-badge.maint  {background:rgba(139,92,246,.1); color:var(--purple);border:1px solid rgba(139,92,246,.2);}
+.mat-status-badge.hors   {background:rgba(239,68,68,.1);  color:var(--red);  border:1px solid rgba(239,68,68,.2);}
+.inv-tag{display:inline-block;font-family:var(--mono);font-size:10px;background:rgba(139,92,246,.1);
+  color:var(--purple);border:1px solid rgba(139,92,246,.2);border-radius:5px;padding:2px 7px;font-weight:600;}
+.mat-foot{padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);display:flex;gap:8px;}
+.mat-btn-resa{flex:1;text-align:center;padding:8px 10px;background:var(--green);color:#fff;
+  border-radius:var(--radius-sm);text-decoration:none;font-size:11.5px;font-weight:700;
+  font-family:var(--font);transition:all .18s;display:flex;align-items:center;
+  justify-content:center;gap:5px;border:none;cursor:pointer;}
+.mat-btn-resa:hover{filter:brightness(1.12);transform:translateY(-1px);}
+.mat-btn-resa.disabled{background:var(--bg5);color:var(--text3);cursor:not-allowed;
+  transform:none!important;filter:none!important;}
+.mat-btn-detail{padding:8px 12px;background:var(--bg4);color:var(--text2);border:1px solid var(--border2);
+  border-radius:var(--radius-sm);font-size:11.5px;font-weight:700;cursor:pointer;
+  transition:all .18s;font-family:var(--font);display:flex;align-items:center;gap:5px;}
+.mat-btn-detail:hover{background:var(--bg5);color:var(--text1);}
 
-  /* ═══════════════════════════════════════
-     ZONE CARDS
-  ═══════════════════════════════════════ */
-  .plan-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-    gap: 16px;
-  }
+/* ══ MODAL ════════════════════════════════════ */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,23,.88);
+  backdrop-filter:blur(8px);align-items:center;justify-content:center;}
+.modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  width:540px;max-width:95vw;max-height:90vh;overflow-y:auto;
+  box-shadow:0 24px 64px rgba(0,0,0,.6);animation:modal-in .25s cubic-bezier(.22,1,.36,1);}
+.modal-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;
+  position:sticky;top:0;background:var(--bg2);z-index:1;}
+.modal-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;
+  justify-content:center;font-size:18px;flex-shrink:0;}
+.modal-title-block{flex:1;}
+.modal-title{font-weight:700;font-size:15px;color:var(--text1);}
+.modal-subtitle{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+.modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);
+  background:var(--bg3);color:var(--text2);cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
+.modal-close:hover{background:var(--bg4);color:var(--text1);}
+.modal-body{padding:22px;}
+.modal-sec{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.modal-sec::after{content:'';flex:1;height:1px;background:var(--border);}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+.modal-cell{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 14px;}
+.modal-cell-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:4px;}
+.modal-cell-val{font-size:14px;font-weight:700;color:var(--text1);font-family:var(--mono);}
+.modal-cell-val.green {color:var(--green);}
+.modal-cell-val.amber {color:var(--amber);}
+.modal-cell-val.red   {color:var(--red);}
+.modal-cell-val.blue  {color:var(--blue2);}
+.modal-cell-val.purple{color:var(--purple);}
+.itin-step{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:var(--radius-sm);
+  background:var(--bg3);border:1px solid var(--border);margin-bottom:8px;}
+.step-num{width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-family:var(--mono);}
+.step-text{font-size:12.5px;color:var(--text2);line-height:1.5;}
+.step-text strong{color:var(--text1);}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;
+  position:sticky;bottom:0;background:var(--bg2);}
+.btn-ghost-sm{padding:7px 16px;border-radius:8px;cursor:pointer;background:transparent;color:var(--text2);
+  font-size:12.5px;font-weight:600;font-family:var(--font);border:1px solid var(--border2);transition:all .15s;}
+.btn-ghost-sm:hover{background:var(--bg4);color:var(--text1);}
+.btn-primary-sm{padding:7px 18px;border-radius:8px;cursor:pointer;background:var(--blue);color:#fff;
+  font-size:12.5px;font-weight:700;font-family:var(--font);border:none;transition:all .15s;
+  text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
+.btn-primary-sm:hover{background:var(--blue2);}
+.btn-green-sm{padding:7px 18px;border-radius:8px;cursor:pointer;background:var(--green);color:#fff;
+  font-size:12.5px;font-weight:700;font-family:var(--font);border:none;transition:all .15s;
+  text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
+.btn-green-sm:hover{filter:brightness(1.12);}
 
-  .zone-card {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius); overflow: hidden;
-    transition: all .25s; cursor: pointer;
-    display: flex; flex-direction: column;
-  }
-  .zone-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 32px rgba(0,0,0,.35);
-    border-color: var(--border3);
-  }
-  .zone-card.low:hover  { border-color: var(--green); box-shadow: 0 8px 28px rgba(16,185,129,.15); }
-  .zone-card.mid:hover  { border-color: var(--amber); box-shadow: 0 8px 28px rgba(245,158,11,.15); }
-  .zone-card.high:hover { border-color: var(--red);   box-shadow: 0 8px 28px rgba(239,68,68,.15);  }
-
-  .zone-top-bar { height: 3px; }
-  .zone-top-bar.low  { background: linear-gradient(90deg,#059669,#10b981); }
-  .zone-top-bar.mid  { background: linear-gradient(90deg,#d97706,#f59e0b); }
-  .zone-top-bar.high { background: linear-gradient(90deg,#dc2626,#ef4444); }
-
-  .zone-header {
-    padding: 14px 16px;
-    background: var(--bg3); border-bottom: 1px solid var(--border);
-    display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  }
-  .zone-name { font-size: 14px; font-weight: 700; color: var(--text1); }
-  .zone-etage {
-    font-size: 10px; font-weight: 700; font-family: var(--mono);
-    color: var(--text3); background: var(--bg4);
-    padding: 2px 9px; border-radius: 20px; border: 1px solid var(--border2);
-    flex-shrink: 0;
-  }
-
-  .zone-body { padding: 14px 16px; flex: 1; }
-
-  .zone-meta-row {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 12px; color: var(--text2); margin-bottom: 10px;
-  }
-  .zone-meta-row strong { color: var(--text1); }
-
-  .zone-bar-wrap { background: var(--bg4); border-radius: 6px; height: 6px; overflow: hidden; margin-bottom: 12px; }
-  .zone-bar-fill { height: 100%; border-radius: 6px; transition: width .4s ease; }
-
-  .zone-stat-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding-top: 10px; border-top: 1px solid var(--border);
-  }
-  .zone-taux { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text1); }
-
-  .zone-badge {
-    padding: 3px 11px; border-radius: 20px;
-    font-size: 10px; font-weight: 700; font-family: var(--mono); letter-spacing: .4px;
-  }
-  .zone-badge.disponible { background:rgba(16,185,129,.1); color:var(--green); border:1px solid rgba(16,185,129,.2); }
-  .zone-badge.occupe     { background:rgba(245,158,11,.1);  color:var(--amber); border:1px solid rgba(245,158,11,.2); }
-  .zone-badge.plein      { background:rgba(239,68,68,.1);   color:var(--red);   border:1px solid rgba(239,68,68,.2);  }
-
-  .zone-info-row {
-    display: flex; gap: 10px; margin-top: 10px;
-    font-size: 10.5px; color: var(--text3); flex-wrap: wrap;
-  }
-  .zone-info-tag {
-    background: var(--bg4); border: 1px solid var(--border);
-    border-radius: 6px; padding: 2px 8px; font-family: var(--mono);
-    font-size: 10.5px;
-  }
-
-  .zone-footer {
-    padding: 10px 16px; background: var(--bg3); border-top: 1px solid var(--border);
-    display: flex; gap: 8px;
-  }
-  .zone-btn-reserver {
-    flex: 1; text-align: center; padding: 8px 12px;
-    background: var(--blue); color: #fff;
-    border-radius: var(--radius-sm); text-decoration: none;
-    font-size: 11.5px; font-weight: 600; font-family: var(--font);
-    transition: all .18s; display: block;
-  }
-  .zone-btn-reserver:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,.3); }
-  .zone-btn-itineraire {
-    flex: 1; text-align: center; padding: 8px 12px;
-    background: var(--bg4); color: var(--text2); border: 1px solid var(--border2);
-    border-radius: var(--radius-sm); font-size: 11.5px; font-weight: 600;
-    cursor: pointer; transition: all .18s; font-family: var(--font);
-  }
-  .zone-btn-itineraire:hover { background: var(--bg5); color: var(--text1); border-color: var(--border3); }
-
-  /* ═══════════════════════════════════════
-     EMPTY STATE
-  ═══════════════════════════════════════ */
-  .empty-state {
-    grid-column: 1/-1; text-align: center; padding: 48px 24px;
-    color: var(--text3); font-size: 13px;
-  }
-  .empty-state div:first-child { font-size: 48px; margin-bottom: 12px; opacity: .4; }
-
-  /* ═══════════════════════════════════════
-     MODAL
-  ═══════════════════════════════════════ */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0; z-index: 9999;
-    background: rgba(8,13,23,.85); backdrop-filter: blur(6px);
-    align-items: center; justify-content: center;
-  }
-  .modal-box {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius); width: 440px; max-width: 95vw;
-    box-shadow: 0 20px 60px rgba(0,0,0,.5);
-    animation: modal-in .25s cubic-bezier(.22,1,.36,1);
-  }
-  @keyframes modal-in { from{opacity:0;transform:translateY(20px) scale(.97)} to{opacity:1;transform:none} }
-  .modal-head {
-    padding: 18px 22px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .modal-title { font-weight: 700; font-size: 15px; color: var(--text1); }
-  .modal-close {
-    width: 32px; height: 32px; border-radius: 8px;
-    border: 1px solid var(--border2); background: var(--bg3);
-    color: var(--text2); cursor: pointer; font-size: 14px;
-    display: flex; align-items: center; justify-content: center; transition: all .15s;
-  }
-  .modal-close:hover { background: var(--bg4); color: var(--text1); }
-  .modal-body { padding: 22px; }
-  .modal-footer {
-    padding: 14px 22px; border-top: 1px solid var(--border);
-    display: flex; justify-content: flex-end; gap: 8px;
-  }
-
-  .btn-ghost-sm {
-    padding: 7px 16px; border-radius: 8px; cursor: pointer;
-    background: transparent; color: var(--text2); font-size: 12.5px; font-weight: 600;
-    font-family: var(--font); border: 1px solid var(--border2); transition: all .15s;
-  }
-  .btn-ghost-sm:hover { background: var(--bg4); color: var(--text1); }
-
-  .itineraire-step {
-    display: flex; gap: 12px; align-items: flex-start;
-    padding: 10px 12px; border-radius: var(--radius-sm);
-    background: var(--bg3); border: 1px solid var(--border);
-    margin-bottom: 8px;
-  }
-  .itineraire-step:last-child { margin-bottom: 0; }
-  .step-num {
-    width: 24px; height: 24px; border-radius: 50%;
-    background: var(--blue); color: #fff; font-size: 11px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    font-family: var(--mono);
-  }
-  .step-text { font-size: 12.5px; color: var(--text2); line-height: 1.5; }
+/* ══ HELPERS ═════════════════════════════════ */
+.empty-state{grid-column:1/-1;text-align:center;padding:60px 24px;color:var(--text3);}
+.empty-state .es-icon{font-size:52px;margin-bottom:16px;opacity:.4;}
+.empty-state .es-title{font-size:15px;font-weight:700;color:var(--text2);margin-bottom:8px;}
+.res-count{font-size:10px;color:var(--blue2);font-family:var(--mono);background:rgba(59,130,246,.1);
+  padding:2px 8px;border-radius:20px;border:1px solid rgba(59,130,246,.2);}
+.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);
+  margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+.sec-title::after{content:'';flex:1;height:1px;background:var(--border);}
+*{scrollbar-width:thin;scrollbar-color:var(--bg5) transparent;}
 </style>
 
 <div class="dash-wrap">
 
-  <!-- ═══ KPI STRIP ═══ -->
-  <div class="kpi-strip" id="kpi-strip">
-    {% with total=bureaux|length %}
-    {% with dispo=bureaux|dictsort:"taux_occupation"|slice:":999" %}
-    <div class="kpi-mini blue">
-      <div class="kpi-mini-accent"></div>
-      <div class="kpi-mini-label">Total zones</div>
-      <div class="kpi-mini-val">{{ bureaux|length }}</div>
-      <div class="kpi-mini-sub">Zones enregistrées</div>
-    </div>
-    <div class="kpi-mini green">
-      <div class="kpi-mini-accent"></div>
-      <div class="kpi-mini-label">Disponibles</div>
-      <div class="kpi-mini-val" id="kpi-dispo">—</div>
-      <div class="kpi-mini-sub">Occupation &lt; 30%</div>
-    </div>
-    <div class="kpi-mini amber">
-      <div class="kpi-mini-accent"></div>
-      <div class="kpi-mini-label">Affluence modérée</div>
-      <div class="kpi-mini-val" id="kpi-mid">—</div>
-      <div class="kpi-mini-sub">Entre 30% et 70%</div>
-    </div>
-    <div class="kpi-mini red">
-      <div class="kpi-mini-accent"></div>
-      <div class="kpi-mini-label">Très fréquentées</div>
-      <div class="kpi-mini-val" id="kpi-full">—</div>
-      <div class="kpi-mini-sub">Occupation &gt; 70%</div>
-    </div>
-    {% endwith %}
-    {% endwith %}
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SUMMARY BAR                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="summary-bar">
+  <div class="summary-seg blue">
+    <div class="summary-seg-val">{{ total_zones }}</div>
+    <div class="summary-seg-label">🏢 Zones</div>
+    <div class="summary-seg-sub">Enregistrées</div>
   </div>
-
-  <!-- ═══ LÉGENDE ═══ -->
-  <div class="legend-bar">
-    <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);font-family:var(--mono);">Légende :</span>
-    <div class="legend-item"><div class="legend-dot low"></div><span>Disponible — &lt; 30%</span></div>
-    <div class="legend-item"><div class="legend-dot mid"></div><span>Affluence modérée — 30-70%</span></div>
-    <div class="legend-item"><div class="legend-dot high"></div><span>Très fréquenté — &gt; 70%</span></div>
-    <div style="margin-left:auto;font-size:10.5px;color:var(--text3);font-family:var(--mono);" id="last-update">Actualisation auto — 30s</div>
+  <div class="summary-seg green">
+    <div class="summary-seg-val">{{ zones_libres }}</div>
+    <div class="summary-seg-label">🟢 Libres</div>
+    <div class="summary-seg-sub">0 activité</div>
   </div>
-
-  <!-- ═══ GRILLE DES ZONES ═══ -->
-  <div>
-    <div class="section-label">🗺️ Zones et salles</div>
-    <div class="plan-grid" id="plan-grid">
-      {% for bureau in bureaux %}
-<div class="zone-card {% if bureau.taux_occupation >= 70 %}high{% elif bureau.taux_occupation >= 30 %}mid{% else %}low{% endif %}" data-etage="{{ bureau.etage|default:'0' }}" data-occupation="{{ bureau.taux_occupation }}" data-nom="{{ bureau.nom }}">
-  <div class="zone-top-bar {% if bureau.taux_occupation >= 70 %}high{% elif bureau.taux_occupation >= 30 %}mid{% else %}low{% endif %}"></div>
-        <div class="zone-header">
-          <span class="zone-name">{{ bureau.nom }}</span>
-          <span class="zone-etage">{{ bureau.etage|default:"RDC" }}</span>
-        </div>
-        <div class="zone-body">
-          <div class="zone-meta-row">
-            <span>👥 Capacité</span>
-            <span><strong>{{ bureau.capacite_max }}</strong> personnes</span>
-          </div>
-          <div class="zone-bar-wrap">
-            <div class="zone-bar-fill"
-              style="width:{{ bureau.taux_occupation }}%;
-                background:{% if bureau.taux_occupation >= 70 %}linear-gradient(90deg,#dc2626,#ef4444){% elif bureau.taux_occupation >= 30 %}linear-gradient(90deg,#d97706,#f59e0b){% else %}linear-gradient(90deg,#059669,#10b981){% endif %};">
-            </div>
-          </div>
-          <div class="zone-stat-row">
-            <span class="zone-taux">{{ bureau.taux_occupation }}%</span>
-            <span class="zone-badge {% if bureau.taux_occupation >= 70 %}plein{% elif bureau.taux_occupation >= 30 %}occupe{% else %}disponible{% endif %}">
-              {% if bureau.taux_occupation >= 70 %}🔴 PLEIN
-              {% elif bureau.taux_occupation >= 30 %}🟡 OCCUPÉ
-              {% else %}🟢 LIBRE{% endif %}
-            </span>
-          </div>
-          <div class="zone-info-row">
-            <span class="zone-info-tag">🚪 {{ bureau.code_bureau|default:bureau.nom|slice:":3"|upper }}</span>
-            <span class="zone-info-tag">🔒 {{ bureau.niveau_securite|default:"Standard"|title }}</span>
-          </div>
-        </div>
-        <div class="zone-footer">
-          <a href="{% url 'employe_mes_reservations' %}?bureau={{ bureau.id }}" class="zone-btn-reserver">📅 Réserver</a>
-          <button class="zone-btn-itineraire" onclick="showItineraire('{{ bureau.nom }}','{{ bureau.etage|default:"RDC" }}','{{ bureau.code_bureau|default:bureau.nom|slice:":3"|upper }}')">🗺️ Itinéraire</button>
-        </div>
-      </div>
-      {% endfor %}
-
-      {% if not bureaux %}
-      <div class="empty-state">
-        <div>🏢</div>
-        <div>Aucune zone enregistrée</div>
-      </div>
-      {% endif %}
-    </div>
+  <div class="summary-seg amber">
+    <div class="summary-seg-val">{{ zones_moderes }}</div>
+    <div class="summary-seg-label">🟡 Modérées</div>
+    <div class="summary-seg-sub">1–5 accès/h</div>
   </div>
-
+  <div class="summary-seg red">
+    <div class="summary-seg-val">{{ zones_actives }}</div>
+    <div class="summary-seg-label">🔴 Actives</div>
+    <div class="summary-seg-sub">6+ accès/h</div>
+  </div>
+  <div class="summary-seg cyan">
+    <div class="summary-seg-val">{{ total_acces_h }}</div>
+    <div class="summary-seg-label">⚡ Accès/h</div>
+    <div class="summary-seg-sub">Dernière heure</div>
+  </div>
+  <div class="summary-seg purple">
+    <div class="summary-seg-val">{{ total_materiels }}</div>
+    <div class="summary-seg-label">📦 Matériels</div>
+    <div class="summary-seg-sub">{{ mat_disponibles }} disponible(s)</div>
+  </div>
 </div>
 
-<!-- ═══ MODAL ITINÉRAIRE ═══ -->
-<div class="modal-overlay" id="itineraireModal" onclick="if(event.target===this)closeItineraireModal()">
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ONGLETS                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="plan-tabs">
+  <button class="plan-tab active" id="tab-zones" onclick="switchTab('zones')">
+    🏢 Zones &amp; Salles
+    <span class="tab-count" id="tc-zones">{{ total_zones }}</span>
+  </button>
+  <button class="plan-tab" id="tab-materiels" onclick="switchTab('materiels')">
+    📦 Matériels
+    <span class="tab-count" id="tc-mat">{{ total_materiels }}</span>
+  </button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LÉGENDE ZONES                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="legend-bar" id="legend-zones">
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;
+               letter-spacing:.8px;color:var(--text3);font-family:var(--mono);">Activité :</span>
+  <div class="legend-item"><div class="legend-dot low"></div> <span>Libre — 0 accès/h</span></div>
+  <div class="legend-item"><div class="legend-dot mid"></div> <span>Modérée — 1 à 5 accès/h</span></div>
+  <div class="legend-item"><div class="legend-dot high"></div><span>Très active — 6+ accès/h</span></div>
+  <div style="margin-left:auto;font-size:10px;color:var(--text3);font-family:var(--mono);" id="last-update">
+    Actualisé — {{ now|date:"H:i:s" }}
+  </div>
+</div>
+
+<!-- LÉGENDE MATÉRIELS -->
+<div class="legend-bar" id="legend-mat" style="display:none;">
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;
+               letter-spacing:.8px;color:var(--text3);font-family:var(--mono);">Statut :</span>
+  <div class="legend-item"><div class="legend-dot low"></div>  <span>Disponible</span></div>
+  <div class="legend-item"><div class="legend-dot bleu"></div> <span>En cours d'utilisation</span></div>
+  <div class="legend-item"><div class="legend-dot maint"></div><span>Maintenance / Hors service</span></div>
+  <div style="margin-left:auto;font-size:10px;color:var(--text3);font-family:var(--mono);">
+    {{ mat_disponibles }} dispo · {{ mat_utilises }} utilisé(s) · {{ mat_maintenance }} en maintenance
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION ZONES                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="section-zones">
+  <div class="sec-title">
+    🗺️ Zones et salles
+    <span class="res-count" id="count-zones">{{ bureaux|length }} zone{{ bureaux|length|pluralize }}</span>
+  </div>
+
+  <div class="plan-grid" id="grid-zones">
+    {% for bureau in bureaux %}
+    <div class="zone-card {{ bureau.niveau }}"
+         data-nom="{{ bureau.nom|lower }}"
+         data-etage="{{ bureau.etage|default:'0' }}"
+         data-niveau="{{ bureau.niveau }}">
+
+      <div class="z-accent"></div>
+
+      <div class="z-head">
+        <div>
+          <div class="z-name">{{ bureau.nom }}</div>
+          <div class="z-desc">{{ bureau.description|default:"Zone de travail"|truncatechars:55 }}</div>
+        </div>
+        <div class="z-tags-right">
+          <span class="z-etage-tag">Étage {{ bureau.etage|default:"RDC" }}</span>
+          <span class="z-type-tag">{{ bureau.type_zone|default:"Salle" }}</span>
+        </div>
+      </div>
+
+      <div class="z-body">
+        <div class="z-status-row">
+          <div class="z-badge {{ bureau.niveau }}">
+            {% if bureau.niveau == 'high' %}🔴 TRÈS ACTIF
+            {% elif bureau.niveau == 'mid' %}🟡 MODÉRÉ
+            {% else %}🟢 LIBRE{% endif %}
+          </div>
+          <div class="z-acces-pill">{{ bureau.acces_recents }} accès/h</div>
+        </div>
+
+        <div class="z-activity">
+          <div class="z-activity-label">Activité — dernière heure</div>
+          <div class="z-bar-track">
+            {% if bureau.acces_recents == 0 %}
+              <div class="z-bar-fill" style="width:3%;"></div>
+            {% elif bureau.acces_recents <= 2 %}
+              <div class="z-bar-fill" style="width:20%;"></div>
+            {% elif bureau.acces_recents <= 5 %}
+              <div class="z-bar-fill" style="width:55%;"></div>
+            {% else %}
+              <div class="z-bar-fill" style="width:100%;"></div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="z-info-grid">
+          <div class="z-info-cell">
+            <div class="z-info-cell-label">📅 Accès / jour</div>
+            <div class="z-info-cell-val">{{ bureau.acces_jour|default:"0" }}</div>
+          </div>
+          <div class="z-info-cell">
+            <div class="z-info-cell-label">🕐 Dernière activité</div>
+            <div class="z-info-cell-val" style="font-size:10px;">{{ bureau.derniere_activite|default:"—" }}</div>
+          </div>
+          <div class="z-info-cell">
+            <div class="z-info-cell-label">📋 Résa. en cours</div>
+            <div class="z-info-cell-val {% if bureau.reservations_actives > 0 %}green{% endif %}">
+              {{ bureau.reservations_actives }}
+            </div>
+          </div>
+          <div class="z-info-cell">
+            <div class="z-info-cell-label">🔐 Sécurité</div>
+            <div class="z-info-cell-val" style="font-size:10px;
+              {% if bureau.niveau_securite == 'Élevé' or bureau.niveau_securite == 'eleve' %}color:var(--red)
+              {% elif bureau.niveau_securite == 'Moyen' or bureau.niveau_securite == 'moyen' %}color:var(--amber)
+              {% else %}color:var(--green){% endif %}">
+              {{ bureau.niveau_securite|default:"Standard" }}
+            </div>
+          </div>
+        </div>
+
+        {% if bureau.prochaine_resa %}
+        <div class="z-next-resa">
+          📌 Prochaine résa. : <strong>{{ bureau.prochaine_resa }}</strong>
+        </div>
+        {% endif %}
+
+        <div class="z-chips">
+          <span class="z-chip">🚪 {{ bureau.code_bureau|default:bureau.nom|slice:":4"|upper }}</span>
+          {% if bureau.responsable %}<span class="z-chip">👤 {{ bureau.responsable }}</span>{% endif %}
+          {% for eq in bureau.equipements %}<span class="z-chip">⚙️ {{ eq }}</span>{% endfor %}
+        </div>
+      </div>
+
+      <div class="z-foot">
+        <a href="{% url 'employe_mes_reservations' %}?bureau={{ bureau.id }}" class="z-btn-resa">
+          📅 Réserver
+        </a>
+        <button class="z-btn-detail"
+          onclick="openZoneModal(
+            '{{ bureau.nom|escapejs }}',
+            '{{ bureau.etage|default:"RDC" }}',
+            '{{ bureau.code_bureau|default:bureau.nom|slice:":4"|upper }}',
+            '{{ bureau.niveau }}',
+            '{{ bureau.acces_recents }}',
+            '{{ bureau.acces_jour }}',
+            '{{ bureau.derniere_activite|default:"—"|escapejs }}',
+            '{{ bureau.niveau_securite|default:"Standard"|escapejs }}',
+            '{{ bureau.type_zone|default:"Salle"|escapejs }}',
+            '{{ bureau.reservations_actives }}',
+            '{{ bureau.prochaine_resa|default:"—"|escapejs }}',
+            '{{ bureau.id }}'
+          )">
+          🗺️ Détails
+        </button>
+      </div>
+    </div>
+    {% empty %}
+    <div class="empty-state">
+      <div class="es-icon">🏢</div>
+      <div class="es-title">Aucune zone enregistrée</div>
+      <div>Les zones apparaîtront ici une fois configurées par l'administrateur.</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SECTION MATÉRIELS                                              -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="section-materiels" style="display:none;">
+  <div class="sec-title">
+    📦 Matériels
+    <span class="res-count" id="count-mat">{{ materiels|length }} matériel{{ materiels|length|pluralize }}</span>
+  </div>
+
+  <div class="plan-grid" id="grid-mat">
+    {% for m in materiels %}
+
+    {# ── Déterminer la classe CSS de la carte ── #}
+    {% if m.statut == 'disponible' and m.reservation_active == 0 %}
+    <div class="mat-card dispo"
+         data-nom="{{ m.nom|lower }}"
+         data-cat="{{ m.categorie|lower|default:'autre' }}"
+         data-statut="low">
+    {% elif m.reservation_active > 0 %}
+    <div class="mat-card utilise"
+         data-nom="{{ m.nom|lower }}"
+         data-cat="{{ m.categorie|lower|default:'autre' }}"
+         data-statut="utilise">
+    {% elif m.statut == 'maintenance' or m.statut == 'hors_service' %}
+    <div class="mat-card maint"
+         data-nom="{{ m.nom|lower }}"
+         data-cat="{{ m.categorie|lower|default:'autre' }}"
+         data-statut="maintenance">
+    {% else %}
+    <div class="mat-card dispo"
+         data-nom="{{ m.nom|lower }}"
+         data-cat="{{ m.categorie|lower|default:'autre' }}"
+         data-statut="low">
+    {% endif %}
+
+      <div class="mat-accent"></div>
+
+      <!-- Image ou icône -->
+      <div class="mat-img-wrap">
+        {% if m.photo %}
+        <img src="{{ m.photo|safe }}" alt="{{ m.nom }}">
+        {% else %}
+          {% if m.categorie == 'informatique' %}💻
+          {% elif m.categorie == 'mobilier' %}🪑
+          {% elif m.categorie == 'audiovisuel' %}📽️
+          {% elif m.categorie == 'imprimante' %}🖨️
+          {% elif m.categorie == 'securite' %}🔒
+          {% elif m.categorie == 'vehicule' %}🚗
+          {% elif m.categorie == 'laboratoire' %}🔬
+          {% else %}📦{% endif %}
+        {% endif %}
+        <div class="mat-img-badge">
+          {% if m.statut == 'disponible' and m.reservation_active == 0 %}
+          <span class="mat-status-badge dispo">🟢 DISPO</span>
+          {% elif m.reservation_active > 0 %}
+          <span class="mat-status-badge utilise">🔵 UTILISÉ</span>
+          {% elif m.statut == 'hors_service' %}
+          <span class="mat-status-badge hors">⛔ H.S.</span>
+          {% else %}
+          <span class="mat-status-badge maint">🔧 MAINT.</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- En-tête -->
+      <div class="mat-head">
+        <div class="mat-name" title="{{ m.nom }}">{{ m.nom }}</div>
+        <span class="mat-cat-badge">{{ m.categorie|default:"autre"|title }}</span>
+      </div>
+
+      <!-- Corps -->
+      <div class="mat-body">
+        {% if m.num_inventaire %}
+        <div class="mat-row">📋 <span class="inv-tag">{{ m.num_inventaire }}</span></div>
+        {% endif %}
+        {% if m.marque or m.modele %}
+        <div class="mat-row">🏷️ <strong>{{ m.marque|default:"" }} {{ m.modele|default:"" }}</strong></div>
+        {% endif %}
+        {% if m.zone %}
+        <div class="mat-row">📍 Zone : <strong>{{ m.zone }}</strong></div>
+        {% endif %}
+        {% if m.description %}
+        <div class="mat-row" style="font-size:10.5px;color:var(--text3);margin-top:2px;">
+          {{ m.description|truncatechars:90 }}
+        </div>
+        {% endif %}
+
+        {% if m.processeur or m.ram or m.stockage or m.os %}
+        <div class="mat-divider"></div>
+        <div class="mat-specs-grid">
+          {% if m.processeur %}
+          <div class="mat-spec">
+            <div class="mat-spec-label">CPU</div>
+            <div class="mat-spec-val">{{ m.processeur|truncatechars:20 }}</div>
+          </div>
+          {% endif %}
+          {% if m.ram %}
+          <div class="mat-spec">
+            <div class="mat-spec-label">RAM</div>
+            <div class="mat-spec-val">{{ m.ram }}</div>
+          </div>
+          {% endif %}
+          {% if m.stockage %}
+          <div class="mat-spec">
+            <div class="mat-spec-label">Stockage</div>
+            <div class="mat-spec-val">{{ m.stockage }}</div>
+          </div>
+          {% endif %}
+          {% if m.os %}
+          <div class="mat-spec">
+            <div class="mat-spec-label">OS</div>
+            <div class="mat-spec-val">{{ m.os|truncatechars:16 }}</div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if m.prochaine_resa %}
+        <div class="z-next-resa" style="margin-top:6px;">
+          📌 Prochain : <strong>{{ m.prochaine_resa }}</strong>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Footer -->
+      <div class="mat-foot">
+        {% if m.statut == 'disponible' and m.reservation_active == 0 %}
+        <a href="{% url 'employe_mes_reservations' %}?materiel={{ m.id }}" class="mat-btn-resa">
+          📅 Réserver
+        </a>
+        {% else %}
+        <button class="mat-btn-resa disabled" disabled>
+          {% if m.reservation_active > 0 %}🔵 En cours
+          {% elif m.statut == 'maintenance' %}🔧 Maintenance
+          {% elif m.statut == 'hors_service' %}⛔ Hors service
+          {% else %}Indisponible{% endif %}
+        </button>
+        {% endif %}
+        <button class="mat-btn-detail"
+          onclick="openMatModal(
+            '{{ m.nom|escapejs }}',
+            '{{ m.categorie|default:"autre"|title|escapejs }}',
+            '{{ m.marque|default:""|escapejs }}',
+            '{{ m.modele|default:""|escapejs }}',
+            '{{ m.statut }}',
+            {{ m.reservation_active }},
+            '{{ m.num_inventaire|default:"—"|escapejs }}',
+            '{{ m.zone|default:"—"|escapejs }}',
+            '{{ m.processeur|default:"—"|escapejs }}',
+            '{{ m.ram|default:"—"|escapejs }}',
+            '{{ m.stockage|default:"—"|escapejs }}',
+            '{{ m.os|default:"—"|escapejs }}',
+            '{{ m.description|default:""|truncatechars:200|escapejs }}',
+            '{{ m.prochaine_resa|default:"—"|escapejs }}',
+            '{{ m.id }}'
+          )">
+          🔍 Détails
+        </button>
+      </div>
+
+    </div><!-- /mat-card -->
+    {% empty %}
+    <div class="empty-state">
+      <div class="es-icon">📦</div>
+      <div class="es-title">Aucun matériel enregistré</div>
+      <div>Le matériel apparaîtra ici une fois configuré par l'administrateur.</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+</div><!-- /dash-wrap -->
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODAL ZONE                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="zoneModal" onclick="if(event.target===this)closeModal('zoneModal')">
   <div class="modal-box">
     <div class="modal-head">
-      <span class="modal-title" id="itineraire-titre">🗺️ Itinéraire</span>
-      <button class="modal-close" onclick="closeItineraireModal()">✕</button>
+      <div class="modal-icon" id="zm-icon"
+        style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);">🏢</div>
+      <div class="modal-title-block">
+        <div class="modal-title" id="zm-nom">Zone</div>
+        <div class="modal-subtitle" id="zm-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('zoneModal')">✕</button>
     </div>
-    <div class="modal-body" id="itineraire-body"></div>
-    <div class="modal-footer">
-      <button class="btn-ghost-sm" onclick="closeItineraireModal()">Fermer</button>
+    <div class="modal-body" id="zm-body"></div>
+    <div class="modal-foot">
+      <button class="btn-ghost-sm" onclick="closeModal('zoneModal')">Fermer</button>
+      <a id="zm-resa-link" href="#" class="btn-primary-sm">📅 Réserver cette zone</a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODAL MATÉRIEL                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="matModal" onclick="if(event.target===this)closeModal('matModal')">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-icon" id="mm-icon"
+        style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.2);">📦</div>
+      <div class="modal-title-block">
+        <div class="modal-title" id="mm-nom">Matériel</div>
+        <div class="modal-subtitle" id="mm-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('matModal')">✕</button>
+    </div>
+    <div class="modal-body" id="mm-body"></div>
+    <div class="modal-foot" id="mm-foot">
+      <button class="btn-ghost-sm" onclick="closeModal('matModal')">Fermer</button>
     </div>
   </div>
 </div>
 
 <script>
-// ─── KPIs calculés côté client ───
-(function() {
-  const cards = document.querySelectorAll('.zone-card[data-occupation]');
-  let dispo = 0, mid = 0, full = 0;
-  cards.forEach(c => {
-    const t = parseInt(c.dataset.occupation, 10);
-    if (t >= 70) full++;
-    else if (t >= 30) mid++;
-    else dispo++;
-  });
-  document.getElementById('kpi-dispo').textContent = dispo;
-  document.getElementById('kpi-mid').textContent = mid;
-  document.getElementById('kpi-full').textContent = full;
-})();
+/* ══════════════════════════════════════════════════════════
+   ONGLETS
+══════════════════════════════════════════════════════════ */
+var activeTab = 'zones';
 
-// ─── Filtre par étage ───
-function filterByEtage() {
-  const etage = document.getElementById('etageFilter').value;
-  document.querySelectorAll('.zone-card').forEach(card => {
-    card.style.display = (etage === 'all' || card.dataset.etage == etage) ? '' : 'none';
-  });
+function switchTab(tab) {
+  activeTab = tab;
+
+  document.getElementById('section-zones').style.display     = tab === 'zones'     ? '' : 'none';
+  document.getElementById('section-materiels').style.display = tab === 'materiels' ? '' : 'none';
+  document.getElementById('legend-zones').style.display      = tab === 'zones'     ? '' : 'none';
+  document.getElementById('legend-mat').style.display        = tab === 'materiels' ? '' : 'none';
+
+  document.getElementById('tab-zones').classList.toggle('active',    tab === 'zones');
+  document.getElementById('tab-materiels').classList.toggle('active', tab === 'materiels');
+
+  var etF  = document.getElementById('etageFilter');
+  var catF = document.getElementById('catFilter');
+  var optM = document.querySelector('#statutFilter .opt-maint');
+  if (etF)  etF.style.display  = tab === 'zones'     ? '' : 'none';
+  if (catF) catF.style.display = tab === 'materiels' ? '' : 'none';
+  if (optM) optM.style.display = tab === 'materiels' ? '' : 'none';
+
+  /* Remettre le filtre statut sur "Tous" quand on change d'onglet */
+  document.getElementById('statutFilter').value = 'all';
+  applyFilters();
 }
 
-// ─── Actualisation occupation ───
-function refreshOccupation() {
-  const btn = document.getElementById('refresh-btn');
-  btn.style.transform = 'rotate(360deg)';
+/* ══════════════════════════════════════════════════════════
+   FILTRES
+══════════════════════════════════════════════════════════ */
+function applyFilters() {
+  var search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  var statut = document.getElementById('statutFilter').value;
+  var etage  = document.getElementById('etageFilter').value;
+  var cat    = document.getElementById('catFilter').value;
+
+  if (activeTab === 'zones') {
+    var cards   = document.querySelectorAll('#grid-zones .zone-card');
+    var visible = 0;
+    cards.forEach(function(card) {
+      var ok = true;
+      if (search && !card.dataset.nom.includes(search)) ok = false;
+      if (etage !== 'all' && card.dataset.etage != etage) ok = false;
+      if (statut !== 'all' && statut !== 'maintenance') {
+        if (card.dataset.niveau !== statut) ok = false;
+      }
+      card.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    var rc = document.getElementById('count-zones');
+    if (rc) rc.textContent = visible + ' zone' + (visible !== 1 ? 's' : '');
+
+  } else {
+    var cards   = document.querySelectorAll('#grid-mat .mat-card');
+    var visible = 0;
+    cards.forEach(function(card) {
+      var ok = true;
+      if (search && !card.dataset.nom.includes(search)) ok = false;
+      if (cat !== 'all' && card.dataset.cat !== cat) ok = false;
+      if (statut === 'low'         && card.dataset.statut !== 'low')         ok = false;
+      if (statut === 'maintenance' && card.dataset.statut !== 'maintenance') ok = false;
+      if (statut === 'utilise'     && card.dataset.statut !== 'utilise')     ok = false;
+      if (statut === 'mid' || statut === 'high') ok = false;
+      card.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    var rc = document.getElementById('count-mat');
+    if (rc) rc.textContent = visible + ' matériel' + (visible !== 1 ? 's' : '');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   REFRESH
+══════════════════════════════════════════════════════════ */
+function refreshAll() {
+  var btn = document.getElementById('refresh-btn');
   btn.style.transition = 'transform .5s ease';
-  setTimeout(() => { btn.style.transform = ''; btn.style.transition = ''; }, 500);
-
-  fetch('/api/occupation/')
-    .then(r => r.json())
-    .then(data => {
-      data.bureaux.forEach(b => {
-        const cards = document.querySelectorAll('.zone-card');
-        cards.forEach(card => {
-          if (card.dataset.nom === b.nom) {
-            const fill   = card.querySelector('.zone-bar-fill');
-            const taux   = card.querySelector('.zone-taux');
-            const badge  = card.querySelector('.zone-badge');
-            const topBar = card.querySelector('.zone-top-bar');
-            const t = b.taux;
-            const color = t >= 70 ? '#ef4444' : (t >= 30 ? '#f59e0b' : '#10b981');
-            const grad  = t >= 70 ? 'linear-gradient(90deg,#dc2626,#ef4444)' : (t >= 30 ? 'linear-gradient(90deg,#d97706,#f59e0b)' : 'linear-gradient(90deg,#059669,#10b981)');
-            const cls   = t >= 70 ? 'high' : (t >= 30 ? 'mid' : 'low');
-
-            if (fill)   { fill.style.width = t + '%'; fill.style.background = grad; }
-            if (taux)   { taux.textContent = t + '%'; }
-            if (badge) {
-              badge.className = 'zone-badge ' + (t >= 70 ? 'plein' : (t >= 30 ? 'occupe' : 'disponible'));
-              badge.innerHTML = t >= 70 ? '🔴 PLEIN' : (t >= 30 ? '🟡 OCCUPÉ' : '🟢 LIBRE');
-            }
-            if (topBar) { topBar.className = 'zone-top-bar ' + cls; }
-            card.className = card.className.replace(/\b(low|mid|high)\b/, cls);
-          }
-        });
-      });
-      const now = new Date();
-      document.getElementById('last-update').textContent =
-        'Mis à jour — ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
-    })
-    .catch(() => {});
+  btn.style.transform  = 'rotate(360deg)';
+  setTimeout(function() {
+    btn.style.transform  = '';
+    btn.style.transition = '';
+  }, 550);
+  var now = new Date();
+  var p   = function(n) { return String(n).padStart(2, '0'); };
+  var lu  = document.getElementById('last-update');
+  if (lu) lu.textContent = 'Actualisé — ' + p(now.getHours()) + ':' + p(now.getMinutes()) + ':' + p(now.getSeconds());
 }
 
-// ─── Modal Itinéraire ───
-function showItineraire(nom, etage, code) {
-  document.getElementById('itineraire-titre').textContent = '🗺️ ' + nom;
-  document.getElementById('itineraire-body').innerHTML = `
-    <div style="text-align:center;padding:4px 0 18px;border-bottom:1px solid var(--border);margin-bottom:18px;">
-      <div style="font-size:48px;margin-bottom:8px;">🏢</div>
-      <div style="font-weight:700;font-size:15px;color:var(--text1);">${nom}</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:4px;font-family:var(--mono);">
-        ÉTAGE ${etage} &nbsp;·&nbsp; CODE ${code}
-      </div>
-    </div>
-    <div style="margin-bottom:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);">Instructions</div>
-    <div class="itineraire-step"><div class="step-num">1</div><div class="step-text">Passez votre badge au portique d'entrée principal</div></div>
-    <div class="itineraire-step"><div class="step-num">2</div><div class="step-text">Prenez l'ascenseur ou les escaliers jusqu'à l'<strong style="color:var(--text1);">étage ${etage}</strong></div></div>
-    <div class="itineraire-step"><div class="step-num">3</div><div class="step-text">Dirigez-vous vers l'<strong style="color:var(--text1);">aile ${code}</strong>, signalée par les panneaux directionnels</div></div>
-    <div class="itineraire-step"><div class="step-num">4</div><div class="step-text">La zone <strong style="color:var(--text1);">${nom}</strong> se trouve au fond du couloir à droite</div></div>
-  `;
-  document.getElementById('itineraireModal').style.display = 'flex';
+/* ══════════════════════════════════════════════════════════
+   MODAL ZONE
+══════════════════════════════════════════════════════════ */
+function openZoneModal(nom, etage, code, niveau, accesH, accesJ, lastAct, securite, type, resaActives, prochaineResa, bureauId) {
+  var colors = { low: '#10b981', mid: '#f59e0b', high: '#ef4444' };
+  var labels = { low: '🟢 LIBRE', mid: '🟡 MODÉRÉ', high: '🔴 TRÈS ACTIF' };
+  var c   = colors[niveau] || '#3b82f6';
+  var lbl = labels[niveau] || niveau;
+  var ra  = parseInt(resaActives) || 0;
+
+  document.getElementById('zm-nom').textContent = nom;
+  document.getElementById('zm-sub').textContent = type + ' · Étage ' + etage + ' · ' + code;
+  document.getElementById('zm-resa-link').href  = '/employe/reservations/?bureau=' + bureauId;
+
+  var nivCls = niveau === 'high' ? 'red' : niveau === 'mid' ? 'amber' : 'green';
+
+  document.getElementById('zm-body').innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:13px 15px;' +
+    'border-radius:var(--radius-sm);background:var(--bg3);border:1px solid var(--border);">' +
+      '<div style="width:10px;height:10px;border-radius:50%;background:' + c + ';box-shadow:0 0 8px ' + c + ';flex-shrink:0;"></div>' +
+      '<span style="font-weight:700;font-size:13px;color:' + c + ';font-family:var(--mono);">' + lbl + '</span>' +
+      '<span style="margin-left:auto;font-size:11px;color:var(--text3);font-family:var(--mono);">' + accesH + ' accès cette heure</span>' +
+    '</div>' +
+
+    '<div class="modal-sec">Statistiques d\'activité</div>' +
+    '<div class="modal-grid">' +
+      '<div class="modal-cell"><div class="modal-cell-label">Accès / heure</div>' +
+        '<div class="modal-cell-val ' + nivCls + '">' + accesH + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Accès aujourd\'hui</div>' +
+        '<div class="modal-cell-val blue">' + accesJ + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Dernière activité</div>' +
+        '<div class="modal-cell-val" style="font-size:11px;">' + lastAct + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Résa. en cours</div>' +
+        '<div class="modal-cell-val ' + (ra > 0 ? 'green' : '') + '">' + ra + '</div></div>' +
+    '</div>' +
+
+    '<div class="modal-sec">Informations de la zone</div>' +
+    '<div class="modal-grid">' +
+      '<div class="modal-cell"><div class="modal-cell-label">Type</div>' +
+        '<div class="modal-cell-val" style="font-size:12px;">' + type + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Niveau sécurité</div>' +
+        '<div class="modal-cell-val" style="font-size:12px;">' + securite + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Code zone</div>' +
+        '<div class="modal-cell-val">' + code + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Prochaine résa.</div>' +
+        '<div class="modal-cell-val" style="font-size:10px;' + (prochaineResa !== '—' ? 'color:var(--blue2)' : '') + '">' + prochaineResa + '</div></div>' +
+    '</div>' +
+
+    '<div class="modal-sec">Itinéraire d\'accès</div>' +
+    '<div class="itin-step"><div class="step-num">1</div>' +
+      '<div class="step-text">Passez votre badge RFID au portique d\'entrée principal du bâtiment</div></div>' +
+    '<div class="itin-step"><div class="step-num">2</div>' +
+      '<div class="step-text">Dirigez-vous vers l\'<strong>ascenseur</strong> et montez jusqu\'à l\'<strong>étage ' + etage + '</strong></div></div>' +
+    '<div class="itin-step"><div class="step-num">3</div>' +
+      '<div class="step-text">Suivez les panneaux directionnels vers la zone <strong>' + code + '</strong></div></div>' +
+    '<div class="itin-step"><div class="step-num">4</div>' +
+      '<div class="step-text">Scannez votre badge à la porte de <strong>' + nom + '</strong> pour entrer</div></div>';
+
+  document.getElementById('zoneModal').style.display = 'flex';
 }
 
-function closeItineraireModal() {
-  document.getElementById('itineraireModal').style.display = 'none';
+/* ══════════════════════════════════════════════════════════
+   MODAL MATÉRIEL
+══════════════════════════════════════════════════════════ */
+function openMatModal(nom, cat, marque, modele, statut, resaActives, numInv, zone, cpu, ram, stockage, os, desc, prochaineResa, matId) {
+  var isDispo   = statut === 'disponible' && parseInt(resaActives) === 0;
+  var isUtilise = parseInt(resaActives) > 0;
+  var color     = isDispo ? '#10b981' : isUtilise ? '#60a5fa' : '#8b5cf6';
+  var label     = isDispo ? '🟢 DISPONIBLE' : isUtilise ? "🔵 EN COURS D'UTILISATION" : '🔧 MAINTENANCE';
+  var iconMap   = { Informatique:'💻', Mobilier:'🪑', Audiovisuel:'📽️', Imprimante:'🖨️', Securite:'🔒', Vehicule:'🚗', Laboratoire:'🔬' };
+  var icon      = iconMap[cat] || '📦';
+
+  document.getElementById('mm-nom').textContent  = nom;
+  document.getElementById('mm-sub').textContent  = cat + (marque ? ' · ' + marque : '') + (modele ? ' ' + modele : '');
+  document.getElementById('mm-icon').textContent = icon;
+  document.getElementById('mm-icon').style.background = 'var(--bg4)';
+  document.getElementById('mm-icon').style.border     = '1px solid var(--border2)';
+
+  /* Specs */
+  var specsHtml = '';
+  if (cpu !== '—' || ram !== '—' || stockage !== '—' || os !== '—') {
+    specsHtml = '<div class="modal-sec">Spécifications techniques</div><div class="modal-grid">';
+    if (cpu !== '—')      specsHtml += '<div class="modal-cell"><div class="modal-cell-label">Processeur</div><div class="modal-cell-val" style="font-size:10px;">' + cpu + '</div></div>';
+    if (ram !== '—')      specsHtml += '<div class="modal-cell"><div class="modal-cell-label">RAM</div><div class="modal-cell-val">' + ram + '</div></div>';
+    if (stockage !== '—') specsHtml += '<div class="modal-cell"><div class="modal-cell-label">Stockage</div><div class="modal-cell-val">' + stockage + '</div></div>';
+    if (os !== '—')       specsHtml += '<div class="modal-cell"><div class="modal-cell-label">Système</div><div class="modal-cell-val" style="font-size:10px;">' + os + '</div></div>';
+    specsHtml += '</div>';
+  }
+
+  var descHtml = '';
+  if (desc) {
+    descHtml = '<div class="modal-sec">Description</div>' +
+      '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);' +
+      'padding:12px 14px;font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:16px;">' + desc + '</div>';
+  }
+
+  document.getElementById('mm-body').innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:13px 15px;' +
+    'border-radius:var(--radius-sm);background:var(--bg3);border:1px solid var(--border);">' +
+      '<div style="width:10px;height:10px;border-radius:50%;background:' + color + ';box-shadow:0 0 8px ' + color + ';flex-shrink:0;"></div>' +
+      '<span style="font-weight:700;font-size:13px;color:' + color + ';font-family:var(--mono);">' + label + '</span>' +
+    '</div>' +
+
+    '<div class="modal-sec">Informations générales</div>' +
+    '<div class="modal-grid">' +
+      '<div class="modal-cell"><div class="modal-cell-label">Catégorie</div><div class="modal-cell-val" style="font-size:12px;">' + cat + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">N° Inventaire</div><div class="modal-cell-val purple" style="font-size:11px;">' + numInv + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Zone / Localisation</div><div class="modal-cell-val" style="font-size:11px;">' + zone + '</div></div>' +
+      '<div class="modal-cell"><div class="modal-cell-label">Prochaine résa.</div><div class="modal-cell-val" style="font-size:10px;' + (prochaineResa !== '—' ? 'color:var(--blue2)' : '') + '">' + prochaineResa + '</div></div>' +
+    '</div>' +
+
+    specsHtml + descHtml;
+
+  /* Footer dynamique */
+  var foot = document.getElementById('mm-foot');
+  foot.innerHTML = '<button class="btn-ghost-sm" onclick="closeModal(\'matModal\')">Fermer</button>';
+  if (isDispo) {
+    foot.innerHTML += '<a href="/employe/reservations/?materiel=' + matId + '" class="btn-green-sm">📅 Réserver ce matériel</a>';
+  }
+
+  document.getElementById('matModal').style.display = 'flex';
 }
 
-// Actualisation auto toutes les 30s
-setInterval(refreshOccupation, 30000);
+/* ══════════════════════════════════════════════════════════
+   UTILITAIRES
+══════════════════════════════════════════════════════════ */
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function() {
+  switchTab('zones');
+  setInterval(refreshAll, 60000);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeModal('zoneModal');
+      closeModal('matModal');
+    }
+  });
+});
 </script>
-
 {% endblock %}

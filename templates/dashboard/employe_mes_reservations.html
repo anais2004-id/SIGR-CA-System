@@ -313,7 +313,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 /* Scrollbar */
 * { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
-
 <div class="resa-wrap">
 
   <!-- Messages -->
@@ -342,15 +341,15 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     </div>
 
     <div class="kpi green">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top">
-        <span class="kpi-label">Confirmées</span>
-        <div class="kpi-icon-wrap">✅</div>
-      </div>
-      <div class="kpi-val">{{ actives|default:"0" }}</div>
-      <div class="kpi-sub">Actives</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}{% widthratio actives total 100 %}{% else %}5{% endif %}%"></div></div>
-    </div>
+  <div class="kpi-accent"></div>
+  <div class="kpi-top">
+    <span class="kpi-label">Confirmées</span>
+    <div class="kpi-icon-wrap">✅</div>
+  </div>
+  <div class="kpi-val">{{ total_confirmees|default:"0" }}</div>
+  <div class="kpi-sub">Réservations</div>
+  <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}{% widthratio total_confirmees total 100 %}{% else %}5{% endif %}%"></div></div>
+</div>
 
     <div class="kpi purple">
       <div class="kpi-accent"></div>
@@ -412,6 +411,20 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <span class="card-title">Mes réservations</span>
       <span class="card-badge status-pill status-ok">{{ reservations|length }} réservation(s)</span>
       <button class="btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
+      <div class="card-head">
+  <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📋</div>
+  <span class="card-title">Mes réservations</span>
+  <span class="card-badge status-pill status-ok">{{ reservations|length }} réservation(s)</span>
+  <button class="btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
+
+  <!-- ⬇️ AJOUTEZ CES DEUX BOUTONS -->
+  <a href="{% url 'reservations_export_csv' %}" class="btn-ghost btn-sm" style="margin-left:8px;">
+    📥 CSV
+  </a>
+  <a href="{% url 'reservations_export_pdf' %}" class="btn-ghost btn-sm" target="_blank" style="margin-left:4px;">
+    📄 PDF
+  </a>
+</div>
     </div>
     <div class="card-body" style="padding:0;">
       <div class="tbl-wrap">
@@ -1000,6 +1013,43 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof onEmpResourceChange === 'function') onEmpResourceChange();
       }
     }, 300);
+  }
+});
+// ═══════════════════════════════════════════
+// ERREUR FORMULAIRE → RÉOUVRIR LE MODAL
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+  var errorAlerts = document.querySelectorAll('.alert-box.danger');
+  if (errorAlerts.length > 0) {
+    // Récupère le texte de l'erreur
+    var errText = '';
+    errorAlerts.forEach(function(a) {
+      var t = a.querySelector('.alert-text');
+      if (t) errText += (errText ? '<br>' : '') + t.textContent.trim();
+      a.style.display = 'none'; // cache l'alerte de la page
+    });
+
+    // Rouvre le modal
+    openResaModal();
+
+    // Affiche l'erreur dans le bloc déjà prévu dans le modal
+    var dispoMsg = document.getElementById('empDispoMsg');
+    if (dispoMsg) {
+      dispoMsg.style.display    = 'block';
+      dispoMsg.style.background = 'rgba(239,68,68,.08)';
+      dispoMsg.style.border     = '1px solid rgba(239,68,68,.2)';
+      dispoMsg.style.color      = 'var(--red)';
+      dispoMsg.style.padding    = '12px 14px';
+      dispoMsg.style.borderRadius = '8px';
+      dispoMsg.style.fontWeight = '600';
+      dispoMsg.innerHTML        = '⚠️ ' + errText;
+    }
+  }
+
+  // Messages de succès → pas de modal, juste scroll vers le haut
+  var successAlerts = document.querySelectorAll('.alert-box.info');
+  if (successAlerts.length > 0) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 });
 </script>

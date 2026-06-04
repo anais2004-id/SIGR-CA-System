@@ -251,5 +251,7 @@ urlpatterns = [
     path('api/live-feed/',           views.api_live_feed,         name='api_live_feed'),
     #path('api/occupation/',          views.get_occupation,        name='api_occupation'),
     path('api/emergency-unlock/',    views.api_emergency_unlock,  name='api_emergency_unlock'),
+    path('employe/reservations/export/csv/', views.reservations_export_csv, name='reservations_export_csv'),
+    path('employe/reservations/export/pdf/', views.reservations_export_pdf, name='reservations_export_pdf'),
 ]
     

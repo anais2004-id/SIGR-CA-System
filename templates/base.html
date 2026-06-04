@@ -999,11 +999,34 @@ body.light textarea {
 
   <!-- SIDEBAR EMPLOYÉ -->
   {% elif user.is_authenticated and not user.is_staff %}
-  <div class="emp-sidebar-badge">
-    <div class="emp-sidebar-badge-title">👤 Connecté</div>
-    <div class="emp-sidebar-badge-name">{{ user.get_full_name|default:user.username }}</div>
-    <div class="emp-sidebar-badge-role">{{ user.email|default:"Employé" }}</div>
+<div class="emp-sidebar-badge" style="display:flex; align-items:center; gap:11px;">
+
+  {% if employe_photo %}
+  <img src="{{ employe_photo }}"
+       alt="Photo profil"
+       style="width:42px; height:42px; border-radius:10px; object-fit:cover;
+              flex-shrink:0; border:2px solid rgba(16,185,129,.35);
+              box-shadow:0 0 10px rgba(16,185,129,.2);">
+  {% else %}
+  <div style="width:42px; height:42px; border-radius:10px; flex-shrink:0;
+              background:linear-gradient(135deg,var(--blue),var(--cyan));
+              display:flex; align-items:center; justify-content:center;
+              font-size:14px; font-weight:700; color:white;
+              font-family:var(--mono); box-shadow:0 0 12px rgba(59,130,246,.3);">
+    {{ user.username|slice:":2"|upper }}
   </div>
+  {% endif %}
+
+  <div style="min-width:0; flex:1;">
+    <div class="emp-sidebar-badge-title">● En ligne</div>
+    <div class="emp-sidebar-badge-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+      {{ user.get_full_name|default:user.username }}
+    </div>
+    <div class="emp-sidebar-badge-role" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+      {{ user.email|default:"Employé" }}
+    </div>
+  </div>
+</div>
   <nav>
     <div class="nav-group">Mon espace</div>
     <a href="{% url 'employe_espace' %}" class="nav-item {% block nav_emp_home %}{% endblock %}">
