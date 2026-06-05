@@ -110,8 +110,7 @@ urlpatterns = [
 
     # ── Sessions actives ─────────────────────────────────────────────────────
     path('active-sessions/',                            views.active_sessions,       name='active_sessions'),
-    path('terminate-session/<int:session_id>/',         views.terminate_session,     name='terminate_session'),
-    path('terminate-all-sessions/',                     views.terminate_all_sessions,name='terminate_all_sessions'),
+path('terminate-session/<str:session_id>/',             views.terminate_session,     name='terminate_session'),    path('terminate-all-sessions/',                     views.terminate_all_sessions,name='terminate_all_sessions'),
     path('clear-session-history/',                      views.clear_session_history, name='clear_session_history'),
 
     # ── Notifications Admin ──────────────────────────────────────────────────
@@ -253,5 +252,6 @@ urlpatterns = [
     path('api/emergency-unlock/',    views.api_emergency_unlock,  name='api_emergency_unlock'),
     path('employe/reservations/export/csv/', views.reservations_export_csv, name='reservations_export_csv'),
     path('employe/reservations/export/pdf/', views.reservations_export_pdf, name='reservations_export_pdf'),
-]
+    
+    ]
     

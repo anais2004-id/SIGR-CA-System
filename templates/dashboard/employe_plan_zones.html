@@ -228,13 +228,13 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
 .mat-btn-detail:hover{background:var(--bg5);color:var(--text1);}
 
 /* ══ MODAL ════════════════════════════════════ */
-.modal-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,23,.88);
+.modal-overlay{display:none;position:fixed;inset:0;z-index:99999;background:rgba(8,13,23,.88);
   backdrop-filter:blur(8px);align-items:center;justify-content:center;}
 .modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
-  width:540px;max-width:95vw;max-height:90vh;overflow-y:auto;
+  width:540px;max-width:95vw;max-height:90vh;overflow-y:auto;position:relative;
   box-shadow:0 24px 64px rgba(0,0,0,.6);animation:modal-in .25s cubic-bezier(.22,1,.36,1);}
 .modal-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;
-  position:sticky;top:0;background:var(--bg2);z-index:1;}
+  position:sticky;top:0;background:var(--bg2);z-index:10;}
 .modal-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;
   justify-content:center;font-size:18px;flex-shrink:0;}
 .modal-title-block{flex:1;}
@@ -242,7 +242,8 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
 .modal-subtitle{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
 .modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);
   background:var(--bg3);color:var(--text2);cursor:pointer;font-size:14px;
-  display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
+  display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;
+  position:relative;z-index:11;}
 .modal-close:hover{background:var(--bg4);color:var(--text1);}
 .modal-body{padding:22px;}
 .modal-sec{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);
@@ -265,7 +266,7 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
 .step-text{font-size:12.5px;color:var(--text2);line-height:1.5;}
 .step-text strong{color:var(--text1);}
 .modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;
-  position:sticky;bottom:0;background:var(--bg2);}
+  position:sticky;bottom:0;background:var(--bg2);z-index:10;}
 .btn-ghost-sm{padding:7px 16px;border-radius:8px;cursor:pointer;background:transparent;color:var(--text2);
   font-size:12.5px;font-weight:600;font-family:var(--font);border:1px solid var(--border2);transition:all .15s;}
 .btn-ghost-sm:hover{background:var(--bg4);color:var(--text1);}
@@ -670,7 +671,7 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- MODAL ZONE                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="zoneModal" onclick="if(event.target===this)closeModal('zoneModal')">
+<div class="modal-overlay" id="zoneModal">
   <div class="modal-box">
     <div class="modal-head">
       <div class="modal-icon" id="zm-icon"
@@ -679,11 +680,11 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
         <div class="modal-title" id="zm-nom">Zone</div>
         <div class="modal-subtitle" id="zm-sub">—</div>
       </div>
-      <button class="modal-close" onclick="closeModal('zoneModal')">✕</button>
+      <button class="modal-close" data-close="zoneModal">✕</button>
     </div>
     <div class="modal-body" id="zm-body"></div>
     <div class="modal-foot">
-      <button class="btn-ghost-sm" onclick="closeModal('zoneModal')">Fermer</button>
+      <button class="btn-ghost-sm" data-close="zoneModal">Fermer</button>
       <a id="zm-resa-link" href="#" class="btn-primary-sm">📅 Réserver cette zone</a>
     </div>
   </div>
@@ -692,7 +693,7 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- MODAL MATÉRIEL                                                  -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="matModal" onclick="if(event.target===this)closeModal('matModal')">
+<div class="modal-overlay" id="matModal">
   <div class="modal-box">
     <div class="modal-head">
       <div class="modal-icon" id="mm-icon"
@@ -701,11 +702,11 @@ body,.dashboard-body{font-family:var(--font)!important;background:var(--bg0)!imp
         <div class="modal-title" id="mm-nom">Matériel</div>
         <div class="modal-subtitle" id="mm-sub">—</div>
       </div>
-      <button class="modal-close" onclick="closeModal('matModal')">✕</button>
+      <button class="modal-close" data-close="matModal">✕</button>
     </div>
     <div class="modal-body" id="mm-body"></div>
     <div class="modal-foot" id="mm-foot">
-      <button class="btn-ghost-sm" onclick="closeModal('matModal')">Fermer</button>
+      <button class="btn-ghost-sm" data-close="matModal">Fermer</button>
     </div>
   </div>
 </div>
@@ -915,7 +916,7 @@ function openMatModal(nom, cat, marque, modele, statut, resaActives, numInv, zon
 
   /* Footer dynamique */
   var foot = document.getElementById('mm-foot');
-  foot.innerHTML = '<button class="btn-ghost-sm" onclick="closeModal(\'matModal\')">Fermer</button>';
+  foot.innerHTML = '<button class="btn-ghost-sm" data-close="matModal">Fermer</button>';
   if (isDispo) {
     foot.innerHTML += '<a href="/employe/reservations/?materiel=' + matId + '" class="btn-green-sm">📅 Réserver ce matériel</a>';
   }
@@ -926,7 +927,7 @@ function openMatModal(nom, cat, marque, modele, statut, resaActives, numInv, zon
 /* ══════════════════════════════════════════════════════════
    UTILITAIRES
 ══════════════════════════════════════════════════════════ */
-function closeModal(id) {
+function closePlanModal(id) {
   document.getElementById(id).style.display = 'none';
 }
 
@@ -936,10 +937,30 @@ function closeModal(id) {
 document.addEventListener('DOMContentLoaded', function() {
   switchTab('zones');
   setInterval(refreshAll, 60000);
+
+  /* Fermer via Escape */
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      closeModal('zoneModal');
-      closeModal('matModal');
+      closePlanModal('zoneModal');
+      closePlanModal('matModal');
+    }
+  });
+
+  /* Fermer via clic sur l'overlay (hors modal-box) */
+  ['zoneModal', 'matModal'].forEach(function(id) {
+    var overlay = document.getElementById(id);
+    if (!overlay) return;
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closePlanModal(id);
+    });
+  });
+
+  /* Fermer via boutons [data-close] — délégation sur document pour couvrir les boutons injectés dynamiquement */
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-close]');
+    if (btn) {
+      e.stopPropagation();
+      closePlanModal(btn.getAttribute('data-close'));
     }
   });
 });

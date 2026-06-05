@@ -330,39 +330,76 @@ var refreshInterval = null;
 /* ─── Rafraîchir ─── */
 async function refreshSessions() {
   try {
-    var r = await fetch('/api/connected-users/');
+    var r    = await fetch('/api/connected-users/');
     var data = await r.json();
-    document.getElementById('kpi-connected').textContent = data.total || 0;
-    document.getElementById('live-timestamp').textContent = 'Mise à jour : ' + (data.timestamp || new Date().toLocaleTimeString('fr-FR'));
+
+    // ✅ data.stats.total (pas data.total)
+    document.getElementById('kpi-connected').textContent = data.stats ? data.stats.total : 0;
+    document.getElementById('live-timestamp').textContent =
+      'Mise à jour : ' + (data.now ? new Date(data.now).toLocaleTimeString('fr-FR') : new Date().toLocaleTimeString('fr-FR'));
 
     var tbody = document.getElementById('sessions-body');
-    if (!data.users || data.users.length === 0) {
+
+    // ✅ data.sessions (pas data.users)
+    if (!data.sessions || data.sessions.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8"><div style="text-align:center;padding:60px;color:var(--text3);"><div style="font-size:48px;margin-bottom:10px;opacity:.4;">🟢</div><div>Aucun utilisateur connecté</div></div></td></tr>';
       return;
     }
 
-    tbody.innerHTML = data.users.map(function(user) {
-      var isCurrent = user.session_key === '{{ request.session.session_key }}';
-      var statusClass = user.status === 'active' ? 'badge-green' : (user.status === 'idle' ? 'badge-amber' : 'badge-red');
+    tbody.innerHTML = data.sessions.map(function(s) {
+      var isCurrent = s.is_current;
+
+      // Dériver le statut depuis is_inactive
+      var statusClass = s.is_inactive ? 'badge-amber' : 'badge-green';
+      var statusBadge = s.is_inactive ? '⏰ Inactif' : '🟢 Actif';
+
+      // Icône appareil
+      var deviceIcon  = s.device_type === 'mobile' ? '📱' : s.device_type === 'tablet' ? '📟' : '💻';
+      var deviceLabel = s.device_type === 'mobile' ? 'Mobile' : s.device_type === 'tablet' ? 'Tablette' : 'PC';
+
+      // Formater les dates ISO
+      function fmt(iso) {
+        if (!iso) return '—';
+        return new Date(iso).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      }
+
+      var initials = (s.username || '?').slice(0, 2).toUpperCase();
+
       return '<tr>' +
-        '<td><div style="display:flex;align-items:center;gap:10px;"><div class="emp-av ' + (user.is_staff ? 'admin' : 'user') + '">' + user.username.slice(0,2).toUpperCase() + '</div><div><div style="font-weight:600;color:var(--text1);">' + (user.full_name || user.username) + '</div></div></div></td>' +
-        '<td>' + (user.is_staff ? '<span class="badge badge-purple">👑 Admin</span>' : '<span class="badge badge-gray">👤 Employé</span>') + '</td>' +
-        '<td><span class="badge badge-blue">' + (user.device_icon || '💻') + ' ' + (user.device_type === 'desktop' ? 'PC' : user.device_type === 'mobile' ? 'Mobile' : 'Tablette') + '</span></td>' +
-        '<td style="font-family:var(--mono);font-size:11px;">' + user.login_time + '</td>' +
-        '<td style="font-family:var(--mono);font-size:11px;">' + user.last_activity + '</td>' +
-        '<td style="font-family:var(--mono);font-size:10.5px;">' + (user.ip_address || '—') + '</td>' +
-        '<td><span class="badge ' + statusClass + '">' + (user.status_badge || '🟢 Actif') + '</span></td>' +
-        '<td>' + (isCurrent ? '<span class="badge badge-gray">Vous</span>' : '<button class="btn btn-ghost btn-sm" onclick="terminateSession(' + user.id + ',\'' + user.username + '\')" style="color:var(--red);border-color:rgba(239,68,68,.2);">🔒</button>') + '</td>' +
+        '<td><div style="display:flex;align-items:center;gap:10px;">' +
+          '<div class="emp-av ' + (s.is_staff ? 'admin' : 'user') + '">' + initials + '</div>' +
+          '<div>' +
+            '<div style="font-weight:600;color:var(--text1);">' + (s.full_name || s.username) + '</div>' +
+            '<div style="font-size:10px;color:var(--text3);">' + (s.ip_address || '—') + '</div>' +
+          '</div>' +
+        '</div></td>' +
+        '<td>' + (s.is_staff ? '<span class="badge badge-purple">👑 Admin</span>' : '<span class="badge badge-gray">👤 Employé</span>') + '</td>' +
+        '<td><span class="badge badge-blue">' + deviceIcon + ' ' + deviceLabel + '</span></td>' +
+        '<td style="font-family:var(--mono);font-size:11px;">' + fmt(s.login_time) + '</td>' +
+        '<td style="font-family:var(--mono);font-size:11px;">' +
+          fmt(s.last_activity) +
+          (s.minutes_ago !== null ? '<div style="font-size:9px;color:var(--text3);">il y a ' + s.minutes_ago + 'min</div>' : '') +
+        '</td>' +
+        '<td style="font-family:var(--mono);font-size:10.5px;">' + (s.ip_address || '—') + '</td>' +
+        '<td><span class="badge ' + statusClass + '">' + statusBadge + '</span></td>' +
+        '<td>' + (isCurrent
+          ? '<span class="badge badge-gray">Vous</span>'
+          : '<button class="btn btn-ghost btn-sm" onclick="terminateSession(\'' + s.id + '\',\'' + s.username + '\')" style="color:var(--red);border-color:rgba(239,68,68,.2);">🔒</button>'
+        ) + '</td>' +
         '</tr>';
     }).join('');
-  } catch(e) { console.error('Erreur:', e); }
+
+  } catch(e) { console.error('Erreur refreshSessions:', e); }
 }
 
 /* ─── Terminer session ─── */
 async function terminateSession(sessionId, username) {
   if (!confirm('Terminer la session de ' + username + ' ?')) return;
   try {
-    await fetch('/terminate-session/' + sessionId + '/', { method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}'} });
+    await fetch('/terminate-session/' + sessionId + '/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    });
     showToast('✅ Session de ' + username + ' terminée', 'ok');
     refreshSessions();
   } catch(e) { showToast('❌ Erreur', 'err'); }
@@ -371,11 +408,10 @@ async function terminateSession(sessionId, username) {
 /* ─── Auto-refresh ─── */
 function toggleAutoRefresh() {
   autoRefresh = !autoRefresh;
-  var btn = document.getElementById('autoRefreshText');
-  var pill = document.getElementById('livePill');
-  var dot = document.getElementById('liveDot');
+  var btn   = document.getElementById('autoRefreshText');
+  var pill  = document.getElementById('livePill');
+  var dot   = document.getElementById('liveDot');
   var badge = document.getElementById('liveStatusBadge');
-  
   if (autoRefresh) {
     btn.textContent = 'Pause';
     badge.textContent = 'LIVE';
@@ -398,37 +434,50 @@ function startAutoRefresh() {
   refreshInterval = setInterval(function() { if (autoRefresh) refreshSessions(); }, 10000);
 }
 
-/* ─── Export ─── */
+/* ─── Export CSV ─── */
 function exportSessionsCSV() {
   var csv = 'Utilisateur,Rôle,Appareil,Connexion,Dernière activité,IP,Statut\n';
   document.querySelectorAll('#sessions-body tr').forEach(function(row) {
     var cells = row.querySelectorAll('td');
     if (cells.length >= 7) {
-      csv += Array.from(cells).slice(0,7).map(function(c) { return '"' + c.textContent.trim().replace(/"/g,'""') + '"'; }).join(',') + '\n';
+      csv += Array.from(cells).slice(0,7).map(function(c) {
+        return '"' + c.textContent.trim().replace(/"/g,'""') + '"';
+      }).join(',') + '\n';
     }
   });
-  var blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = 'sessions_actives_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.csv'; a.click();
+  var blob = new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sessions_actives_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.csv';
+  a.click();
 }
 
 /* ─── Toast ─── */
 function showToast(msg, type) {
   var t = document.getElementById('toast');
-  t.textContent = msg; t.className = 'toast ' + type + ' show';
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
   setTimeout(function() { t.classList.remove('show'); }, 3000);
 }
 
-/* ─── KPI counter ─── */
+/* ─── KPI counter animation ─── */
 document.querySelectorAll('.kpi-val').forEach(function(el) {
   var text = el.textContent.replace(/\s/g,' ');
-  var num = parseInt(text.replace(/[^0-9]/g,''),10);
-  if (isNaN(num)||num===0)return;
-  var duration=900, step=num/duration*16, current=0;
-  var timer=setInterval(function(){current=Math.min(current+step,num);el.textContent=Math.round(current)+(text.includes('%')?'%':'');if(current>=num)clearInterval(timer);},16);
+  var num  = parseInt(text.replace(/[^0-9]/g,''), 10);
+  if (isNaN(num) || num === 0) return;
+  var duration = 900, step = num/duration*16, current = 0;
+  var timer = setInterval(function() {
+    current = Math.min(current+step, num);
+    el.textContent = Math.round(current) + (text.includes('%') ? '%' : '');
+    if (current >= num) clearInterval(timer);
+  }, 16);
 });
 
 /* ─── Init ─── */
-document.addEventListener('DOMContentLoaded', function() { refreshSessions(); startAutoRefresh(); });
+document.addEventListener('DOMContentLoaded', function() {
+  refreshSessions();
+  startAutoRefresh();
+});
+
 </script>
 {% endblock %}

@@ -532,55 +532,182 @@
 <button class="chatbot-fab" onclick="toggleChatbot()">🤖</button>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-  //──────────────────────────────────────────
-  // Replicating all original logic with theme vars
-  //──────────────────────────────────────────
   var qrCode=null,checkTimer=null,conversationId=null,isTyping=false;
 
-  function openResaModal(){var m=document.getElementById('resaModal');m.style.display='flex';var n=new Date();n.setMinutes(0,0,0);n.setHours(n.getHours()+1);var f=new Date(n.getTime()+36e5);var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':00'};document.getElementById('d-debut').value=fmt(n);document.getElementById('d-fin').value=fmt(f)}
-  function closeResaModal(){document.getElementById('resaModal').style.display='none';document.getElementById('dispo-ind').style.display='none'}
-  function showQRCode(){document.getElementById('qrModal').style.display='flex';if(!qrCode)qrCode=new QRCode(document.getElementById("qr-canvas"),{text:JSON.stringify({badge:"{{ employe.badge_id|default:employe.id }}",user:"{{ employe.prenom }} {{ employe.nom }}"}),width:200,height:200,colorDark:"#000",colorLight:"#fff",correctLevel:QRCode.CorrectLevel.H})}
-  function closeQRModal(){document.getElementById('qrModal').style.display='none'}
-  function downloadQR(){var c=document.getElementById('qr-canvas'),a=document.createElement('a');a.download='qrcode.png';a.href=c.toDataURL();a.click()}
-  function annulerReservation(id){if(!confirm('Annuler cette réservation ?'))return;var f=document.createElement('form');f.method='POST';f.action='/employe/reservations/'+id+'/annuler/';var cs=document.createElement('input');cs.type='hidden';cs.name='csrfmiddlewaretoken';cs.value='{{ csrf_token }}';f.appendChild(cs);document.body.appendChild(f);f.submit()}
-  function checkDisponibilite(){var b=document.getElementById('sel-bureau').value,d=document.getElementById('d-debut').value,f=document.getElementById('d-fin').value,ind=document.getElementById('dispo-ind'),btn=document.getElementById('submitBtn');if(!b||!d||!f){ind.style.display='none';btn.disabled=false;return}if(new Date(f)<=new Date(d)){ind.style.display='block';ind.style.background='rgba(239,68,68,.08)';ind.style.border='1px solid rgba(239,68,68,.2)';ind.style.color='var(--red)';ind.innerHTML='⚠️ Date invalide';btn.disabled=true;return}clearTimeout(checkTimer);checkTimer=setTimeout(function(){ind.style.display='block';ind.style.background='rgba(59,130,246,.08)';ind.style.border='1px solid rgba(59,130,246,.2)';ind.style.color='var(--blue2)';ind.innerHTML='⏳ Vérification...';fetch('/api/bureaux/'+b+'/disponibilite/?debut='+encodeURIComponent(d)+'&fin='+encodeURIComponent(f)).then(function(r){return r.json()}).then(function(data){if(data.disponible){ind.style.background='rgba(16,185,129,.08)';ind.style.border='1px solid rgba(16,185,129,.2)';ind.style.color='var(--green)';ind.innerHTML='✅ Disponible !';btn.disabled=false}else{ind.style.background='rgba(239,68,68,.08)';ind.style.border='1px solid rgba(239,68,68,.2)';ind.style.color='var(--red)';ind.innerHTML='❌ Déjà réservée';btn.disabled=true}})},600)}
-  function loadAISuggestions(){var c=document.getElementById('ai-suggestions');c.innerHTML='<div class="info-box">⏳ Analyse...</div>';fetch('/api/ia/recommandations/').then(function(r){return r.json()}).then(function(data){if(!data.recommendations||!data.recommendations.length){c.innerHTML='<div class="info-box"><div class="info-ico">🌱</div><div>Faites quelques réservations.</div></div>';return}var h='';data.recommendations.forEach(function(r,i){var m=i===0?'🥇':i===1?'🥈':'🥉';h+='<div class="card" onclick="openResaModal();setTimeout(function(){var s=document.getElementById(\'sel-bureau\');if(s)s.value=\''+r.resource_id+'\';var t=document.querySelector(\'input[name=titre]\');if(t)t.value=\'Réservation '+r.nom.replace(/'/g,"\\'")+'\'},300)" style="padding:16px;cursor:pointer;margin-bottom:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;transition:all .2s;" onmouseover="this.style.borderColor=\'var(--cyan)\';this.style.boxShadow=\'0 4px 20px rgba(6,182,212,.1)\'" onmouseout="this.style.borderColor=\'var(--border2)\';this.style.boxShadow=\'none\'"><div style="font-size:24px;margin-bottom:8px;">'+r.icon+'</div><div style="font-weight:700;font-size:13px;color:var(--text1);">'+m+' '+r.nom+'</div><div style="font-size:11px;color:var(--text2);margin-top:4px;">'+r.raison+'</div><div style="font-family:var(--mono);font-size:11px;color:var(--cyan);margin-top:6px;">⭐ '+r.score+'</div></div>'});c.innerHTML=h}).catch(function(){c.innerHTML='<div class="info-box">⚠️ Indisponible</div>'})}
-  function toggleChatbot(){var w=document.getElementById('chatbotWidget'),f=document.querySelector('.chatbot-fab');if(w.style.display==='none'||!w.style.display){w.style.display='flex';f.style.display='none'}else{w.style.display='none';f.style.display='flex'}}
-  function closeChatbot(){document.getElementById('chatbotWidget').style.display='none';document.querySelector('.chatbot-fab').style.display='flex'}
-  async function sendChatbotMessage(){var i=document.getElementById('chatbotInput'),m=i.value.trim();if(!m)return;i.value='';addMessageToChat('user',m);showTypingIndicator();try{var r=await fetch('/api/chatbot/message/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token }}'},body:JSON.stringify({message:m,conversation_id:conversationId})});var d=await r.json();hideTypingIndicator();if(d.status==='success'){conversationId=d.conversation_id;addMessageToChat('assistant',d.message);if(d.suggestions)updateSuggestions(d.suggestions)}else addMessageToChat('assistant','❌ Erreur')}catch(e){hideTypingIndicator();addMessageToChat('assistant','❌ Erreur connexion')}}
-  function addMessageToChat(role,c){var p=document.getElementById('chatbotMessages'),d=document.createElement('div');d.className='chatbot-message '+role;d.innerHTML='<div class="message-avatar">'+(role==='user'?'👤':'🤖')+'</div><div class="message-content">'+c.replace(/\n/g,'<br>')+'</div>';p.appendChild(d);p.scrollTop=p.scrollHeight}
-  function showTypingIndicator(){if(isTyping)return;isTyping=true;var p=document.getElementById('chatbotMessages'),d=document.createElement('div');d.className='chatbot-message assistant';d.id='typingIndicator';d.innerHTML='<div class="message-avatar">🤖</div><div class="typing-indicator"><span></span><span></span><span></span></div>';p.appendChild(d);p.scrollTop=p.scrollHeight}
-  function hideTypingIndicator(){var d=document.getElementById('typingIndicator');if(d)d.remove();isTyping=false}
-  function updateSuggestions(s){document.getElementById('chatbotSuggestions').innerHTML=s.map(function(x){return'<button class="suggestion-chip" onclick="sendQuickMessage(\''+x.replace(/'/g,"\\'")+'\')">'+x+'</button>'}).join('')}
-  function sendQuickMessage(m){document.getElementById('chatbotInput').value=m;sendChatbotMessage()}
+  function openResaModal(){
+    var m=document.getElementById('resaModal');m.style.display='flex';
+    var n=new Date();n.setMinutes(0,0,0);n.setHours(n.getHours()+1);
+    var f=new Date(n.getTime()+36e5);
+    var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':00'};
+    document.getElementById('d-debut').value=fmt(n);
+    document.getElementById('d-fin').value=fmt(f);
+  }
 
-  // KPI Counter Animation
-  document.querySelectorAll('.kpi-val').forEach(function(el){var t=el.textContent.replace(/\s/g,' '),n=parseInt(t.replace(/[^0-9]/g,''),10);if(isNaN(n)||n===0)return;var d=900,s=n/d*16,c=0;var i=setInterval(function(){c=Math.min(c+s,n);el.textContent=Math.round(c)+(t.includes('%')?'%':'');if(c>=n)clearInterval(i)},16)});
-  
-  // Initialize
-  document.addEventListener('DOMContentLoaded',function(){loadAISuggestions();var s=document.getElementById('sel-bureau'),d=document.getElementById('d-debut'),f=document.getElementById('d-fin');if(s)s.addEventListener('change',checkDisponibilite);if(d)d.addEventListener('change',checkDisponibilite);if(f)f.addEventListener('change',checkDisponibilite)});
-  
-  // Mise à jour dynamique du badge de notifications (toutes les 30s)
-  function updateEmployeNotifBadge() {
-    fetch('/api/employe/notifications/unread-count/')
-      .then(r => r.json())
-      .then(d => {
-        var badges = document.querySelectorAll('.notif-badge-count');
-        badges.forEach(function(b) {
-          if (d.count > 0) {
-            b.textContent = d.count;
-            b.style.display = 'flex';
-          } else {
-            b.style.display = 'none';
+  function closeResaModal(){
+    document.getElementById('resaModal').style.display='none';
+    document.getElementById('dispo-ind').style.display='none';
+  }
+
+  function showQRCode(){
+    document.getElementById('qrModal').style.display='flex';
+    if(!qrCode)qrCode=new QRCode(document.getElementById("qr-canvas"),{
+      text:JSON.stringify({badge:"{{ employe.badge_id|default:employe.id }}",user:"{{ employe.prenom }} {{ employe.nom }}"}),
+      width:200,height:200,colorDark:"#000",colorLight:"#fff",correctLevel:QRCode.CorrectLevel.H
+    });
+  }
+
+  function closeQRModal(){document.getElementById('qrModal').style.display='none';}
+
+  function downloadQR(){
+    var c=document.getElementById('qr-canvas'),a=document.createElement('a');
+    a.download='qrcode.png';a.href=c.toDataURL();a.click();
+  }
+
+  function annulerReservation(id){
+    if(!confirm('Annuler cette réservation ?'))return;
+    var f=document.createElement('form');f.method='POST';
+    f.action='/employe/reservations/'+id+'/annuler/';
+    var cs=document.createElement('input');cs.type='hidden';
+    cs.name='csrfmiddlewaretoken';cs.value='{{ csrf_token }}';
+    f.appendChild(cs);document.body.appendChild(f);f.submit();
+  }
+
+  function checkDisponibilite(){
+    var b=document.getElementById('sel-bureau').value,
+        d=document.getElementById('d-debut').value,
+        f=document.getElementById('d-fin').value,
+        ind=document.getElementById('dispo-ind'),
+        btn=document.getElementById('submitBtn');
+    if(!b||!d||!f){ind.style.display='none';btn.disabled=false;return;}
+    if(new Date(f)<=new Date(d)){
+      ind.style.display='block';ind.style.background='rgba(239,68,68,.08)';
+      ind.style.border='1px solid rgba(239,68,68,.2)';ind.style.color='var(--red)';
+      ind.innerHTML='⚠️ Date invalide';btn.disabled=true;return;
+    }
+    clearTimeout(checkTimer);
+    checkTimer=setTimeout(function(){
+      ind.style.display='block';ind.style.background='rgba(59,130,246,.08)';
+      ind.style.border='1px solid rgba(59,130,246,.2)';ind.style.color='var(--blue2)';
+      ind.innerHTML='⏳ Vérification...';
+      fetch('/api/bureaux/'+b+'/disponibilite/?debut='+encodeURIComponent(d)+'&fin='+encodeURIComponent(f))
+        .then(function(r){return r.json();})
+        .then(function(data){
+          if(data.disponible){
+            ind.style.background='rgba(16,185,129,.08)';ind.style.border='1px solid rgba(16,185,129,.2)';
+            ind.style.color='var(--green)';ind.innerHTML='✅ Disponible !';btn.disabled=false;
+          }else{
+            ind.style.background='rgba(239,68,68,.08)';ind.style.border='1px solid rgba(239,68,68,.2)';
+            ind.style.color='var(--red)';ind.innerHTML='❌ Déjà réservée';btn.disabled=true;
           }
         });
-      }).catch(function() {});
+    },600);
   }
-  document.addEventListener('DOMContentLoaded', function() {
+
+  /* ── Chatbot ── */
+  function toggleChatbot(){
+    var w=document.getElementById('chatbotWidget'),f=document.querySelector('.chatbot-fab');
+    if(w.style.display==='none'||!w.style.display){w.style.display='flex';f.style.display='none';}
+    else{w.style.display='none';f.style.display='flex';}
+  }
+
+  function closeChatbot(){
+    document.getElementById('chatbotWidget').style.display='none';
+    document.querySelector('.chatbot-fab').style.display='flex';
+  }
+
+  async function sendChatbotMessage(){
+    var i=document.getElementById('chatbotInput'),m=i.value.trim();
+    if(!m)return;
+    i.value='';
+    addMessageToChat('user',m);
+    showTypingIndicator();
+    try{
+      var r=await fetch('/api/chatbot/message/',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token }}'},
+        body:JSON.stringify({message:m,conversation_id:conversationId})
+      });
+      var d=await r.json();
+      hideTypingIndicator();
+      if(d.status==='success'){
+        conversationId=d.conversation_id;
+        addMessageToChat('assistant',d.message);
+        if(d.suggestions)updateSuggestions(d.suggestions);
+      }else{
+        addMessageToChat('assistant','❌ Erreur : '+(d.error||'inconnue'));
+      }
+    }catch(e){
+      hideTypingIndicator();
+      addMessageToChat('assistant','❌ Erreur connexion');
+    }
+  }
+
+  function addMessageToChat(role,c){
+    var p=document.getElementById('chatbotMessages'),d=document.createElement('div');
+    d.className='chatbot-message '+role;
+    d.innerHTML='<div class="message-avatar">'+(role==='user'?'👤':'🤖')+'</div><div class="message-content">'+c.replace(/\n/g,'<br>')+'</div>';
+    p.appendChild(d);p.scrollTop=p.scrollHeight;
+  }
+
+  function showTypingIndicator(){
+    if(isTyping)return;isTyping=true;
+    var p=document.getElementById('chatbotMessages'),d=document.createElement('div');
+    d.className='chatbot-message assistant';d.id='typingIndicator';
+    d.innerHTML='<div class="message-avatar">🤖</div><div class="typing-indicator"><span></span><span></span><span></span></div>';
+    p.appendChild(d);p.scrollTop=p.scrollHeight;
+  }
+
+  function hideTypingIndicator(){
+    var d=document.getElementById('typingIndicator');if(d)d.remove();isTyping=false;
+  }
+
+  function updateSuggestions(s){
+    document.getElementById('chatbotSuggestions').innerHTML=s.map(function(x){
+      return '<button class="suggestion-chip" onclick="sendQuickMessage(\''+x.replace(/'/g,"\\'")+'\')">'+x+'</button>';
+    }).join('');
+  }
+
+  function sendQuickMessage(m){document.getElementById('chatbotInput').value=m;sendChatbotMessage();}
+
+  /* ── KPI Counter Animation ── */
+  document.querySelectorAll('.kpi-val').forEach(function(el){
+    var t=el.textContent.replace(/\s/g,' '),n=parseInt(t.replace(/[^0-9]/g,''),10);
+    if(isNaN(n)||n===0)return;
+    var d=900,s=n/d*16,c=0;
+    var i=setInterval(function(){
+      c=Math.min(c+s,n);
+      el.textContent=Math.round(c)+(t.includes('%')?'%':'');
+      if(c>=n)clearInterval(i);
+    },16);
+  });
+
+  /* ── Badge notifications employé ── */
+  function updateEmployeNotifBadge(){
+    fetch('/api/notifications/unread-count/')
+      .then(function(r){return r.json();})
+      .then(function(d){
+        document.querySelectorAll('.notif-badge-count').forEach(function(b){
+          if(d.count>0){b.textContent=d.count;b.style.display='flex';}
+          else{b.style.display='none';}
+        });
+      }).catch(function(){});
+  }
+
+  /* ── DOMContentLoaded ── */
+  document.addEventListener('DOMContentLoaded', function(){
+    // Listeners formulaire réservation
+    var s=document.getElementById('sel-bureau');
+    var d=document.getElementById('d-debut');
+    var f=document.getElementById('d-fin');
+    if(s)s.addEventListener('change',checkDisponibilite);
+    if(d)d.addEventListener('change',checkDisponibilite);
+    if(f)f.addEventListener('change',checkDisponibilite);
+
+    // Badge notifications
     updateEmployeNotifBadge();
     setInterval(updateEmployeNotifBadge, 30000);
   });
-
 </script>
 {% endblock %}

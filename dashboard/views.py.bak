@@ -122,97 +122,47 @@ def check_ressource_disponibilite(ressource_id, ressource_type, date_debut, date
         }
     return {'disponible': True, 'motif': '', 'conflit_type': None}
 # ====================== AUTHENTIFICATION ======================
-def _check_password(password, stored_hash):
-    """Vérifie le mot de passe peu importe le format de hash."""
-    import bcrypt
-
-    if not stored_hash:
-        return False
-
-    # Format bcrypt pur
-    if stored_hash.startswith('$2b$') or stored_hash.startswith('$2a$'):
-        try:
-            return bcrypt.checkpw(
-                password.encode('utf-8'),
-                stored_hash.encode('utf-8')
-            )
-        except Exception:
-            return False
-
-    # Format Django (pbkdf2, argon2, etc.)
-    try:
-        from django.contrib.auth.hashers import check_password as django_check
-        return django_check(password, stored_hash)
-    except Exception:
-        return False
-
 
 def login_view(request):
-    next_url = request.GET.get('next', '')
-
-    if request.session.get('user_id'):
-        if request.session.get('is_staff'):
+    if request.user.is_authenticated:
+        if request.user.is_staff or request.user.is_superuser:
             return redirect('dashboard')
-        return redirect('employe_espace')
-
+        else:
+            return redirect('employe_espace')
     if request.method == 'POST':
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
-        next_url = request.POST.get('next', next_url)
-
-        user_doc = None
-        user_id  = None
-
-        # ── 1. Anciens users (dashboard_utilisateur, id entier) ──────────
-        old_user = db['dashboard_utilisateur'].find_one(
-            {'username': username, 'is_active': True}
-        )
-        if old_user and _check_password(password, old_user.get('password', '')):
-            user_doc = old_user
-            user_id  = str(old_user['id'])  # entier → '1'
-
-        # ── 2. Nouveaux users (utilisateurs, ObjectId) ───────────────────
-        if not user_doc:
-            new_user = db['utilisateurs'].find_one(
-                {'username': username, 'is_active': True}
-            )
-            if new_user and _check_password(password, new_user.get('password', '')):
-                user_doc = new_user
-                user_id  = str(new_user['_id'])  # ObjectId string
-
-        # ── 3. Connexion ─────────────────────────────────────────────────
-        if user_doc and user_id:
-            request.session['user_id']      = user_id
-            request.session['username']     = user_doc.get('username', '')
-            request.session['is_staff']     = user_doc.get('is_staff', False)
-            request.session['is_superuser'] = user_doc.get('is_superuser', False)
-            request.session['prenom']       = user_doc.get('first_name', '')
-            request.session['nom']          = user_doc.get('last_name', '')
-            request.session['email']        = user_doc.get('email', '')
-
-            if next_url and next_url.startswith('/'):
-                return redirect(next_url)
-            if user_doc.get('is_staff'):
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            if user.is_staff or user.is_superuser:
+                messages.success(request, f"Bienvenue {user.username} (Administrateur)")
                 return redirect('dashboard')
-            return redirect('employe_espace')
+            else:
+                messages.success(request, f"Bienvenue {user.first_name or user.username} !")
+                return redirect('employe_espace')
         else:
             messages.error(request, "Nom d'utilisateur ou mot de passe incorrect.")
+    return render(request, 'dashboard/login.html')
 
-    return render(request, 'dashboard/login.html', {'next': next_url})
 
+@login_required
 def logout_view(request):
     try:
+        from django.conf import settings
+        db          = settings.MONGO_DB
         session_key = request.session.session_key
         now         = timezone.now()
-        user_id     = request.session.get('user_id', '')
- 
+
         if session_key:
+            # Marquer la session inactive dans MongoDB
             db['dashboard_usersession'].update_one(
                 {'session_key': session_key},
                 {'$set': {'is_active': False, 'logout_time': now}}
             )
+            # Log de déconnexion
             db['dashboard_sessionlog'].insert_one({
-                'user_id':     user_id,
+                'user_id':     request.user.id,
                 'action':      'logout',
                 'ip_address':  request.META.get('REMOTE_ADDR', ''),
                 'user_agent':  request.META.get('HTTP_USER_AGENT', '')[:500],
@@ -220,37 +170,33 @@ def logout_view(request):
                 'timestamp':   now,
             })
     except Exception as e:
-        logger.warning(f"logout_view session cleanup error: {e}")
- 
-    request.session.flush()
+        import logging
+        logging.getLogger(__name__).warning(f"logout_view session cleanup error: {e}")
+
+    logout(request)
     messages.success(request, "Vous avez été déconnecté avec succès.")
     return redirect('login')
- 
- 
 
 
-from config.settings import MONGO_DB as db
-from datetime import datetime
-import bcrypt  # pip install bcrypt --break-system-packages
+@csrf_protect
+@ensure_csrf_cookie
 def register_employe(request):
-    import bcrypt
- 
-    if request.session.get('user_id'):
-        if request.session.get('is_staff'):
+    if request.user.is_authenticated:
+        if request.user.is_staff:
             return redirect('dashboard')
         return redirect('employe_espace')
- 
+    
     if request.method == 'POST':
-        username  = request.POST.get('username', '').strip()
+        username = request.POST.get('username', '').strip()
         password1 = request.POST.get('password1', '')
         password2 = request.POST.get('password2', '')
-        badge_id  = request.POST.get('badge_id', '').strip()
-        nom       = request.POST.get('nom', '').strip()
-        prenom    = request.POST.get('prenom', '').strip()
-        email     = request.POST.get('email', '').strip()
- 
+        badge_id = request.POST.get('badge_id', '').strip()
+        nom = request.POST.get('nom', '').strip()
+        prenom = request.POST.get('prenom', '').strip()
+        email = request.POST.get('email', '').strip()
+        
         erreurs = []
- 
+        
         if not username:
             erreurs.append("Le nom d'utilisateur est requis.")
         if len(password1) < 6:
@@ -261,59 +207,48 @@ def register_employe(request):
             erreurs.append("Le numéro de badge est requis.")
         if not nom or not prenom:
             erreurs.append("Le nom et le prénom sont requis.")
- 
+        
         employe_mongo = db.employees.find_one({'badge_id': badge_id})
         if not employe_mongo:
             erreurs.append(f"Badge '{badge_id}' non reconnu. Contactez votre administrateur.")
- 
-        if db.utilisateurs.find_one({'username': username}):
+        
+        if Utilisateur.objects.filter(username=username).exists():
             erreurs.append(f"Le nom d'utilisateur '{username}' est déjà pris.")
- 
+        
         if erreurs:
             for e in erreurs:
                 messages.error(request, e)
             return render(request, 'dashboard/register_employe.html', {'form_data': request.POST})
- 
-        hashed_pw = bcrypt.hashpw(password1.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
- 
-        result = db.utilisateurs.insert_one({
-            'username':    username,
-            'password':    hashed_pw,
-            'email':       email,
-            'first_name':  prenom,
-            'last_name':   nom,
-            'is_staff':    False,
-            'is_superuser': False,
-            'is_active':   True,
-            'date_joined': datetime.now(),
-        })
- 
-        user_id = str(result.inserted_id)
- 
+        
+        user = Utilisateur.objects.create_user(
+            username=username,
+            password=password1,
+            email=email,
+            first_name=prenom,
+            last_name=nom,
+            is_staff=False,
+            is_superuser=False
+        )
+        
         db.employees.update_one(
             {'badge_id': badge_id},
             {'$set': {
-                'django_user_id':  user_id,
+                'django_user_id': user.id,
                 'django_username': username,
-                'email':           email,
-                'compte_cree_le':  datetime.now(),
-                'nom':             nom,
-                'prenom':          prenom,
+                'email': email,
+                'compte_cree_le': datetime.now(),
+                'nom': nom,
+                'prenom': prenom
             }}
         )
- 
-        request.session['user_id']      = user_id
-        request.session['username']     = username
-        request.session['is_staff']     = False
-        request.session['is_superuser'] = False
-        request.session['prenom']       = prenom
-        request.session['nom']          = nom
-        request.session['email']        = email
- 
+        
         messages.success(request, f"Compte créé avec succès ! Bienvenue {prenom}.")
+        login(request, user)
         return redirect('employe_espace')
- 
+    
     return render(request, 'dashboard/register_employe.html', {'form_data': {}})
+
+
 # ====================== ESPACE EMPLOYÉ ======================
 @login_required
 def employe_espace(request):
@@ -679,10 +614,10 @@ def employe_mes_reservations(request):
                 'created_at':     datetime.now(),
             })
 
-            # --- Notifications admins (PyMongo direct) ---
-            admins = list(db['dashboard_utilisateur'].find(
-                {'is_staff': True, 'is_active': True}, {'id': 1, 'email': 1}
-            ))
+            # --- Notifications admins ---
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            admins = User.objects.filter(is_staff=True, is_active=True)
 
             admin_message = (
                 f"🆕 NOUVELLE RÉSERVATION EN ATTENTE\n\n"
@@ -697,7 +632,7 @@ def employe_mes_reservations(request):
 
             for admin in admins:
                 db.admin_notifications.insert_one({
-                    'admin_id':       admin.get('id'),
+                    'admin_id':       admin.id,
                     'titre':          '🆕 Nouvelle réservation en attente',
                     'message':        (
                         f"{employe.get('prenom', '')} {employe.get('nom', '')} "
@@ -711,11 +646,11 @@ def employe_mes_reservations(request):
                     'reservation_id': reservation_id,
                     'created_at':     datetime.now(),
                 })
-                if admin.get('email'):
+                if admin.email:
                     try:
                         from dashboard.utils_email import envoyer_email
                         envoyer_email(
-                            admin['email'],
+                            admin.email,
                             f"🆕 Nouvelle réservation — {titre}",
                             admin_message,
                         )
@@ -827,6 +762,9 @@ def employe_annuler_reservation(request, reservation_id):
     
     from datetime import datetime
     from bson import ObjectId
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
@@ -869,25 +807,21 @@ def employe_annuler_reservation(request, reservation_id):
                 }
                 db.notifications.insert_one(notification_employe)
                 
-                # === NOTIFICATION AUX ADMINISTRATEURS (PyMongo direct) ===
-                try:
-                    admins = list(db['dashboard_utilisateur'].find(
-                        {'is_staff': True, 'is_active': True}, {'id': 1}
-                    ))
-                    for admin in admins:
-                        db.admin_notifications.insert_one({
-                            'admin_id':       admin.get('id'),
-                            'titre':          '🗑️ Réservation annulée',
-                            'message':        f"{employe.get('prenom', '')} {employe.get('nom', '')} a annulé sa réservation '{resa.get('titre', 'Sans titre')}' pour la salle {bureau_nom}.",
-                            'categorie':      'reservation',
-                            'icon':           '🗑️',
-                            'status':         'non_lu',
-                            'action_url':     f'/reservations/{reservation_id}/',
-                            'reservation_id': reservation_id,
-                            'created_at':     datetime.now(),
-                        })
-                except Exception as _e:
-                    logger.warning(f"Notifications annulation échouées: {_e}")
+                # === NOTIFICATION AUX ADMINISTRATEURS ===
+                admins = User.objects.filter(is_staff=True, is_active=True)
+                for admin in admins:
+                    admin_notification = {
+                        'admin_id': admin.id,
+                        'titre': '🗑️ Réservation annulée',
+                        'message': f"{employe.get('prenom', '')} {employe.get('nom', '')} a annulé sa réservation '{resa.get('titre', 'Sans titre')}' pour la salle {bureau_nom}.",
+                        'categorie': 'reservation',
+                        'icon': '🗑️',
+                        'status': 'non_lu',
+                        'action_url': f'/reservations/{reservation_id}/',
+                        'reservation_id': reservation_id,
+                        'created_at': datetime.now()
+                    }
+                    db.admin_notifications.insert_one(admin_notification)
                 
                 messages.success(request, "Réservation annulée avec succès.")
             else:
@@ -7109,54 +7043,14 @@ def _make_aware_dt(dt, algiers):
     if dt is None:
         return None
     return make_aware(dt, algiers) if is_naive(dt) else dt
-def _normalize_uid(raw_uid):
-    """Retourne (uid_key, is_int) — uid_key est int ou str selon le format."""
-    if not raw_uid:
-        return 0, True
-    try:
-        return int(raw_uid), True
-    except (ValueError, TypeError):
-        return str(raw_uid), False
+
 def _get_users_map(db, user_ids):
-    """
-    Construit un dict  id → doc utilisateur.
-    Supporte les anciens user_id entiers ET les nouveaux ObjectId string.
-    """
-    if not user_ids:
-        return {}
-
-    int_ids = []
-    str_ids = []
-
-    for uid in user_ids:
-        if not uid:
-            continue
-        try:
-            int_ids.append(int(uid))
-        except (ValueError, TypeError):
-            str_ids.append(str(uid))
-
-    users_map = {}
-
-    # Anciens utilisateurs (dashboard_utilisateur avec id entier)
-    if int_ids:
-        for u in db['dashboard_utilisateur'].find({'id': {'$in': int_ids}}):
-            users_map[u['id']] = u
-
-    # Nouveaux utilisateurs (utilisateurs avec ObjectId string)
-    if str_ids:
-        from bson import ObjectId
-        oids = []
-        for s in str_ids:
-            try:
-                oids.append(ObjectId(s))
-            except Exception:
-                pass
-        if oids:
-            for u in db['utilisateurs'].find({'_id': {'$in': oids}}):
-                users_map[str(u['_id'])] = u
-
-    return users_map
+    """Charge les utilisateurs par leur id entier Django (pas _id ObjectId)."""
+    int_ids = [int(uid) for uid in user_ids if uid]
+    return {
+        u['id']: u
+        for u in db['dashboard_utilisateur'].find({'id': {'$in': int_ids}})
+    }
 
 def _get_employee_photo(db, uid):
     """Retourne l'URL de la photo de l'employé ou None."""
@@ -7190,7 +7084,7 @@ def active_sessions(request):
 
     active_sessions_list = []
     for s in sessions_data:
-        uid, _ = _normalize_uid(s.get('user_id'))
+        uid       = int(s.get('user_id', 0))
         user_data = users_map.get(uid, {})
         login_time_aware    = _make_aware_dt(s.get('login_time'), algiers)
         last_activity_aware = _make_aware_dt(s.get('last_activity'), algiers)
@@ -7241,42 +7135,15 @@ def active_sessions(request):
         .sort('timestamp', -1).limit(100)
     )
 
-    # ── Collecter les IDs en séparant int et ObjectId string ──────────────
-    log_int_ids = []
-    log_str_ids = []
-    for l in raw_history:
-        uid = l.get('user_id')
-        if not uid:
-            continue
-        try:
-            log_int_ids.append(int(uid))
-        except (ValueError, TypeError):
-            log_str_ids.append(str(uid))
-
-    log_users_map = {}
-
-    # Anciens utilisateurs (int id)
-    if log_int_ids:
-        for u in db['dashboard_utilisateur'].find({'id': {'$in': log_int_ids}}):
-            log_users_map[u['id']] = u
-
-    # Nouveaux utilisateurs (ObjectId string)
-    if log_str_ids:
-        from bson import ObjectId
-        oids = []
-        for s in log_str_ids:
-            try:
-                oids.append(ObjectId(s))
-            except Exception:
-                pass
-        if oids:
-            for u in db['utilisateurs'].find({'_id': {'$in': oids}}):
-                log_users_map[str(u['_id'])] = u
+    log_user_ids  = list({int(l['user_id']) for l in raw_history if l.get('user_id')})
+    log_users_map = {
+        u['id']: u
+        for u in db['dashboard_utilisateur'].find({'id': {'$in': log_user_ids}})
+    }
 
     recent_history = []
     for log in raw_history:
-        raw_uid  = log.get('user_id')
-        uid, _   = _normalize_uid(raw_uid)
+        uid      = int(log.get('user_id', 0))
         u_data   = log_users_map.get(uid, {})
         fn       = u_data.get('first_name', '')
         ln       = u_data.get('last_name', '')
@@ -7310,13 +7177,11 @@ def active_sessions(request):
 # ─────────────────────────────────────────────────────────────
 @login_required
 def terminate_session(request, session_id):
-    """
-    Termine une session.
-    - Admin : peut terminer n'importe quelle session → redirige vers active_sessions
-    - Employé : peut terminer seulement ses propres sessions → redirige vers employe_profil
-    """
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+
     if request.method != 'POST':
-        return redirect('active_sessions' if request.user.is_staff else 'employe_profil')
+        return redirect('active_sessions')
 
     db, algiers = _get_db_algiers()
 
@@ -7326,53 +7191,38 @@ def terminate_session(request, session_id):
         session = db['dashboard_usersession'].find_one({'_id': oid})
 
         if not session:
-            messages.error(request, "Session non trouvée.")
-            return redirect('active_sessions' if request.user.is_staff else 'employe_profil')
+            messages.error(request, "Session non trouvée")
+            return redirect('active_sessions')
 
-        # ── Vérification des droits ──────────────────────────────────
-        session_user_id = session.get('user_id')
-        if not request.user.is_staff:
-            # Un employé ne peut terminer que ses propres sessions
-            if str(session_user_id) != str(request.user.id):
-                messages.error(request, "Vous ne pouvez pas terminer la session d'un autre utilisateur.")
-                return redirect('employe_profil')
+        uid      = int(session.get('user_id', 0))
+        users_map = _get_users_map(db, [uid])
+        user_doc  = users_map.get(uid, {})
+        username  = user_doc.get('username', '?')
+        now       = timezone.now()
 
-        now = timezone.now()
+        db['dashboard_sessionlog'].insert_one({
+            'user_id':     uid,
+            'action':      'terminated',
+            'ip_address':  session.get('ip_address', ''),
+            'session_key': session.get('session_key', ''),
+            'timestamp':   now,
+        })
 
-        # ── Journalisation ───────────────────────────────────────────
-        try:
-            uid = int(session_user_id) if session_user_id is not None else 0
-            db['dashboard_sessionlog'].insert_one({
-                'user_id':     uid,
-                'action':      'terminated',
-                'terminated_by': request.user.id,
-                'ip_address':  session.get('ip_address', ''),
-                'session_key': session.get('session_key', ''),
-                'timestamp':   now,
-            })
-        except Exception:
-            pass
-
-        # ── Désactivation de la session ──────────────────────────────
         db['dashboard_usersession'].update_one(
             {'_id': oid},
             {'$set': {'is_active': False, 'logout_time': now}}
         )
 
-        # ── Suppression de la session Django ────────────────────────
         sk = session.get('session_key', '')
         if sk:
-            try:
-                db['django_session'].delete_one({'session_key': sk})
-            except Exception:
-                pass
+            db['django_session'].delete_one({'session_key': sk})
 
-        messages.success(request, "Session terminée avec succès.")
+        messages.success(request, f"Session de {username} terminée")
 
     except Exception as e:
         messages.error(request, f"Erreur : {e}")
 
-    return redirect('active_sessions' if request.user.is_staff else 'employe_profil')
+    return redirect('active_sessions')
 
 
 # ─────────────────────────────────────────────────────────────
@@ -7400,7 +7250,7 @@ def terminate_all_sessions(request):
     )
 
     for session in other_sessions:
-        uid, _ = _normalize_uid(session.get('user_id'))
+        uid = int(session.get('user_id', 0))
         db['dashboard_sessionlog'].insert_one({
             'user_id':     uid,
             'action':      'terminated',
@@ -7446,7 +7296,7 @@ def api_connected_users(request):
     result             = []
 
     for s in sessions_data:
-        uid, _ = _normalize_uid(s.get('user_id'))
+        uid           = int(s.get('user_id', 0))
         user_data     = users_map.get(uid, {})
         login_time    = _make_aware_dt(s.get('login_time'), algiers)
         last_activity = _make_aware_dt(s.get('last_activity'), algiers)
@@ -7558,7 +7408,7 @@ def api_session_details(request, session_id):
     if not session:
         return JsonResponse({'error': 'Session introuvable'}, status=404)
 
-    uid, _ = _normalize_uid(session.get('user_id'))
+    uid       = int(session.get('user_id', 0))
     users_map = _get_users_map(db, [uid])
     user_data = users_map.get(uid, {})
 
@@ -7636,105 +7486,20 @@ def clear_session_history(request):
     total = result_logs.deleted_count + result_sessions.deleted_count
     messages.success(request, f"{total} entrée(s) supprimée(s) (antérieures à {days} jours)")
     return redirect('active_sessions')
-
 # ====================== ESPACE EMPLOYÉ - PROFIL ======================
-# ====================== ESPACE EMPLOYÉ - PROFIL ======================
-# ── Helpers profil employé (utilisent _check_password existant ligne ~125) ──
-
-def _get_user_hash(user):
-    """
-    Récupère le hash du mot de passe pour un MongoUser.
-    Cherche dans dashboard_utilisateur puis utilisateurs, par username.
-    """
-    # Essai 1 : attribut direct sur MongoUser
-    try:
-        if hasattr(user, 'password') and user.password:
-            return user.password
-    except Exception:
-        pass
-    # Essai 2 : dashboard_utilisateur (anciens comptes Django)
-    try:
-        doc = db['dashboard_utilisateur'].find_one({'username': user.username})
-        if doc and doc.get('password'):
-            return doc['password']
-    except Exception:
-        pass
-    # Essai 3 : utilisateurs (nouveaux comptes)
-    try:
-        doc = db['utilisateurs'].find_one({'username': user.username})
-        if doc and doc.get('password'):
-            return doc['password']
-    except Exception:
-        pass
-    return None
-
-
-def _save_user_password(user, new_password, request=None):
-    """
-    Sauvegarde le nouveau mot de passe en bcrypt (même format que l'existant).
-    Met à jour dashboard_utilisateur ET utilisateurs par username.
-    Si request fourni, maintient la session active.
-    Retourne True si succès.
-    """
-    import bcrypt as _bcrypt
-    from django.contrib.auth import update_session_auth_hash
-
-    new_hash = _bcrypt.hashpw(
-        new_password.encode('utf-8'),
-        _bcrypt.gensalt(12)
-    ).decode('utf-8')
-
-    updated = 0
-    try:
-        updated += db['dashboard_utilisateur'].update_one(
-            {'username': user.username},
-            {'$set': {'password': new_hash}}
-        ).modified_count
-    except Exception as _e:
-        logger.warning(f"_save_user_password dashboard_utilisateur échoué: {_e}")
-
-    if not updated:
-        try:
-            db['utilisateurs'].update_one(
-                {'username': user.username},
-                {'$set': {'password': new_hash}}
-            )
-        except Exception as _e:
-            logger.warning(f"_save_user_password utilisateurs échoué: {_e}")
-
-    if request is not None:
-        try:
-            update_session_auth_hash(request, user)
-        except Exception:
-            pass
-    return True
-
-
-def _update_django_user(username, **fields):
-    """
-    Met à jour les champs du user Django via PyMongo (par username).
-    Remplace user.save() partout dans le projet.
-    Exemple: _update_django_user(request.user.username, first_name='Jean')
-    """
-    if not fields:
-        return
-    for collection in ('dashboard_utilisateur', 'utilisateurs'):
-        try:
-            db[collection].update_one({'username': username}, {'$set': fields})
-        except Exception as _e:
-            logger.warning(f"_update_django_user [{collection}] échoué: {_e}")
 @login_required
 def employe_profil(request):
     """Modification du profil employé"""
     if request.user.is_staff:
         return redirect('dashboard')
 
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     # Récupérer l'employé
     employe = db.employees.find_one({'django_user_id': request.user.id})
     if not employe:
         employe = db.employees.find_one({'django_username': request.user.username})
+
     if not employe:
         messages.error(request, "Profil employé introuvable.")
         return redirect('login')
@@ -7743,31 +7508,40 @@ def employe_profil(request):
     utilisateur_id = employe['_id']
 
     # === STATISTIQUES ===
-    total_acces     = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id})
-    acces_autorises = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id, 'resultat': 'AUTORISE'})
-    acces_refuses   = total_acces - acces_autorises
-    taux_succes     = round(min(100, (acces_autorises / total_acces * 100)) if total_acces > 0 else 0, 1)
+    total_acces = db.acces_logs.count_documents({'utilisateur_id': utilisateur_id})
+    acces_autorises = db.acces_logs.count_documents({
+        'utilisateur_id': utilisateur_id,
+        'resultat': 'AUTORISE'
+    })
+    acces_refuses = total_acces - acces_autorises
+    taux_succes = round(min(100, (acces_autorises / total_acces * 100)) if total_acces > 0 else 0, 1)
     reservations_count = db.reservations.count_documents({'employe_id': str(employe['_id'])})
 
+    # Accès du mois
     start_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    acces_mois  = db.acces_logs.count_documents({
+    acces_mois = db.acces_logs.count_documents({
         'utilisateur_id': utilisateur_id,
         'timestamp': {'$gte': start_month}
     })
 
+    # Dernier accès
     dernier_acces_doc = db.acces_logs.find_one(
-        {'utilisateur_id': utilisateur_id}, sort=[('timestamp', -1)]
+        {'utilisateur_id': utilisateur_id},
+        sort=[('timestamp', -1)]
     )
     dernier_acces = dernier_acces_doc['timestamp'] if dernier_acces_doc else None
 
+    # Jours actifs
     try:
         pipeline = [
             {'$match': {'utilisateur_id': utilisateur_id}},
-            {'$group': {'_id': {
-                'year':  {'$year': '$timestamp'},
-                'month': {'$month': '$timestamp'},
-                'day':   {'$dayOfMonth': '$timestamp'}
-            }}},
+            {'$group': {
+                '_id': {
+                    'year':  {'$year':        '$timestamp'},
+                    'month': {'$month':       '$timestamp'},
+                    'day':   {'$dayOfMonth':  '$timestamp'}
+                }
+            }},
             {'$count': 'total_days'}
         ]
         result = list(db.acces_logs.aggregate(pipeline))
@@ -7775,28 +7549,29 @@ def employe_profil(request):
     except Exception:
         jours_actifs = 0
 
-    preferences = employe.get('preferences_notifications', {}) or {'email': True, 'rappel': True}
+    # Préférences
+    preferences = employe.get('preferences_notifications', {})
+    if not preferences:
+        preferences = {'email': True, 'rappel': True}
 
     # Sessions actives
     active_sessions = []
     try:
-        raw_sessions = list(db['dashboard_usersession'].find({
-            'user_id': request.user.id,
-            'is_active': True,
-            '$or': [{'logout_time': None}, {'logout_time': {'$exists': False}}],
-        }).sort('last_activity', -1))
-        for s in raw_sessions:
-            def _fmt(dt):
-                if dt is None: return '—'
-                try: return dt.strftime('%d/%m/%Y %H:%M:%S')
-                except Exception: return str(dt)
+        from dashboard.models import UserSession
+        sessions = UserSession.objects.filter(
+            user=request.user,
+            is_active=True,
+            logout_time__isnull=True
+        ).order_by('-last_activity')
+
+        for session in sessions:
             active_sessions.append({
-                'id':            str(s.get('_id', '')),
-                'device_type':   s.get('device_type') or 'desktop',
-                'ip_address':    s.get('ip_address') or '—',
-                'login_time':    _fmt(s.get('login_time')),
-                'last_activity': _fmt(s.get('last_activity')),
-                'is_current':    s.get('session_key') == request.session.session_key,
+                'id':            session.id,
+                'device_type':   session.device_type or 'desktop',
+                'ip_address':    session.ip_address or '—',
+                'login_time':    session.login_time.strftime('%d/%m/%Y %H:%M:%S'),
+                'last_activity': session.last_activity.strftime('%d/%m/%Y %H:%M:%S'),
+                'is_current':    session.session_key == request.session.session_key
             })
     except Exception:
         active_sessions = []
@@ -7812,30 +7587,33 @@ def employe_profil(request):
             new_password1 = request.POST.get('new_password1', '')
             new_password2 = request.POST.get('new_password2', '')
 
-            stored = _get_user_hash(request.user)
-            if not _check_password(old_password, stored):
+            if not request.user.check_password(old_password):
                 messages.error(request, "L'ancien mot de passe est incorrect.")
             elif len(new_password1) < 6:
                 messages.error(request, "Le nouveau mot de passe doit contenir au moins 6 caractères.")
             elif new_password1 != new_password2:
                 messages.error(request, "Les mots de passe ne correspondent pas.")
-            elif new_password1 == old_password:
-                messages.error(request, "Le nouveau mot de passe doit être différent de l'ancien.")
             else:
-                if _save_user_password(request.user, new_password1, request=request):
-                    messages.success(request, "Mot de passe changé avec succès.")
-                else:
-                    messages.error(request, "Erreur lors du changement de mot de passe.")
+                request.user.set_password(new_password1)
+                request.user.save()
+                from django.contrib.auth import update_session_auth_hash
+                update_session_auth_hash(request, request.user)
+                messages.success(request, "Mot de passe changé avec succès.")
+
             return redirect('employe_profil')
 
         # ── Mise à jour des préférences ──────────────────────────
         elif 'update_preferences' in request.POST:
             notif_email  = request.POST.get('notif_email')  == 'on'
             notif_rappel = request.POST.get('notif_rappel') == 'on'
+
             db.employees.update_one(
                 {'_id': employe['_id']},
                 {'$set': {
-                    'preferences_notifications': {'email': notif_email, 'rappel': notif_rappel},
+                    'preferences_notifications': {
+                        'email':  notif_email,
+                        'rappel': notif_rappel
+                    },
                     'updated_at': datetime.now()
                 }}
             )
@@ -7857,25 +7635,37 @@ def employe_profil(request):
                     return redirect('employe_profil')
 
                 update_data = {
-                    'nom': nom, 'prenom': prenom, 'email': email,
-                    'telephone': telephone, 'poste': poste,
-                    'departement': departement, 'updated_at': datetime.now()
+                    'nom':         nom,
+                    'prenom':      prenom,
+                    'email':       email,
+                    'telephone':   telephone,
+                    'poste':       poste,
+                    'departement': departement,
+                    'updated_at':  datetime.now()
                 }
 
+                # Photo de profil
                 if 'photo' in request.FILES:
                     import base64 as b64mod
                     photo_file = request.FILES['photo']
                     if photo_file.size > 2 * 1024 * 1024:
                         messages.error(request, "La photo ne doit pas dépasser 2 Mo.")
                         return redirect('employe_profil')
-                    if photo_file.content_type not in ['image/jpeg', 'image/png', 'image/webp', 'image/gif']:
+                    allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+                    if photo_file.content_type not in allowed:
                         messages.error(request, "Format accepté : JPG, PNG, WEBP.")
                         return redirect('employe_profil')
                     photo_b64 = b64mod.b64encode(photo_file.read()).decode('utf-8')
                     update_data['photo'] = f"data:{photo_file.content_type};base64,{photo_b64}"
 
                 db.employees.update_one({'_id': employe['_id']}, {'$set': update_data})
-                _update_django_user(request.user.username, first_name=prenom, last_name=nom, email=email)
+
+                user = request.user
+                user.first_name = prenom
+                user.last_name  = nom
+                user.email      = email
+                user.save()
+
                 messages.success(request, "Profil mis à jour avec succès.")
 
             except Exception as e:
@@ -7887,63 +7677,77 @@ def employe_profil(request):
     # AFFICHAGE GET
     # ============================================================
     return render(request, 'dashboard/employe_profil.html', {
-        'employe':            employe,
-        'user':               request.user,
-        'total_acces':        total_acces,
-        'acces_autorises':    acces_autorises,
-        'acces_refuses':      acces_refuses,
-        'taux_succes':        taux_succes,
+        'employe':           employe,
+        'user':              request.user,
+        'total_acces':       total_acces,
+        'acces_autorises':   acces_autorises,
+        'acces_refuses':     acces_refuses,
+        'taux_succes':       taux_succes,
         'reservations_count': reservations_count,
-        'acces_mois':         acces_mois,
-        'jours_actifs':       jours_actifs,
-        'dernier_acces':      dernier_acces,
-        'preferences':        preferences,
-        'active_sessions':    active_sessions,
+        'acces_mois':        acces_mois,
+        'jours_actifs':      jours_actifs,
+        'dernier_acces':     dernier_acces,
+        'preferences':       preferences,
+        'active_sessions':   active_sessions,
     })
 @login_required
 def employe_change_password(request):
-    """Changer le mot de passe de l'employé"""
+    """Changer le mot de passe de l'employé - Version améliorée"""
     if request.user.is_staff:
         return redirect('dashboard')
-
+    
     if request.method == 'POST':
-        old_password  = request.POST.get('old_password', '')
-        new_password1 = request.POST.get('new_password1', '')
-        new_password2 = request.POST.get('new_password2', '')
-
-        stored = _get_user_hash(request.user)
-        if not _check_password(old_password, stored):
+        old_password = request.POST.get('old_password')
+        new_password1 = request.POST.get('new_password1')
+        new_password2 = request.POST.get('new_password2')
+        
+        # Vérifier l'ancien mot de passe
+        if not request.user.check_password(old_password):
             messages.error(request, "L'ancien mot de passe est incorrect.")
             return redirect('employe_profil')
-
+        
+        # Vérifier la longueur du nouveau mot de passe
         if len(new_password1) < 6:
             messages.error(request, "Le nouveau mot de passe doit contenir au moins 6 caractères.")
             return redirect('employe_profil')
-
+        
+        # Vérifier la confirmation
         if new_password1 != new_password2:
             messages.error(request, "Les mots de passe ne correspondent pas.")
             return redirect('employe_profil')
-
+        
+        # Vérifier que le nouveau mot de passe est différent de l'ancien
         if new_password1 == old_password:
             messages.error(request, "Le nouveau mot de passe doit être différent de l'ancien.")
             return redirect('employe_profil')
-
-        if _save_user_password(request.user, new_password1, request=request):
-            try:
-                db.system_logs.insert_one({
-                    'user_id':   request.user.id,
-                    'username':  request.user.username,
-                    'action':    'PASSWORD_CHANGE',
-                    'timestamp': datetime.now(),
-                    'ip':        request.META.get('REMOTE_ADDR'),
-                })
-            except Exception:
-                pass
+        
+        try:
+            # Changer le mot de passe
+            request.user.set_password(new_password1)
+            request.user.save()
+            
+            # Maintenir la session active
+            from django.contrib.auth import update_session_auth_hash
+            update_session_auth_hash(request, request.user)
+            
+            # Journaliser le changement
+            db.system_logs.insert_one({
+                'user_id': request.user.id,
+                'username': request.user.username,
+                'action': 'PASSWORD_CHANGE',
+                'timestamp': datetime.now(),
+                'ip': request.META.get('REMOTE_ADDR')
+            })
+            
             messages.success(request, "Votre mot de passe a été changé avec succès.")
-        else:
-            messages.error(request, "Erreur lors du changement de mot de passe.")
-
+        except Exception as e:
+            messages.error(request, f"Erreur lors du changement: {str(e)}")
+        
+        return redirect('employe_profil')
+    
     return redirect('employe_profil')
+
+
 @login_required
 def api_save_preferences(request):
     """API pour sauvegarder les préférences utilisateur"""
@@ -7983,41 +7787,59 @@ def api_save_preferences(request):
         
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
 @login_required
 def employe_update_profil(request):
     """API pour mettre à jour le profil employé (AJAX)"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-
+    
     try:
         data = json.loads(request.body)
-
+        
         employe = db.employees.find_one({'django_user_id': request.user.id})
         if not employe:
             employe = db.employees.find_one({'django_username': request.user.username})
+        
         if not employe:
             return JsonResponse({'error': 'Employé non trouvé'}, status=404)
-
+        
         update_data = {}
-        for field in ('prenom', 'nom', 'email', 'telephone', 'poste', 'departement'):
-            if field in data:
-                update_data[field] = str(data[field]).strip()
+        
+        if 'prenom' in data:
+            update_data['prenom'] = data['prenom'].strip()
+        if 'nom' in data:
+            update_data['nom'] = data['nom'].strip()
+        if 'email' in data:
+            update_data['email'] = data['email'].strip()
+        if 'telephone' in data:
+            update_data['telephone'] = data['telephone'].strip()
+        if 'poste' in data:
+            update_data['poste'] = data['poste'].strip()
+        if 'departement' in data:
+            update_data['departement'] = data['departement'].strip()
+        
         update_data['updated_at'] = datetime.now()
-
+        
         if update_data:
             db.employees.update_one({'_id': employe['_id']}, {'$set': update_data})
-            django_fields = {k: v for k, v in {
-                'first_name': update_data.get('prenom'),
-                'last_name':  update_data.get('nom'),
-                'email':      update_data.get('email'),
-            }.items() if v is not None}
-            if django_fields:
-                _update_django_user(request.user.username, **django_fields)
-
+            
+            # Mettre à jour l'utilisateur Django
+            if 'prenom' in update_data:
+                request.user.first_name = update_data['prenom']
+            if 'nom' in update_data:
+                request.user.last_name = update_data['nom']
+            if 'email' in update_data:
+                request.user.email = update_data['email']
+            request.user.save()
+        
         return JsonResponse({'status': 'success', 'message': 'Profil mis à jour'})
-
+        
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
 @login_required
 def api_employee_stats(request):
     """API pour les statistiques de l'employé (graphiques)"""
@@ -9674,68 +9496,40 @@ from .models import ChatbotConversation, ChatbotMessage
 
 @login_required
 def api_chatbot_message(request):
-    """API pour le chatbot employé — PyMongo direct (MongoUser sans ForeignKey)"""
+    """API pour le chatbot employé"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     try:
-        data            = json.loads(request.body)
-        user_message    = data.get('message', '').strip()
-        conversation_id = data.get('conversation_id', '')
+        data             = json.loads(request.body)
+        user_message     = data.get('message', '').strip()
+        conversation_id  = data.get('conversation_id', '')
 
         if not user_message:
             return JsonResponse({'error': 'Message vide'}, status=400)
 
-        user_key = str(request.session.get('user_id', request.user.username))
-        now      = datetime.now()
-
-        # ── Récupérer ou créer la conversation ───────────────────
-        conversation = None
         if conversation_id:
             try:
-                conversation = db['chatbot_conversations'].find_one({
-                    '_id':      ObjectId(conversation_id),
-                    'user_key': user_key,
-                })
-            except Exception:
-                pass
-        if not conversation:
-            result       = db['chatbot_conversations'].insert_one({
-                'user_key':  user_key,
-                'username':  request.user.username,
-                'is_active': True,
-                'created_at': now,
-                'updated_at': now,
-            })
-            conversation = db['chatbot_conversations'].find_one({'_id': result.inserted_id})
+                conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
+            except ChatbotConversation.DoesNotExist:
+                conversation = ChatbotConversation.objects.create(user=request.user)
+        else:
+            conversation = ChatbotConversation.objects.create(user=request.user)
 
-        conv_id = conversation['_id']
+        ChatbotMessage.objects.create(
+            conversation=conversation,
+            role='user',
+            content=user_message,
+        )
 
-        # ── Sauvegarder le message utilisateur ───────────────────
-        db['chatbot_messages'].insert_one({
-            'conversation_id': conv_id,
-            'role':            'user',
-            'content':         user_message,
-            'created_at':      now,
-        })
-
-        # ── Générer la réponse ────────────────────────────────────
         response_data = process_chatbot_message(request.user, user_message, conversation)
 
-        # ── Sauvegarder la réponse assistante ────────────────────
-        db['chatbot_messages'].insert_one({
-            'conversation_id': conv_id,
-            'role':            'assistant',
-            'content':         response_data['message'],
-            'intent':          response_data.get('intent', ''),
-            'entities':        response_data.get('entities', {}),
-            'created_at':      datetime.now(),
-        })
-
-        # Mettre à jour updated_at
-        db['chatbot_conversations'].update_one(
-            {'_id': conv_id},
-            {'$set': {'updated_at': datetime.now()}}
+        ChatbotMessage.objects.create(
+            conversation=conversation,
+            role='assistant',
+            content=response_data['message'],
+            intent=response_data.get('intent', ''),
+            entities=response_data.get('entities', {}),
         )
 
         return JsonResponse({
@@ -9743,7 +9537,7 @@ def api_chatbot_message(request):
             'message':         response_data['message'],
             'intent':          response_data.get('intent', ''),
             'data':            response_data.get('data', {}),
-            'conversation_id': str(conv_id),
+            'conversation_id': conversation.id,
             'suggestions':     response_data.get('suggestions', []),
         })
 
@@ -9754,60 +9548,44 @@ def api_chatbot_message(request):
 
 @login_required
 def api_chatbot_conversations(request):
-    """Récupérer l'historique des conversations — PyMongo direct"""
-    user_key = str(request.session.get('user_id', request.user.username))
-    raw = list(
-        db['chatbot_conversations']
-        .find({'user_key': user_key, 'is_active': True})
-        .sort('updated_at', -1)
-        .limit(10)
+    """Récupérer l'historique des conversations"""
+    conversations = (
+        ChatbotConversation.objects
+        .filter(user=request.user, is_active=True)
+        .order_by('-updated_at')[:10]
     )
     data = []
-    for conv in raw:
-        conv_id = conv['_id']
-        last_msg = db['chatbot_messages'].find_one(
-            {'conversation_id': conv_id, 'role': 'assistant'},
-            sort=[('created_at', -1)]
-        )
-        msg_count = db['chatbot_messages'].count_documents({'conversation_id': conv_id})
-        created   = conv.get('created_at')
+    for conv in conversations:
+        last_message = conv.messages.filter(role='assistant').last()
         data.append({
-            'id':            str(conv_id),
-            'created_at':    created.strftime('%d/%m/%Y %H:%M') if created else '',
-            'last_message':  (last_msg['content'][:100] if last_msg else ''),
-            'message_count': msg_count,
+            'id':            conv.id,
+            'created_at':    conv.created_at.strftime('%d/%m/%Y %H:%M'),
+            'last_message':  last_message.content[:100] if last_message else '',
+            'message_count': conv.messages.count(),
         })
     return JsonResponse({'conversations': data})
 
 
 @login_required
 def api_chatbot_conversation_detail(request, conversation_id):
-    """Détail d'une conversation — PyMongo direct"""
-    user_key = str(request.session.get('user_id', request.user.username))
+    """Détail d'une conversation"""
     try:
-        conv = db['chatbot_conversations'].find_one({
-            '_id':      ObjectId(conversation_id),
-            'user_key': user_key,
-        })
-        if not conv:
-            return JsonResponse({'error': 'Conversation non trouvée'}, status=404)
-        msgs_raw = list(
-            db['chatbot_messages']
-            .find({'conversation_id': conv['_id']})
-            .sort('created_at', 1)
-        )
+        conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
         msgs = []
-        for m in msgs_raw:
-            ts = m.get('created_at')
+        for msg in conversation.messages.all():
             msgs.append({
-                'role':       m.get('role', ''),
-                'content':    m.get('content', ''),
-                'created_at': ts.strftime('%H:%M') if ts else '',
+                'role':       msg.role,
+                'content':    msg.content,
+                'created_at': msg.created_at.strftime('%H:%M'),
             })
-        return JsonResponse({'messages': msgs, 'conversation_id': str(conv['_id'])})
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=404)
+        return JsonResponse({'messages': msgs, 'conversation_id': conversation.id})
+    except ChatbotConversation.DoesNotExist:
+        return JsonResponse({'error': 'Conversation non trouvée'}, status=404)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_available_rooms():
     """Liste des salles avec leurs vrais IDs MongoDB."""
@@ -9920,24 +9698,14 @@ def _ai_response(user, message, conversation):
         "N'inclus le bloc action QUE quand tu as les 5 infos. Sinon continue à demander."
     )
 
-    # Mémoire conversationnelle — PyMongo direct (conversation est un dict MongoDB)
+    # Mémoire conversationnelle
     contents  = []
-    try:
-        conv_id   = conversation.get('_id') if isinstance(conversation, dict) else None
-        if conv_id:
-            raw_msgs  = list(
-                db['chatbot_messages']
-                .find({'conversation_id': conv_id})
-                .sort('created_at', -1)
-                .limit(12)
-            )
-            raw_msgs.reverse()
-            for m in raw_msgs:
-                role = 'user' if m.get('role') == 'user' else 'model'
-                contents.append(types.Content(role=role, parts=[types.Part(text=m.get('content', ''))]))
-    except Exception as _he:
-        logger.warning(f"_ai_response history load échoué: {_he}")
-    if not contents or (contents and contents[-1].parts[0].text != message):
+    last_msgs = list(conversation.messages.order_by('-created_at')[:12])
+    last_msgs.reverse()
+    for m in last_msgs:
+        role = 'user' if m.role == 'user' else 'model'
+        contents.append(types.Content(role=role, parts=[types.Part(text=m.content)]))
+    if not contents or contents[-1].parts[0].text != message:
         contents.append(types.Content(role='user', parts=[types.Part(text=message)]))
 
     response = client.models.generate_content(
@@ -10111,12 +9879,13 @@ def _create_reservation_from_chat(user, employe, data):
         )
 
         try:
-            admins = list(db['dashboard_utilisateur'].find(
-                {'is_staff': True, 'is_active': True}, {'id': 1, 'email': 1}
-            ))
+            from django.contrib.auth import get_user_model
+            User   = get_user_model()
+            admins = User.objects.filter(is_staff=True, is_active=True)
+
             for admin in admins:
                 db.admin_notifications.insert_one({
-                    'admin_id':       admin.get('id'),
+                    'admin_id':       admin.id,
                     'titre':          '🆕 Nouvelle réservation en attente (chatbot)',
                     'message':        (
                         f"{employe_nom} a demandé une réservation pour « {titre} » "
@@ -10129,14 +9898,18 @@ def _create_reservation_from_chat(user, employe, data):
                     'reservation_id': reservation_id,
                     'created_at':     datetime.now(),
                 })
-                if admin.get('email'):
+                if admin.email:
                     try:
                         from dashboard.utils_email import envoyer_email
-                        envoyer_email(admin['email'], f"🆕 Nouvelle réservation (chatbot) — {titre}", admin_message_email)
+                        envoyer_email(
+                            admin.email,
+                            f"🆕 Nouvelle réservation (chatbot) — {titre}",
+                            admin_message_email,
+                        )
                     except Exception as _ee:
-                        logger.warning(f"Email admin chatbot échoué: {_ee}")
+                        print(f"Email admin échoué : {_ee}")
         except Exception as _e:
-            logger.warning(f"Notifications admins chatbot échouées: {_e}")
+            print(f"Notifications admins échouées : {_e}")
 
         return True, reservation_id
 
@@ -10219,68 +9992,20 @@ def api_chatbot_conversation_detail(request, conversation_id):
 
 # ====================== NOTIFICATIONS ADMINISTRATEUR ======================
 
-# ── Helper pour résoudre l'admin_id entier ───────────────────────────────────
-def _resolve_admin_id(request, db):
-    """Retourne toujours l'id entier depuis dashboard_utilisateur."""
-    raw_id = request.user.id
-    try:
-        return int(raw_id)  # '1' → 1 ✅
-    except (ValueError, TypeError):
-        pass
-    # ObjectId string → chercher par username
-    username = getattr(request.user, 'username', None)
-    if username:
-        u = db['dashboard_utilisateur'].find_one({'username': username}, {'id': 1})
-        if u and u.get('id'):
-            return int(u['id'])
-    return raw_id
-
-
 @login_required
 def admin_notifications(request):
     """Centre de notifications pour les administrateurs"""
     if not request.user.is_staff:
         return redirect('employe_espace')
-
+    
     from bson import ObjectId
-    from django.utils import timezone
-
-    db, algiers = _get_db_algiers()
-
-    admin_id        = _resolve_admin_id(request, db)
-    admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-
-    # ── Traitement POST ──────────────────────────────────────────────
-    if request.method == 'POST':
-        now = timezone.now()
-
-        if 'mark_read' in request.POST:
-            notification_id = request.POST.get('notification_id')
-            if notification_id:
-                try:
-                    db['admin_notifications'].update_one(
-                        {'_id': ObjectId(notification_id), 'admin_id': admin_id_filter},
-                        {'$set': {'status': 'lu', 'read_at': now}}
-                    )
-                except Exception:
-                    pass
-            else:
-                db['admin_notifications'].update_many(
-                    {'admin_id': admin_id_filter, 'status': 'non_lu'},
-                    {'$set': {'status': 'lu', 'read_at': now}}
-                )
-            return redirect('admin_notifications')
-
-        elif 'delete_all' in request.POST:
-            db['admin_notifications'].delete_many({'admin_id': admin_id_filter})
-            return redirect('admin_notifications')
-
-    # ── Récupérer les notifications ──────────────────────────────────
-    notifications = list(
-        db['admin_notifications'].find({'admin_id': admin_id_filter})
-        .sort('created_at', -1)
-    )
-
+    from datetime import datetime
+    
+    # Récupérer les notifications depuis MongoDB
+    notifications = list(db.admin_notifications.find({
+        'admin_id': request.user.id
+    }).sort('created_at', -1))
+    
     for n in notifications:
         n['id'] = str(n['_id'])
         if 'status' not in n:
@@ -10289,32 +10014,52 @@ def admin_notifications(request):
             n['categorie'] = n.get('type', 'info')
         if 'icon' not in n:
             n['icon'] = '🔔'
-        if 'created_at' in n:
-            n['created_at'] = _make_aware_dt(n['created_at'], algiers)
-
+    
+    # Compter les non lues
     unread_count = sum(1 for n in notifications if n.get('status') == 'non_lu')
-
+    
+    # Traitement POST pour marquer comme lu
+    if request.method == 'POST':
+        if 'mark_read' in request.POST:
+            notification_id = request.POST.get('notification_id')
+            if notification_id:
+                db.admin_notifications.update_one(
+                    {'_id': ObjectId(notification_id), 'admin_id': request.user.id},
+                    {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+                )
+            else:
+                # Marquer toutes comme lues
+                db.admin_notifications.update_many(
+                    {'admin_id': request.user.id, 'status': 'non_lu'},
+                    {'$set': {'status': 'lu', 'read_at': datetime.now()}}
+                )
+            return redirect('admin_notifications')
+        
+        elif 'delete_all' in request.POST:
+            db.admin_notifications.delete_many({'admin_id': request.user.id})
+            return redirect('admin_notifications')
+    
     return render(request, 'dashboard/admin_notifications.html', {
         'notifications': notifications,
-        'unread_count':  unread_count,
+        'unread_count': unread_count,
     })
 
 
 @login_required
 def api_admin_notifications_unread_count(request):
     """API pour récupérer le nombre de notifications admin non lues"""
-    if not request.user.is_staff:
-        return JsonResponse({'count': 0})
     try:
-        db, _ = _get_db_algiers()
-        admin_id        = _resolve_admin_id(request, db)
-        admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-        count = db['admin_notifications'].count_documents({
-            'admin_id': admin_id_filter,
-            'status':   'non_lu'
+        if not request.user.is_staff:
+            return JsonResponse({'count': 0})
+        
+        count = db.admin_notifications.count_documents({
+            'admin_id': request.user.id,
+            'status': 'non_lu'
         })
+        
         return JsonResponse({'count': count})
-    except Exception:
+        
+    except Exception as e:
         return JsonResponse({'count': 0})
 
 
@@ -10323,34 +10068,32 @@ def api_admin_mark_notification_read(request):
     """API pour marquer une notification admin comme lue"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-
+    
     try:
         import json
         from bson import ObjectId
-        from django.utils import timezone
-
-        db, _ = _get_db_algiers()
-        admin_id        = _resolve_admin_id(request, db)
-        admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-        now             = timezone.now()
-
-        data            = json.loads(request.body)
+        from datetime import datetime
+        
+        data = json.loads(request.body)
         notification_id = data.get('notification_id')
-
+        
         if notification_id:
-            db['admin_notifications'].update_one(
-                {'_id': ObjectId(notification_id), 'admin_id': admin_id_filter},
-                {'$set': {'status': 'lu', 'read_at': now}}
+            db.admin_notifications.update_one(
+                {'_id': ObjectId(notification_id), 'admin_id': request.user.id},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
             )
         else:
-            db['admin_notifications'].update_many(
-                {'admin_id': admin_id_filter, 'status': 'non_lu'},
-                {'$set': {'status': 'lu', 'read_at': now}}
+            # Marquer toutes comme lues
+            db.admin_notifications.update_many(
+                {'admin_id': request.user.id, 'status': 'non_lu'},
+                {'$set': {'status': 'lu', 'read_at': datetime.now()}}
             )
+        
         return JsonResponse({'status': 'success'})
-
+        
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
@@ -10360,30 +10103,27 @@ def api_admin_delete_notification(request):
     """API pour supprimer une notification admin"""
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-
+    
     try:
         import json
         from bson import ObjectId
-
-        db, _           = _get_db_algiers()
-        admin_id        = _resolve_admin_id(request, db)
-        admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-
-        data            = json.loads(request.body)
+        
+        data = json.loads(request.body)
         notification_id = data.get('notification_id')
-
+        
         if notification_id:
-            db['admin_notifications'].delete_one({
-                '_id':      ObjectId(notification_id),
-                'admin_id': admin_id_filter
+            db.admin_notifications.delete_one({
+                '_id': ObjectId(notification_id),
+                'admin_id': request.user.id
             })
         else:
-            db['admin_notifications'].delete_many({'admin_id': admin_id_filter})
-
+            db.admin_notifications.delete_many({'admin_id': request.user.id})
+        
         return JsonResponse({'status': 'success'})
-
+        
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
@@ -10393,26 +10133,27 @@ def api_admin_send_test_notification(request):
     """API pour envoyer une notification de test à l'admin"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
     if not request.user.is_staff:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-
-    from django.utils import timezone
-
-    db, _    = _get_db_algiers()
-    admin_id = _resolve_admin_id(request, db)  # toujours entier pour les anciens users
-
-    db['admin_notifications'].insert_one({
-        'admin_id':   admin_id,
-        'titre':      '🔔 Notification de test',
-        'message':    "Ceci est une notification de test pour le centre d'administration.",
-        'categorie':  'info',
-        'icon':       '🔔',
-        'status':     'non_lu',
+    
+    from datetime import datetime
+    
+    notification = {
+        'admin_id': request.user.id,
+        'titre': '🔔 Notification de test',
+        'message': 'Ceci est une notification de test pour le centre d\'administration.',
+        'categorie': 'info',
+        'icon': '🔔',
+        'status': 'non_lu',
         'action_url': '/admin/notifications/',
-        'created_at': timezone.now(),
-    })
-
+        'created_at': datetime.now()
+    }
+    
+    db.admin_notifications.insert_one(notification)
+    
     return JsonResponse({'status': 'success', 'message': 'Notification envoyée'})
+
 
 # ====================== FONCTIONS D'ENVOI DE NOTIFICATIONS ADMIN ======================
 
@@ -10436,29 +10177,29 @@ def send_admin_notification(admin_id, titre, message, categorie='info', icon='�
 
 
 def send_notification_to_all_admins(titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
-    """Envoie une notification à tous les administrateurs (PyMongo direct)"""
+    """Envoie une notification à tous les administrateurs"""
     from datetime import datetime
-    try:
-        admins = list(db['dashboard_utilisateur'].find(
-            {'is_staff': True, 'is_active': True}, {'id': 1}
-        ))
-        if not admins:
-            return
-        notifications = [{
-            'admin_id':       admin.get('id'),
-            'titre':          titre,
-            'message':        message,
-            'categorie':      categorie,
-            'icon':           icon,
-            'status':         'non_lu',
-            'action_url':     action_url,
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
+    admins = User.objects.filter(is_staff=True, is_active=True)
+    
+    notifications = []
+    for admin in admins:
+        notifications.append({
+            'admin_id': admin.id,
+            'titre': titre,
+            'message': message,
+            'categorie': categorie,
+            'icon': icon,
+            'status': 'non_lu',
+            'action_url': action_url,
             'reservation_id': reservation_id,
-            'created_at':     datetime.now(),
-        } for admin in admins]
-        if notifications:
-            db.admin_notifications.insert_many(notifications)
-    except Exception as _e:
-        import logging; logging.getLogger(__name__).warning(f"send_notification_to_all_admins échoué: {_e}")
+            'created_at': datetime.now()
+        })
+    
+    if notifications:
+        db.admin_notifications.insert_many(notifications)
 
 
 # ====================== ÉVÉNEMENTS DÉCLENCHANT DES NOTIFICATIONS ADMIN ======================
@@ -10555,29 +10296,32 @@ def send_admin_notification(admin_id, titre, message, categorie='info', icon='�
 
 
 def send_notification_to_all_admins(titre, message, categorie='info', icon='🔔', action_url=None, reservation_id=None):
-    """Envoie une notification à tous les administrateurs (PyMongo direct)"""
+    """Envoie une notification à tous les administrateurs"""
     from datetime import datetime
-    try:
-        admins = list(db['dashboard_utilisateur'].find(
-            {'is_staff': True, 'is_active': True}, {'id': 1}
-        ))
-        if not admins:
-            return
-        notifications = [{
-            'admin_id':       admin.get('id'),
-            'titre':          titre,
-            'message':        message,
-            'categorie':      categorie,
-            'icon':           icon,
-            'status':         'non_lu',
-            'action_url':     action_url,
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()
+    admins = User.objects.filter(is_staff=True, is_active=True)
+    
+    if not admins:
+        return
+    
+    notifications = []
+    for admin in admins:
+        notifications.append({
+            'admin_id': admin.id,
+            'titre': titre,
+            'message': message,
+            'categorie': categorie,
+            'icon': icon,
+            'status': 'non_lu',
+            'action_url': action_url,
             'reservation_id': reservation_id,
-            'created_at':     datetime.now(),
-        } for admin in admins]
-        if notifications:
-            db.admin_notifications.insert_many(notifications)
-    except Exception as _e:
-        import logging; logging.getLogger(__name__).warning(f"send_notification_to_all_admins échoué: {_e}")
+            'created_at': datetime.now()
+        })
+    
+    if notifications:
+        db.admin_notifications.insert_many(notifications)
 
 
 def notify_admins_new_reservation(employe, reservation_data):
@@ -10786,15 +10530,12 @@ def password_forgot(request):
             messages.error(request, "Veuillez saisir une adresse email.")
             return render(request, 'dashboard/password_forgot.html')
 
-        user_doc = db['dashboard_utilisateur'].find_one(
-            {'email': {'$regex': f'^{re.escape(email)}$', '$options': 'i'}}
-        )
-        if not user_doc:
-            messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
-            return render(request, 'dashboard/password_forgot.html')
         try:
-            user = User.objects.get(pk=user_doc['id'])
-        except Exception:
+            user = User.objects.filter(email__iexact=email).first()
+            if user is None:
+                raise User.DoesNotExist
+        except User.DoesNotExist:
+            # On affiche le même message pour ne pas révéler si l'email existe
             messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
             return render(request, 'dashboard/password_forgot.html')
 
@@ -10969,24 +10710,11 @@ def password_reset_confirm(request, token):
         reset_token.save()
 
         # Invalider toutes les sessions actives de l'utilisateur
-        try:
-            from django.contrib.sessions.models import Session
-            for session in Session.objects.all():
-                try:
-                    data = session.get_decoded()
-                    if str(data.get('_auth_user_id')) == str(user.pk):
-                        session.delete()
-                except Exception:
-                    pass
-        except Exception as _se:
-            logger.warning(f"Invalidation sessions Django échouée: {_se}")
-        try:
-            db['dashboard_usersession'].update_many(
-                {'user_id': user.pk},
-                {'$set': {'is_active': False, 'logout_time': datetime.now()}}
-            )
-        except Exception:
-            pass
+        from django.contrib.sessions.models import Session
+        for session in Session.objects.all():
+            data = session.get_decoded()
+            if str(data.get('_auth_user_id')) == str(user.pk):
+                session.delete()
 
         logger.info(f"Mot de passe réinitialisé pour {user.username}")
         messages.success(request, "Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.")
@@ -12104,15 +11832,14 @@ def api_badge_affecter(request, employe_id):
             }}
         )
 
-        # Mettre à jour badge_rfid dans MongoDB directement
+        # Mettre à jour le modèle Django si lié
         if employe.get('django_user_id'):
             try:
-                db['dashboard_utilisateur'].update_one(
-                    {'id': int(employe['django_user_id'])},
-                    {'$set': {'badge_rfid': badge_id}}
-                )
-            except Exception as _e:
-                logger.warning(f"Mise à jour badge_rfid échouée: {_e}")
+                django_user = User.objects.get(pk=employe['django_user_id'])
+                django_user.badge_rfid = badge_id
+                django_user.save()
+            except Exception:
+                pass
 
         # Journaliser l'action
         db.acces_logs.insert_one({
@@ -12170,12 +11897,11 @@ def api_badge_supprimer(request, employe_id):
 
         if employe.get('django_user_id'):
             try:
-                db['dashboard_utilisateur'].update_one(
-                    {'id': int(employe['django_user_id'])},
-                    {'$unset': {'badge_rfid': ''}}
-                )
-            except Exception as _e:
-                logger.warning(f"Révocation badge_rfid échouée: {_e}")
+                django_user = User.objects.get(pk=employe['django_user_id'])
+                django_user.badge_rfid = None
+                django_user.save()
+            except Exception:
+                pass
 
         db.acces_logs.insert_one({
             'action': 'badge_revoque',
@@ -12501,18 +12227,18 @@ def api_indisponibilite_ajouter(request):
                     nb_notifies += 1
                     # Notification in-app
                     try:
-                        if employe.get('_id'):
-                            db.notifications.insert_one({
-                                'employe_id': str(employe['_id']),
-                                'titre':      f'🔧 Maintenance planifiée — {ressource_nom}',
-                                'message':    f"La ressource '{ressource_nom}' sera indisponible du "
-                                              f"{date_debut.strftime('%d/%m/%Y %H:%M')} au "
-                                              f"{date_fin.strftime('%d/%m/%Y %H:%M')}. Motif : {description or titre}",
-                                'categorie':  'alerte',
-                                'icon':       '🔧',
-                                'status':     'non_lu',
-                                'created_at': datetime.now(),
-                            })
+                        django_user_id = employe.get('django_user_id')
+                        if django_user_id:
+                            django_user = User.objects.get(pk=django_user_id)
+                            Notification.create_notification(
+                                user=django_user,
+                                titre=f'🔧 Maintenance planifiée — {ressource_nom}',
+                                message=f"La ressource '{ressource_nom}' sera indisponible du "
+                                        f"{date_debut.strftime('%d/%m/%Y %H:%M')} au "
+                                        f"{date_fin.strftime('%d/%m/%Y %H:%M')}. Motif : {description or titre}",
+                                categorie='alerte',
+                                icon='🔧',
+                            )
                     except Exception:
                         pass
             except Exception as e:
@@ -12886,13 +12612,9 @@ def _client_ip(request):
 # Liste des demandes à traiter par le manager connecté
 def approbation_inbox(request):
     user_id = str(request.user.id)
-    try:
-        demandes = ApprovalRequest.objects.filter(
-            approbateur_id=user_id, statut='en_attente'
-        ).order_by('-created_at')
-    except Exception as _e:
-        logger.warning(f"approbation_inbox ORM échoué: {_e}")
-        demandes = []
+    demandes = ApprovalRequest.objects.filter(
+        approbateur_id=user_id, statut='en_attente'
+    ).order_by('-created_at')
     return render(request, 'dashboard/approbation_inbox.html',
                   {'demandes': demandes})
 
@@ -12982,11 +12704,7 @@ def queue_alternatives(request, resource_id):
 
 def queue_confirmer(request, queue_id):
     """L'utilisateur transforme sa place en file en réservation."""
-    try:
-        wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
-    except Exception:
-        messages.error(request, "File d'attente introuvable.")
-        return redirect('employe_mes_reservations')
+    wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
     if wq.statut != 'notifie':
         messages.error(request, "Notification expirée.")
         return redirect('employe_mes_reservations')
@@ -13019,12 +12737,9 @@ def queue_confirmer(request, queue_id):
     return redirect('employe_mes_reservations')
 
 def queue_quitter(request, queue_id):
-    try:
-        wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
-        wq.statut = 'annule'
-        wq.save()
-    except Exception as _e:
-        logger.warning(f"queue_quitter échoué: {_e}")
+    wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
+    wq.statut = 'annule'
+    wq.save()
     messages.info(request, "Vous avez quitté la file d'attente.")
     return redirect('employe_mes_reservations')
 # dashboard/views.py - Ajoutez à la fin du fichier

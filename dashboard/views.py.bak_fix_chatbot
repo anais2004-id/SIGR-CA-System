@@ -9674,68 +9674,40 @@ from .models import ChatbotConversation, ChatbotMessage
 
 @login_required
 def api_chatbot_message(request):
-    """API pour le chatbot employé — PyMongo direct (MongoUser sans ForeignKey)"""
+    """API pour le chatbot employé"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     try:
-        data            = json.loads(request.body)
-        user_message    = data.get('message', '').strip()
-        conversation_id = data.get('conversation_id', '')
+        data             = json.loads(request.body)
+        user_message     = data.get('message', '').strip()
+        conversation_id  = data.get('conversation_id', '')
 
         if not user_message:
             return JsonResponse({'error': 'Message vide'}, status=400)
 
-        user_key = str(request.session.get('user_id', request.user.username))
-        now      = datetime.now()
-
-        # ── Récupérer ou créer la conversation ───────────────────
-        conversation = None
         if conversation_id:
             try:
-                conversation = db['chatbot_conversations'].find_one({
-                    '_id':      ObjectId(conversation_id),
-                    'user_key': user_key,
-                })
-            except Exception:
-                pass
-        if not conversation:
-            result       = db['chatbot_conversations'].insert_one({
-                'user_key':  user_key,
-                'username':  request.user.username,
-                'is_active': True,
-                'created_at': now,
-                'updated_at': now,
-            })
-            conversation = db['chatbot_conversations'].find_one({'_id': result.inserted_id})
+                conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
+            except ChatbotConversation.DoesNotExist:
+                conversation = ChatbotConversation.objects.create(user=request.user)
+        else:
+            conversation = ChatbotConversation.objects.create(user=request.user)
 
-        conv_id = conversation['_id']
+        ChatbotMessage.objects.create(
+            conversation=conversation,
+            role='user',
+            content=user_message,
+        )
 
-        # ── Sauvegarder le message utilisateur ───────────────────
-        db['chatbot_messages'].insert_one({
-            'conversation_id': conv_id,
-            'role':            'user',
-            'content':         user_message,
-            'created_at':      now,
-        })
-
-        # ── Générer la réponse ────────────────────────────────────
         response_data = process_chatbot_message(request.user, user_message, conversation)
 
-        # ── Sauvegarder la réponse assistante ────────────────────
-        db['chatbot_messages'].insert_one({
-            'conversation_id': conv_id,
-            'role':            'assistant',
-            'content':         response_data['message'],
-            'intent':          response_data.get('intent', ''),
-            'entities':        response_data.get('entities', {}),
-            'created_at':      datetime.now(),
-        })
-
-        # Mettre à jour updated_at
-        db['chatbot_conversations'].update_one(
-            {'_id': conv_id},
-            {'$set': {'updated_at': datetime.now()}}
+        ChatbotMessage.objects.create(
+            conversation=conversation,
+            role='assistant',
+            content=response_data['message'],
+            intent=response_data.get('intent', ''),
+            entities=response_data.get('entities', {}),
         )
 
         return JsonResponse({
@@ -9743,7 +9715,7 @@ def api_chatbot_message(request):
             'message':         response_data['message'],
             'intent':          response_data.get('intent', ''),
             'data':            response_data.get('data', {}),
-            'conversation_id': str(conv_id),
+            'conversation_id': conversation.id,
             'suggestions':     response_data.get('suggestions', []),
         })
 
@@ -9754,60 +9726,44 @@ def api_chatbot_message(request):
 
 @login_required
 def api_chatbot_conversations(request):
-    """Récupérer l'historique des conversations — PyMongo direct"""
-    user_key = str(request.session.get('user_id', request.user.username))
-    raw = list(
-        db['chatbot_conversations']
-        .find({'user_key': user_key, 'is_active': True})
-        .sort('updated_at', -1)
-        .limit(10)
+    """Récupérer l'historique des conversations"""
+    conversations = (
+        ChatbotConversation.objects
+        .filter(user=request.user, is_active=True)
+        .order_by('-updated_at')[:10]
     )
     data = []
-    for conv in raw:
-        conv_id = conv['_id']
-        last_msg = db['chatbot_messages'].find_one(
-            {'conversation_id': conv_id, 'role': 'assistant'},
-            sort=[('created_at', -1)]
-        )
-        msg_count = db['chatbot_messages'].count_documents({'conversation_id': conv_id})
-        created   = conv.get('created_at')
+    for conv in conversations:
+        last_message = conv.messages.filter(role='assistant').last()
         data.append({
-            'id':            str(conv_id),
-            'created_at':    created.strftime('%d/%m/%Y %H:%M') if created else '',
-            'last_message':  (last_msg['content'][:100] if last_msg else ''),
-            'message_count': msg_count,
+            'id':            conv.id,
+            'created_at':    conv.created_at.strftime('%d/%m/%Y %H:%M'),
+            'last_message':  last_message.content[:100] if last_message else '',
+            'message_count': conv.messages.count(),
         })
     return JsonResponse({'conversations': data})
 
 
 @login_required
 def api_chatbot_conversation_detail(request, conversation_id):
-    """Détail d'une conversation — PyMongo direct"""
-    user_key = str(request.session.get('user_id', request.user.username))
+    """Détail d'une conversation"""
     try:
-        conv = db['chatbot_conversations'].find_one({
-            '_id':      ObjectId(conversation_id),
-            'user_key': user_key,
-        })
-        if not conv:
-            return JsonResponse({'error': 'Conversation non trouvée'}, status=404)
-        msgs_raw = list(
-            db['chatbot_messages']
-            .find({'conversation_id': conv['_id']})
-            .sort('created_at', 1)
-        )
+        conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
         msgs = []
-        for m in msgs_raw:
-            ts = m.get('created_at')
+        for msg in conversation.messages.all():
             msgs.append({
-                'role':       m.get('role', ''),
-                'content':    m.get('content', ''),
-                'created_at': ts.strftime('%H:%M') if ts else '',
+                'role':       msg.role,
+                'content':    msg.content,
+                'created_at': msg.created_at.strftime('%H:%M'),
             })
-        return JsonResponse({'messages': msgs, 'conversation_id': str(conv['_id'])})
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=404)
+        return JsonResponse({'messages': msgs, 'conversation_id': conversation.id})
+    except ChatbotConversation.DoesNotExist:
+        return JsonResponse({'error': 'Conversation non trouvée'}, status=404)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_available_rooms():
     """Liste des salles avec leurs vrais IDs MongoDB."""
@@ -9920,24 +9876,14 @@ def _ai_response(user, message, conversation):
         "N'inclus le bloc action QUE quand tu as les 5 infos. Sinon continue à demander."
     )
 
-    # Mémoire conversationnelle — PyMongo direct (conversation est un dict MongoDB)
+    # Mémoire conversationnelle
     contents  = []
-    try:
-        conv_id   = conversation.get('_id') if isinstance(conversation, dict) else None
-        if conv_id:
-            raw_msgs  = list(
-                db['chatbot_messages']
-                .find({'conversation_id': conv_id})
-                .sort('created_at', -1)
-                .limit(12)
-            )
-            raw_msgs.reverse()
-            for m in raw_msgs:
-                role = 'user' if m.get('role') == 'user' else 'model'
-                contents.append(types.Content(role=role, parts=[types.Part(text=m.get('content', ''))]))
-    except Exception as _he:
-        logger.warning(f"_ai_response history load échoué: {_he}")
-    if not contents or (contents and contents[-1].parts[0].text != message):
+    last_msgs = list(conversation.messages.order_by('-created_at')[:12])
+    last_msgs.reverse()
+    for m in last_msgs:
+        role = 'user' if m.role == 'user' else 'model'
+        contents.append(types.Content(role=role, parts=[types.Part(text=m.content)]))
+    if not contents or contents[-1].parts[0].text != message:
         contents.append(types.Content(role='user', parts=[types.Part(text=message)]))
 
     response = client.models.generate_content(

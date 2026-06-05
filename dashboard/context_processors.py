@@ -1,25 +1,26 @@
+# dashboard/context_processors.py
+from django.conf import settings
+
+
 def employe_photo(request):
-    if not request.user.is_authenticated or request.user.is_staff:
-        return {'employe_photo': ''}
+    """Photo de profil de l'employé connecté."""
+    photo_url = None
     try:
-        from .views import db
-        employe = (
-            db.employees.find_one({'django_user_id': request.user.id})
-            or db.employees.find_one({'django_username': request.user.username})
-        )
-        if not employe:
-            return {'employe_photo': ''}
-        photo = employe.get('photo') or ''
-        if photo and not photo.startswith('data:'):
-            if photo.startswith('/9j') or photo.upper().startswith('FFD8'):
-                mime = 'image/jpeg'
-            elif photo.startswith('iVBOR'):
-                mime = 'image/png'
-            elif photo.startswith('R0lG'):
-                mime = 'image/gif'
-            else:
-                mime = 'image/jpeg'
-            photo = f'data:{mime};base64,{photo}'
-        return {'employe_photo': photo}
+        db       = settings.MONGO_DB
+        user     = getattr(request, 'user', None)
+        username = getattr(user, 'username', None) or request.session.get('username')
+        if username:
+            emp = db.employees.find_one({'django_username': username}, {'photo_url': 1})
+            if emp:
+                photo_url = emp.get('photo_url')
     except Exception:
-        return {'employe_photo': ''}
+        pass
+    return {'employe_photo_url': photo_url}
+
+
+def mongo_user_context(request):
+    """
+    Expose request.user (MongoUser) dans tous les templates sous la clé 'user'.
+    Remplace django.contrib.auth.context_processors.auth qui nécessite Django ORM.
+    """
+    return {'user': getattr(request, 'user', None)}

@@ -12,6 +12,7 @@ from django.contrib.auth.models import User
 
 class Utilisateur(AbstractUser):
     """Modèle utilisateur personnalisé"""
+    id = models.AutoField(primary_key=True)
     badge_rfid = models.CharField(max_length=50, blank=True, null=True, unique=True)
     telephone = models.CharField(max_length=20, blank=True, null=True)
     poste = models.CharField(max_length=100, blank=True, null=True)
