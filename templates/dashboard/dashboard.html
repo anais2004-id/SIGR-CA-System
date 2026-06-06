@@ -439,6 +439,146 @@ body, .dashboard-body { font-family: var(--font) !important; background: var(--b
 
 /* Scrollbar global */
 * { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
+/* ── Nouveaux styles IA v2 ────────────────────────────────────────────── */
+.ai2-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+.ai2-panel::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg,transparent,#ef4444,#f59e0b,#10b981,#3b82f6,transparent);
+}
+.ai2-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+.ai2-title-wrap { display: flex; align-items: center; gap: 14px; }
+.ai2-orb {
+  width: 46px; height: 46px; border-radius: 13px;
+  background: linear-gradient(135deg,#1e1b4b,#312e81);
+  border: 1px solid rgba(139,92,246,.35);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+  box-shadow: 0 0 24px rgba(139,92,246,.2);
+  animation: orb2-pulse 3s ease-in-out infinite;
+}
+@keyframes orb2-pulse {
+  0%,100% { box-shadow: 0 0 24px rgba(139,92,246,.2); }
+  50%      { box-shadow: 0 0 36px rgba(139,92,246,.4); }
+}
+.ai2-title  { font-weight: 700; font-size: 15px; color: var(--text1); }
+.ai2-sub    { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.ai2-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.ai2-badge  {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 6px; font-size: 10.5px;
+  font-weight: 600; font-family: var(--mono);
+}
+.ai2-badge.ok  { background:rgba(16,185,129,.1);  color:var(--green);  border:1px solid rgba(16,185,129,.2); }
+.ai2-badge.nok { background:rgba(239,68,68,.1);   color:var(--red);    border:1px solid rgba(239,68,68,.15); }
+.ai2-badge.info{ background:rgba(99,102,241,.1);  color:#a5b4fc;       border:1px solid rgba(99,102,241,.2); }
+.ai2-badge .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+/* Tabs */
+.ai2-tabs { display: flex; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.ai2-tabs::-webkit-scrollbar { display: none; }
+.ai2-tab {
+  flex-shrink: 0; padding: 13px 18px; border: none; background: transparent;
+  cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text3);
+  border-bottom: 2px solid transparent; font-family: var(--font);
+  transition: all .18s; display: flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+.ai2-tab:hover { background: var(--bg3); color: var(--text2); }
+.ai2-tab.active { border-bottom-color: var(--purple); color: var(--purple); background: var(--bg3); }
+.ai2-tab .tab-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+  background: var(--red); color: #fff; font-family: var(--mono);
+}
+.ai2-body    { padding: 22px; }
+.ai2-content { display: none; }
+.ai2-content.active { display: block; }
+
+/* Alert cards */
+.alert-list  { display: flex; flex-direction: column; gap: 8px; }
+.alert-card  {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg3);
+  transition: border-color .18s;
+}
+.alert-card:hover { border-color: var(--border3); }
+.alert-card.sev-CRITIQUE { border-left: 3px solid var(--red);    background: rgba(239,68,68,.04); }
+.alert-card.sev-ELEVE    { border-left: 3px solid var(--amber);  background: rgba(245,158,11,.04); }
+.alert-card.sev-MOYEN    { border-left: 3px solid var(--blue);   background: rgba(59,130,246,.04); }
+.alert-sev {
+  font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+  font-family: var(--mono); letter-spacing: .4px; flex-shrink: 0; margin-top: 2px;
+}
+.alert-sev.CRITIQUE { background:rgba(239,68,68,.15);  color:var(--red);   }
+.alert-sev.ELEVE    { background:rgba(245,158,11,.12); color:var(--amber); }
+.alert-sev.MOYEN    { background:rgba(59,130,246,.12); color:var(--blue2); }
+.alert-type   { font-size: 12.5px; font-weight: 700; color: var(--text1); margin-bottom: 3px; }
+.alert-detail { font-size: 11.5px; color: var(--text2); }
+.alert-meta   { font-size: 10.5px; color: var(--text3); margin-top: 4px; font-family: var(--mono); }
+
+/* Bilan security */
+.bilan-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+@media(max-width:700px){ .bilan-grid { grid-template-columns: repeat(2,1fr); } }
+.bilan-cell {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; text-align: center;
+}
+.bilan-val { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1; }
+.bilan-lbl { font-size: 10.5px; color: var(--text3); margin-top: 5px; text-transform: uppercase; letter-spacing: .5px; }
+
+/* No-show cards */
+.ns-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px; border-radius: 10px;
+  background: var(--bg3); border: 1px solid var(--border);
+  margin-bottom: 8px; transition: border-color .18s;
+}
+.ns-card:hover { border-color: var(--amber); }
+.ns-prob {
+  width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-weight: 700; font-size: 14px;
+  border: 3px solid var(--amber); color: var(--amber);
+}
+.ns-title   { font-size: 13px; font-weight: 700; color: var(--text1); }
+.ns-meta    { font-size: 11px; color: var(--text3); margin-top: 3px; font-family: var(--mono); }
+.ns-bar-wrap{ flex: 1; }
+.ns-bar-bg  { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.ns-bar-fill{ height: 100%; border-radius: 3px; background: linear-gradient(90deg,#d97706,#f59e0b); transition: width .6s ease; }
+
+/* Utilisation table */
+.util-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.util-tbl th { padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; color: var(--text3);
+  border-bottom: 1px solid var(--border); }
+.util-tbl td { padding: 10px 12px; border-bottom: 1px solid rgba(99,140,185,.06); color: var(--text2); }
+.util-tbl tr:hover td { background: var(--bg3); }
+.util-bar { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; min-width: 80px; }
+.util-bar-fill { height: 100%; border-radius: 3px; transition: width .6s ease; }
+.pill-ok    { background:rgba(16,185,129,.1);  color:var(--green); border:1px solid rgba(16,185,129,.2);  padding:2px 8px; border-radius:10px; font-family:var(--mono); font-size:10px; font-weight:700; }
+.pill-att   { background:rgba(245,158,11,.1);  color:var(--amber); border:1px solid rgba(245,158,11,.2);  padding:2px 8px; border-radius:10px; font-family:var(--mono); font-size:10px; font-weight:700; }
+.pill-crit  { background:rgba(239,68,68,.1);   color:var(--red);   border:1px solid rgba(239,68,68,.15);  padding:2px 8px; border-radius:10px; font-family:var(--mono); font-size:10px; font-weight:700; }
+
+/* Comportement table */
+.comp-row   { display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); margin-bottom: 6px; }
+.comp-av    { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center;
+  justify-content: center; font-size: 14px; font-weight: 800; color: #fff; flex-shrink: 0; }
+.comp-name  { font-size: 13px; font-weight: 600; color: var(--text1); flex: 1; }
+.comp-meta  { font-size: 10.5px; color: var(--text3); font-family: var(--mono); }
+.risk-bar   { width: 100px; height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
+.risk-fill  { height: 100%; border-radius: 3px; }
+.risk-val   { font-family: var(--mono); font-size: 11px; font-weight: 700; width: 36px; text-align: right; }
 </style>
 
 <div class="dash-wrap">
@@ -512,24 +652,7 @@ body, .dashboard-body { font-family: var(--font) !important; background: var(--b
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:55%"></div></div>
     </div>
 
-    <div class="kpi cyan">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top">
-        <span class="kpi-label">Modèles IA</span>
-        <div class="kpi-icon-wrap">🤖</div>
-      </div>
-      <div class="kpi-val">
-        {% with cnt=0 %}
-          {% if models_status.occupation %}{% with cnt=cnt|add:1 %}{% endwith %}{% endif %}
-          {% if models_status.recommender %}{% with cnt=cnt|add:1 %}{% endwith %}{% endif %}
-          {% if models_status.anomaly %}{% with cnt=cnt|add:1 %}{% endwith %}{% endif %}
-          {% if models_status.occupation and models_status.recommender and models_status.anomaly %}3{% elif models_status.occupation and models_status.recommender %}2{% elif models_status.occupation or models_status.recommender or models_status.anomaly %}1{% else %}0{% endif %}
-        {% endwith %}
-        <span style="font-size:18px; color:var(--text3); font-family:var(--font);">/3</span>
-      </div>
-      <div class="kpi-sub">Actifs</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if models_status.occupation and models_status.recommender and models_status.anomaly %}100{% elif models_status.occupation and models_status.recommender %}66{% elif models_status.occupation or models_status.recommender or models_status.anomaly %}33{% else %}5{% endif %}%"></div></div>
-    </div>
+    
 
   </div><!-- /kpi-grid -->
 
@@ -634,119 +757,131 @@ body, .dashboard-body { font-family: var(--font) !important; background: var(--b
   <!-- ══════════════════════════════════════════
        AI PANEL
   ══════════════════════════════════════════ -->
-  <div class="ai-panel">
+ 
+<!-- ══════ AI PANEL v2 ══════════════════════════════════════════════════ -->
+<div class="ai2-panel" id="ai2Panel">
 
-    <div class="ai-header">
-      <div class="ai-title-wrap">
-        <div class="ai-orb">🤖</div>
-        <div>
-          <div class="ai-title">Intelligence Artificielle — Moteur ML</div>
-          <div class="ai-models-row">
-            <div class="ai-model-badge {% if models_status.occupation %}ok{% else %}nok{% endif %}">
-              <span class="dot"></span> Occupation
-            </div>
-            <div class="ai-model-badge {% if models_status.recommender %}ok{% else %}nok{% endif %}">
-              <span class="dot"></span> Recommandations
-            </div>
-            <div class="ai-model-badge {% if models_status.anomaly %}ok{% else %}nok{% endif %}">
-              <span class="dot"></span> Anomalies
-            </div>
-            <div class="ai-model-badge ok" style="background:rgba(99,102,241,.1);color:#818cf8;border-color:rgba(99,102,241,.2);">
-              📊 {{ total_resa_ia|default:"0" }} réservations
-            </div>
-            <div class="ai-model-badge ok" style="background:rgba(245,158,11,.1);color:var(--amber);border-color:rgba(245,158,11,.2);">
-              👥 {{ total_emp_ia|default:"0" }} profils
-            </div>
-          </div>
+  <div class="ai2-header">
+    <div class="ai2-title-wrap">
+      <div class="ai2-orb">🧠</div>
+      <div>
+        <div class="ai2-title">Analyse Intelligente — Sécurité & Ressources</div>
+        <div class="ai2-sub">4 modèles ML actifs · données acces_logs + reservations</div>
+        <div class="ai2-badges" id="ai2-badges">
+          <div class="ai2-badge info">⏳ Chargement...</div>
         </div>
       </div>
-      <button class="btn-ghost btn-sm" onclick="retrainModels()" id="retrainBtn">
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="btn-ghost btn-sm" onclick="ai2Refresh()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        Réentraîner
+        Actualiser
+      </button>
+      <button class="btn-ghost btn-sm" id="ai2TrainBtn" onclick="ai2Train()" style="border-color:rgba(139,92,246,.3);color:#a5b4fc;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Entraîner modèles
       </button>
     </div>
+  </div>
 
-    <div id="trainResult" style="display:none; padding:0 22px 0;"></div>
+  <div id="ai2TrainMsg" style="display:none;padding:10px 22px;font-size:12px;color:var(--text3);border-bottom:1px solid var(--border);"></div>
 
-    <div class="ai-tabs">
-      <button class="ai-tab active" data-tab="heatmap" onclick="switchIATab('heatmap')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Heatmap Occupation
-      </button>
-      <button class="ai-tab" data-tab="reco" onclick="switchIATab('reco')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        Recommandations
-      </button>
-      <button class="ai-tab" data-tab="anomalies" onclick="switchIATab('anomalies')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        Anomalies
-      </button>
-    </div>
+  <div class="ai2-tabs">
+    <button class="ai2-tab active" data-tab="security" onclick="ai2Tab('security')">
+      🛡️ Sécurité
+      <span class="tab-badge" id="tab-badge-security" style="display:none">0</span>
+    </button>
+    <button class="ai2-tab" data-tab="noshow" onclick="ai2Tab('noshow')">
+      📭 No-Show
+      <span class="tab-badge" id="tab-badge-noshow" style="display:none">0</span>
+    </button>
+    <button class="ai2-tab" data-tab="utilisation" onclick="ai2Tab('utilisation')">
+      📊 Utilisation réelle
+    </button>
+    <button class="ai2-tab" data-tab="comportement" onclick="ai2Tab('comportement')">
+      👤 Profils employés
+    </button>
+  </div>
 
-    <div class="ai-body">
+  <div class="ai2-body">
 
-      <!-- HEATMAP TAB -->
-      <div id="iatab-heatmap" class="ai-content active">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap;">
-          <label style="font-size:12px; font-weight:600; color:var(--text2);">Salle :</label>
-          <select id="heatmapSalle" class="sel" onchange="loadHeatmap()">
-            <option value="">— Choisir une salle —</option>
-            {% for b in bureaux_ia %}
-            <option value="{{ b.id }}">{{ b.nom }}</option>
-            {% endfor %}
+    <!-- ── SECURITE ──────────────────────────────────────────────────────── -->
+    <div id="ai2-security" class="ai2-content active">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:12.5px;color:var(--text2);">Détection : clonage badge · multiples refus · accès hors-horaires · zones inhabituelles</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="secHours" class="sel" style="min-width:120px;font-size:12px;padding:6px 10px;">
+            <option value="6">6 heures</option>
+            <option value="24" selected>24 heures</option>
+            <option value="72">3 jours</option>
+            <option value="168">7 jours</option>
           </select>
-          <span style="font-size:11px; color:var(--text3); margin-left:auto;">Prédiction ML · 7 jours · Random Forest</span>
-        </div>
-        <div id="heatmapContainer">
-          <div class="info-box">
-            <div class="info-ico">🔥</div>
-            Sélectionnez une salle pour visualiser la prédiction d'occupation.
-          </div>
-        </div>
-        <div class="hm-legend" id="hm-legend" style="display:none;">
-          <div class="hm-legend-item"><div class="hm-legend-swatch" style="background:#22c55e;"></div>0–25%</div>
-          <div class="hm-legend-item"><div class="hm-legend-swatch" style="background:#eab308;"></div>25–50%</div>
-          <div class="hm-legend-item"><div class="hm-legend-swatch" style="background:#f97316;"></div>50–75%</div>
-          <div class="hm-legend-item"><div class="hm-legend-swatch" style="background:#ef4444;"></div>75–100%</div>
-        </div>
-      </div>
-
-      <!-- RECO TAB -->
-      <div id="iatab-reco" class="ai-content">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-          <div style="font-size:12.5px; color:var(--text2);">Top 3 ressources recommandées selon votre historique.</div>
-          <button class="btn-primary btn-sm" onclick="loadReco()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            Analyser
+          <button class="btn-primary btn-sm" onclick="ai2LoadSecurity()" style="background:linear-gradient(135deg,#dc2626,#ef4444);">
+            🔍 Analyser
           </button>
         </div>
-        <div id="recoContainer">
-          <div class="info-box">
-            <div class="info-ico">🎯</div>
-            Cliquez sur « Analyser » pour afficher les recommandations.
-          </div>
-        </div>
       </div>
+      <div id="ai2-security-content">
+        <div class="info-box"><div class="info-ico">🛡️</div>Cliquez « Analyser » pour lancer la détection.</div>
+      </div>
+    </div>
 
-      <!-- ANOMALIES TAB -->
-      <div id="iatab-anomalies" class="ai-content">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-          <div style="font-size:12.5px; color:var(--text2);">Réservations atypiques détectées — 14 derniers jours · IsolationForest.</div>
-          <button class="btn-primary btn-sm" onclick="loadAnomalies()" style="background:linear-gradient(135deg,#dc2626,#ef4444);">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-            Détecter
+    <!-- ── NO-SHOW ────────────────────────────────────────────────────────── -->
+    <div id="ai2-noshow" class="ai2-content">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:12.5px;color:var(--text2);">Réservations confirmées à risque d'abandon — libération proactive des salles.</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="nsHours" class="sel" style="min-width:140px;font-size:12px;padding:6px 10px;">
+            <option value="2">2 heures</option>
+            <option value="4" selected>4 heures</option>
+            <option value="12">12 heures</option>
+            <option value="24">24 heures</option>
+          </select>
+          <button class="btn-primary btn-sm" onclick="ai2LoadNoshow()" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
+            📭 Vérifier
           </button>
         </div>
-        <div id="anomaliesContainer">
-          <div class="info-box">
-            <div class="info-ico">🔍</div>
-            Cliquez sur « Détecter » pour analyser les réservations suspectes.
-          </div>
+      </div>
+      <div id="ai2-noshow-content">
+        <div class="info-box"><div class="info-ico">📭</div>Cliquez « Vérifier » pour détecter les réservations à risque.</div>
+      </div>
+    </div>
+
+    <!-- ── UTILISATION ────────────────────────────────────────────────────── -->
+    <div id="ai2-utilisation" class="ai2-content">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:12.5px;color:var(--text2);">Comparaison réservations planifiées vs accès réels — ressources fantômes identifiées.</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="utilDays" class="sel" style="min-width:120px;font-size:12px;padding:6px 10px;">
+            <option value="7">7 jours</option>
+            <option value="30" selected>30 jours</option>
+            <option value="90">90 jours</option>
+          </select>
+          <button class="btn-primary btn-sm" onclick="ai2LoadUtil()" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">
+            📊 Analyser
+          </button>
         </div>
       </div>
+      <div id="ai2-util-content">
+        <div class="info-box"><div class="info-ico">📊</div>Cliquez « Analyser » pour mesurer l'utilisation réelle.</div>
+      </div>
+    </div>
 
-    </div><!-- /ai-body -->
-  </div><!-- /ai-panel -->
+    <!-- ── COMPORTEMENT ───────────────────────────────────────────────────── -->
+    <div id="ai2-comportement" class="ai2-content">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:12.5px;color:var(--text2);">Profil comportemental par employé — taux de refus, heure habituelle, score de risque.</div>
+        <button class="btn-primary btn-sm" onclick="ai2LoadComp()" style="background:linear-gradient(135deg,#6d28d9,#8b5cf6);">
+          👤 Charger profils
+        </button>
+      </div>
+      <div id="ai2-comp-content">
+        <div class="info-box"><div class="info-ico">👤</div>Cliquez « Charger profils » pour afficher les comportements.</div>
+      </div>
+    </div>
+
+  </div><!-- /ai2-body -->
+</div><!-- /ai2-panel -->
 
 </div><!-- /dash-wrap -->
 
@@ -949,7 +1084,283 @@ document.addEventListener('DOMContentLoaded', function() {
   updateDashboardNotifBadge();
   setInterval(updateDashboardNotifBadge, 30000);
 });
+/* ════════════════════════════════════════════════════════
+   IA v2 — JavaScript
+════════════════════════════════════════════════════════ */
+function getCsrf(){var v=document.cookie.match('(^|;)\\s*csrftoken\\s*=\\s*([^;]+)');return v?v.pop():'';}
+function esc(t){if(t==null)return'';var d=document.createElement('div');d.textContent=String(t);return d.innerHTML;}
 
+/* ── Onglets ── */
+function ai2Tab(tab) {
+  document.querySelectorAll('.ai2-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector('.ai2-tab[data-tab="'+tab+'"]').classList.add('active');
+  document.querySelectorAll('.ai2-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('ai2-'+tab).classList.add('active');
+}
+
+/* ── Statut des modèles ── */
+function ai2LoadStatus() {
+  fetch('/api/ia/status/')
+    .then(r => r.json())
+    .then(d => {
+      var s = d.status || {};
+      var labels = {behavior:'Profils comportement',noshow:'No-Show',security:'Sécurité (règles)',utilization:'Utilisation'};
+      var html = '';
+      for (var k in labels) {
+        var ok = s[k] !== false;
+        html += '<div class="ai2-badge '+(ok?'ok':'nok')+'"><span class="dot"></span>'+esc(labels[k])+'</div>';
+      }
+      document.getElementById('ai2-badges').innerHTML = html;
+    }).catch(() => {});
+}
+
+/* ── Entraînement ── */
+function ai2Train() {
+  var btn = document.getElementById('ai2TrainBtn');
+  var msg = document.getElementById('ai2TrainMsg');
+  btn.disabled = true;
+  msg.style.display = 'block';
+  msg.innerHTML = '⚙️ Entraînement des modèles en cours (KMeans + RandomForest)...';
+  fetch('/api/ia/train/', {method:'POST', headers:{'X-CSRFToken':getCsrf()}})
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      if (d.error) { msg.innerHTML = '❌ ' + esc(d.error); return; }
+      var r = d.results || {};
+      var parts = Object.keys(r).map(k => (r[k]?'✅':'❌') + ' ' + k);
+      msg.innerHTML = 'Terminé : ' + parts.join(' · ');
+      setTimeout(() => { msg.style.display='none'; ai2LoadStatus(); }, 3000);
+    })
+    .catch(e => { btn.disabled = false; msg.innerHTML = '❌ ' + esc(e.message); });
+}
+
+/* ── Actualiser ── */
+function ai2Refresh() {
+  var activeTab = document.querySelector('.ai2-tab.active');
+  if (activeTab) {
+    var tab = activeTab.dataset.tab;
+    if (tab === 'security')     ai2LoadSecurity();
+    if (tab === 'noshow')       ai2LoadNoshow();
+    if (tab === 'utilisation')  ai2LoadUtil();
+    if (tab === 'comportement') ai2LoadComp();
+  }
+  ai2LoadStatus();
+}
+
+/* ── SÉCURITÉ ─────────────────────────────────────────── */
+function ai2LoadSecurity() {
+  var hours = document.getElementById('secHours').value;
+  var c = document.getElementById('ai2-security-content');
+  c.innerHTML = '<div class="shimmer"></div>';
+  fetch('/api/ia/security/?hours=' + hours)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(d.error)+'</div>'; return; }
+      var alertes = d.alertes || [];
+      var bilan   = d.bilan   || {};
+      var suspects= d.suspects|| [];
+
+      /* Badge onglet */
+      var nb = alertes.length;
+      var badge = document.getElementById('tab-badge-security');
+      if (nb > 0) { badge.textContent = nb; badge.style.display = 'inline'; }
+      else        { badge.style.display = 'none'; }
+
+      /* Bilan */
+      var html = '<div class="bilan-grid">'
+        + _bilanCell(bilan.total_acces||0,'Total accès','var(--blue2)')
+        + _bilanCell(bilan.refuses||0,'Refusés','var(--red)')
+        + _bilanCell((bilan.taux_refus||0)+'%','Taux refus','var(--amber)')
+        + _bilanCell(bilan.nb_alertes||0,'Alertes détectées','var(--purple)')
+        + _bilanCell(bilan.alertes_critiques||0,'Critiques','var(--red)')
+        + _bilanCell(bilan.employes_actifs||0,'Employés actifs','var(--cyan)')
+        + '</div>';
+
+      /* Alertes */
+      if (!alertes.length && !suspects.length) {
+        html += '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:16px 20px;color:var(--green);display:flex;align-items:center;gap:10px;font-size:13px;">'
+             +'<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'
+             +'Aucune anomalie de sécurité détectée sur cette période.</div>';
+      } else {
+        if (alertes.length) {
+          html += '<div class="section-label">Alertes comportementales</div><div class="alert-list">';
+          alertes.forEach(a => {
+            html += '<div class="alert-card sev-'+esc(a.severite)+'">'
+              + '<span class="alert-sev '+esc(a.severite)+'">'+esc(a.severite)+'</span>'
+              + '<div style="flex:1;">'
+              + '<div class="alert-type">'+_alertIcon(a.type)+' '+esc(a.type.replace(/_/g,' '))+'</div>'
+              + '<div class="alert-detail">'+esc(a.detail)+'</div>'
+              + '<div class="alert-meta">👤 '+esc(a.employe)+' · 🕐 '+esc(a.timestamp)+'</div>'
+              + '</div></div>';
+          });
+          html += '</div>';
+        }
+        if (suspects.length) {
+          html += '<div class="section-label" style="margin-top:18px;">Accès à score élevé (profil comportemental)</div><div class="alert-list">';
+          suspects.slice(0,8).forEach(s => {
+            html += '<div class="alert-card sev-'+_riskSev(s.score)+'">'
+              + '<span class="alert-sev '+_riskSev(s.score)+'">'+s.score+'/100</span>'
+              + '<div style="flex:1;">'
+              + '<div class="alert-type">👤 '+esc(s.employe)+'</div>'
+              + '<div class="alert-detail">'+esc((s.raisons||[]).join(' · '))+'</div>'
+              + '<div class="alert-meta">📅 '+esc(s.date)+' '+esc(s.heure)+' · '+esc(s.resultat)+'</div>'
+              + '</div></div>';
+          });
+          html += '</div>';
+        }
+      }
+      c.innerHTML = html;
+    })
+    .catch(e => { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(e.message)+'</div>'; });
+}
+
+function _bilanCell(val, lbl, color) {
+  return '<div class="bilan-cell"><div class="bilan-val" style="color:'+color+';">'+val+'</div><div class="bilan-lbl">'+lbl+'</div></div>';
+}
+function _alertIcon(type) {
+  var icons = {CLONAGE_BADGE:'🔁',MULTIPLES_REFUS:'🚫',ACCES_HORS_HORAIRES:'🌙'};
+  return icons[type] || '⚠️';
+}
+function _riskSev(score) {
+  if (score >= 70) return 'CRITIQUE';
+  if (score >= 45) return 'ELEVE';
+  return 'MOYEN';
+}
+
+/* ── NO-SHOW ──────────────────────────────────────────── */
+function ai2LoadNoshow() {
+  var hours = document.getElementById('nsHours').value;
+  var c = document.getElementById('ai2-noshow-content');
+  c.innerHTML = '<div class="shimmer"></div>';
+  fetch('/api/ia/noshow/?hours=' + hours)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(d.error)+'</div>'; return; }
+      var list = d.at_risk || [];
+
+      var badge = document.getElementById('tab-badge-noshow');
+      if (list.length) { badge.textContent = list.length; badge.style.display='inline'; }
+      else              { badge.style.display = 'none'; }
+
+      if (!list.length) {
+        c.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:16px 20px;color:var(--green);display:flex;align-items:center;gap:10px;font-size:13px;">'
+          +'<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'
+          +'Aucune réservation à risque dans les ' + hours + ' prochaines heures.</div>';
+        return;
+      }
+
+      var html = '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 16px;color:var(--amber);font-size:12.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">'
+               +'⚠️ <strong>'+list.length+' réservation(s)</strong> à risque d\'abandon — envisagez une libération préventive.</div>';
+      list.forEach(r => {
+        var prob = r.prob_noshow || 0;
+        html += '<div class="ns-card">'
+          + '<div class="ns-prob">'+prob+'%</div>'
+          + '<div style="flex:1;">'
+          + '<div class="ns-title">'+esc(r.titre)+'</div>'
+          + '<div class="ns-meta">👤 '+esc(r.employe_nom)+' · 🚪 '+esc(r.bureau_nom)+' · 📅 '+esc(r.date_debut)+'</div>'
+          + '<div class="ns-bar-bg"><div class="ns-bar-fill" style="width:'+prob+'%;"></div></div>'
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--text3);text-align:right;flex-shrink:0;">'
+          + '<div>Présence</div><div style="font-family:var(--mono);font-size:13px;color:var(--green);">'+r.prob_honore+'%</div>'
+          + '</div></div>';
+      });
+      c.innerHTML = html;
+    })
+    .catch(e => { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(e.message)+'</div>'; });
+}
+
+/* ── UTILISATION ──────────────────────────────────────── */
+function ai2LoadUtil() {
+  var days = document.getElementById('utilDays').value;
+  var c = document.getElementById('ai2-util-content');
+  c.innerHTML = '<div class="shimmer"></div>';
+  fetch('/api/ia/utilisation/?days=' + days)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(d.error)+'</div>'; return; }
+      var res = d.ressources || [];
+      var resume = d.resume || {};
+
+      if (!res.length) {
+        c.innerHTML = '<div class="info-box"><div class="info-ico">📊</div>Pas assez de données ('+days+' jours).</div>';
+        return;
+      }
+
+      /* Résumé */
+      var html = '<div class="bilan-grid" style="grid-template-columns:repeat(4,1fr);">'
+        + _bilanCell(resume.total_reservations||0,'Réservations planifiées','var(--blue2)')
+        + _bilanCell(resume.total_honorees||0,'Effectuées','var(--green)')
+        + _bilanCell(resume.total_fantomes||0,'Fantômes (jamais utilisées)','var(--red)')
+        + _bilanCell((resume.taux_global||0)+'%','Taux utilisation global','var(--cyan)')
+        + '</div>';
+
+      /* Table */
+      html += '<div style="overflow-x:auto;"><table class="util-tbl"><thead><tr>'
+        + '<th>Ressource</th><th>Réservations</th><th>Utilisées</th><th>Fantômes</th>'
+        + '<th>Taux réel</th><th>Durée planifiée</th><th>Statut</th>'
+        + '</tr></thead><tbody>';
+
+      res.forEach(r => {
+        var color = r.taux_utilisation >= 60 ? '#10b981' : (r.taux_utilisation >= 30 ? '#f59e0b' : '#ef4444');
+        var pillCls = r.statut === 'ok' ? 'pill-ok' : (r.statut === 'attention' ? 'pill-att' : 'pill-crit');
+        var pillTxt = r.statut === 'ok' ? 'Bon' : (r.statut === 'attention' ? 'Attention' : 'Critique');
+        html += '<tr>'
+          + '<td style="font-weight:600;color:var(--text1);">'+esc(r.bureau_nom)+'</td>'
+          + '<td style="font-family:var(--mono);">'+r.nb_reservations+'</td>'
+          + '<td style="font-family:var(--mono);color:var(--green);">'+r.nb_avec_acces+'</td>'
+          + '<td style="font-family:var(--mono);color:var(--red);">'+r.nb_fantomes+'</td>'
+          + '<td><div style="display:flex;align-items:center;gap:8px;">'
+          + '<div class="util-bar"><div class="util-bar-fill" style="width:'+r.taux_utilisation+'%;background:'+color+';"></div></div>'
+          + '<span style="font-family:var(--mono);font-size:11px;color:'+color+';">'+r.taux_utilisation+'%</span>'
+          + '</div></td>'
+          + '<td style="font-family:var(--mono);">'+r.duree_reservee_h+'h</td>'
+          + '<td><span class="'+pillCls+'">'+pillTxt+'</span></td>'
+          + '</tr>';
+      });
+      html += '</tbody></table></div>';
+      c.innerHTML = html;
+    })
+    .catch(e => { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(e.message)+'</div>'; });
+}
+
+/* ── COMPORTEMENT ─────────────────────────────────────── */
+function ai2LoadComp() {
+  var c = document.getElementById('ai2-comp-content');
+  c.innerHTML = '<div class="shimmer"></div>';
+  fetch('/api/ia/comportement/')
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(d.error)+'</div>'; return; }
+      var list = d.employes || [];
+      if (!list.length) {
+        c.innerHTML = '<div class="info-box"><div class="info-ico">👤</div>Entraînez d\'abord les modèles.</div>';
+        return;
+      }
+      var html = '<div class="section-label">Score de risque calculé sur l\'historique d\'accès (0 = aucun risque)</div>';
+      list.forEach(e => {
+        var r = e.risque || 0;
+        var color = r >= 40 ? '#ef4444' : (r >= 20 ? '#f59e0b' : '#10b981');
+        var initials = (e.nom || '?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+        html += '<div class="comp-row">'
+          + '<div class="comp-av" style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);">'+esc(initials)+'</div>'
+          + '<div style="flex:1;min-width:0;">'
+          + '<div class="comp-name">'+esc(e.nom)+'</div>'
+          + '<div class="comp-meta">'+e.nb_acces+' accès · '+e.taux_ok+'% autorisés · habituel : '+esc(e.heure_habituelle)+'</div>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;gap:10px;">'
+          + '<div class="risk-bar"><div class="risk-fill" style="width:'+r+'%;background:'+color+';"></div></div>'
+          + '<div class="risk-val" style="color:'+color+';">'+r+'</div>'
+          + '</div></div>';
+      });
+      c.innerHTML = html;
+    })
+    .catch(e => { c.innerHTML = '<div class="info-box" style="color:var(--red);">'+esc(e.message)+'</div>'; });
+}
+
+/* ── Init ─────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+  ai2LoadStatus();
+  ai2LoadSecurity();   /* charge au démarrage */
+});
 </script>
-
 {% endblock %}

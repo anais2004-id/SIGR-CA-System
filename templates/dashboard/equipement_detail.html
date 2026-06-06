@@ -6,50 +6,32 @@
 
 {% block topbar_actions %}
 <div style="display:flex; gap:10px; align-items:center;">
-  
-  <!-- Bouton Test connexion -->
-  <button onclick="testerConnexion(this)" 
-          style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:var(--green); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; white-space:nowrap;"
-          onmouseover="this.style.background='#059669';this.style.transform='translateY(-1px)'"
-          onmouseout="this.style.background='var(--green)';this.style.transform='none'">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-    Tester connexion
-  </button>
-  
-  <!-- Bouton Modifier -->
-  <a href="{% url 'equipement_modifier' equipement.id %}" 
+ 
+  <a href="{% url 'equipement_modifier' equipement.id %}"
      style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
      onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
      onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
     ✏️ Modifier
   </a>
-  
-  <!-- Bouton Export -->
-  <button onclick="exportEquipmentLogs()" 
+  <button onclick="exportEquipmentLogs()"
           style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; white-space:nowrap;"
           onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
           onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     Exporter logs
-  </a>
-  
-  <!-- Bouton Retour -->
-  <a href="{% url 'equipement_list' %}" 
+  </button>
+  <a href="{% url 'equipement_list' %}"
      style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; text-decoration:none; white-space:nowrap;"
      onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
      onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
     Retour
   </a>
-  
 </div>
 {% endblock %}
 
 {% block content %}
 <style>
-/* ═══════════════════════════════════════
-   FONTS & TOKENS
-═══════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
@@ -69,9 +51,7 @@
 body { font-family: var(--font) !important; background: var(--bg0) !important; }
 .dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
 
-/* ═══════════════════════════════════════
-   KPI GRID
-═══════════════════════════════════════ */
+/* KPI GRID */
 .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
 @media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
 @media (max-width:768px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
@@ -90,172 +70,162 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 .kpi-val { font-family: var(--mono); font-size: 38px; font-weight: 700; color: var(--kpi-color); line-height: 1; margin-bottom: 8px; text-shadow: 0 0 30px color-mix(in srgb, var(--kpi-color) 40%, transparent); }
 .kpi-sub { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 5px; }
 .kpi-bar { margin-top: 12px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
-.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1s ease; }
+.kpi-bar-fill { height: 100%; background: var(--kpi-grad); border-radius: 2px; transition: width 1.2s cubic-bezier(.4,0,.2,1); width: 0; }
 
 .kpi.blue   { --kpi-color:var(--blue);   --kpi-grad:linear-gradient(90deg,#1d4ed8,#3b82f6); --kpi-glow:rgba(59,130,246,.06); --kpi-shadow:var(--glow-blue); }
 .kpi.green  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
 .kpi.purple { --kpi-color:var(--purple); --kpi-grad:linear-gradient(90deg,#7c3aed,#8b5cf6); --kpi-glow:rgba(139,92,246,.06); --kpi-shadow:var(--glow-purple); }
 .kpi.amber  { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
-.kpi.red    { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+.kpi.cyan   { --kpi-color:var(--cyan);   --kpi-grad:linear-gradient(90deg,#0891b2,#06b6d4); --kpi-glow:rgba(6,182,212,.06);  --kpi-shadow:var(--glow-cyan); }
 
-/* ═══════════════════════════════════════
-   CARD
-═══════════════════════════════════════ */
-.card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
-}
-.card-head {
-  padding: 16px 20px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 10px;
-}
-.card-head-icon {
-  width: 32px; height: 32px; border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; flex-shrink: 0;
-}
+/* Couleur dynamique du KPI taux selon valeur */
+.kpi.taux-high  { --kpi-color:var(--green);  --kpi-grad:linear-gradient(90deg,#059669,#10b981); --kpi-glow:rgba(16,185,129,.06); --kpi-shadow:var(--glow-green); }
+.kpi.taux-mid   { --kpi-color:var(--amber);  --kpi-grad:linear-gradient(90deg,#d97706,#f59e0b); --kpi-glow:rgba(245,158,11,.06); --kpi-shadow:var(--glow-amber); }
+.kpi.taux-low   { --kpi-color:var(--red);    --kpi-grad:linear-gradient(90deg,#dc2626,#ef4444); --kpi-glow:rgba(239,68,68,.06);  --kpi-shadow:var(--glow-red); }
+
+/* CARD */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.card-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.card-head-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
 .card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
 
-/* ═══════════════════════════════════════
-   GRID 2 COL
-═══════════════════════════════════════ */
+/* GRID 2 COL */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
-/* ═══════════════════════════════════════
-   BADGES
-═══════════════════════════════════════ */
-.badge {
-  display: inline-block; padding: 3px 10px; border-radius: 20px;
-  font-size: 10px; font-weight: 700; font-family: var(--mono); letter-spacing: .5px;
-}
+/* BADGES */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; font-family: var(--mono); letter-spacing: .5px; }
 .badge-green  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
 .badge-red    { background: rgba(239,68,68,.1);   color: var(--red);   border: 1px solid rgba(239,68,68,.15); }
 .badge-amber  { background: rgba(245,158,11,.12); color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
 .badge-gray   { background: rgba(107,114,128,.12); color: #9ca3af;    border: 1px solid rgba(107,114,128,.2); }
 
-/* ═══════════════════════════════════════
-   INFO GRID
-═══════════════════════════════════════ */
+/* INFO GRID */
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .info-item { padding: 10px 0; }
 .info-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); margin-bottom: 4px; }
 .info-value { font-size: 13px; font-weight: 600; color: var(--text1); }
 
-/* ═══════════════════════════════════════
-   STATS CARDS
-═══════════════════════════════════════ */
-.stats-dual { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: center; margin-bottom: 20px; }
+/* STATS SECTION */
+.stats-dual { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: center; margin-bottom: 16px; }
 .stat-card { padding: 20px; background: var(--bg3); border-radius: var(--radius-sm); border: 1px solid var(--border2); }
 .stat-val { font-size: 36px; font-weight: 700; font-family: var(--mono); }
 .stat-label { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+.stat-pct { font-size: 11px; font-weight: 700; font-family: var(--mono); margin-top: 6px; }
 
-/* ═══════════════════════════════════════
-   COMMANDS
-═══════════════════════════════════════ */
+/* Barre de taux avec segments */
+.ratio-bar { height: 8px; border-radius: 4px; overflow: hidden; display: flex; margin-top: 16px; gap: 2px; }
+.ratio-bar-green { background: linear-gradient(90deg,#059669,#10b981); border-radius: 4px 0 0 4px; transition: width 1.2s cubic-bezier(.4,0,.2,1); }
+.ratio-bar-red   { background: linear-gradient(90deg,#dc2626,#ef4444); border-radius: 0 4px 4px 0; transition: width 1.2s cubic-bezier(.4,0,.2,1); flex: 1; }
+
+/* Activité 24h mini chart */
+.activity-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.activity-label { font-size: 11px; color: var(--text3); min-width: 110px; }
+.activity-bar-wrap { flex: 1; height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
+.activity-bar-fill { height: 100%; border-radius: 3px; transition: width 1.2s cubic-bezier(.4,0,.2,1); }
+.activity-val { font-size: 11px; font-family: var(--mono); font-weight: 600; color: var(--text1); min-width: 40px; text-align: right; }
+
+/* COMMANDS */
 .command-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.command-btn {
-  padding: 10px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2);
-  background: var(--bg3); color: var(--text2); cursor: pointer;
-  font-size: 12px; font-weight: 600; font-family: var(--font);
-  transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
-}
+.command-btn { padding: 10px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); cursor: pointer; font-size: 12px; font-weight: 600; font-family: var(--font); transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
 .command-btn:hover { background: var(--bg4); color: var(--text1); border-color: var(--border3); }
 
-/* ═══════════════════════════════════════
-   TABLE
-═══════════════════════════════════════ */
+/* TABLE */
 .tbl-wrap { overflow-x: auto; max-height: 400px; overflow-y: auto; }
-.tbl {
-  width: 100%; border-collapse: collapse; font-size: 12.5px;
-}
-.tbl thead th {
-  padding: 12px 14px; text-align: left;
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .6px; color: var(--text3);
-  border-bottom: 1px solid var(--border); background: var(--bg3);
-  position: sticky; top: 0; z-index: 2;
-}
-.tbl tbody td {
-  padding: 12px 14px; border-bottom: 1px solid var(--border);
-  color: var(--text2); vertical-align: middle;
-}
+.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tbl thead th { padding: 12px 14px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text3); border-bottom: 1px solid var(--border); background: var(--bg3); position: sticky; top: 0; z-index: 2; }
+.tbl tbody td { padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
 .tbl tbody tr { transition: background .15s; }
 .tbl tbody tr:hover { background: var(--bg3); }
 
-/* ═══════════════════════════════════════
-   ALERT
-═══════════════════════════════════════ */
-.alert-inline {
-  display: none; padding: 14px 18px; border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 600;
-}
+/* ALERT */
+.alert-inline { display: none; padding: 14px 18px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; }
 .alert-inline.info { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); color: var(--blue2); }
 
-/* ═══════════════════════════════════════
-   FILTER TABS
-═══════════════════════════════════════ */
-.filter-tab {
-  padding: 5px 12px; border-radius: 20px;
-  background: var(--bg3); border: 1px solid var(--border2);
-  cursor: pointer; font-size: 11px; font-weight: 600;
-  color: var(--text2); font-family: var(--font); transition: all .15s;
-}
+/* FILTER TABS */
+.filter-tab { padding: 5px 12px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--border2); cursor: pointer; font-size: 11px; font-weight: 600; color: var(--text2); font-family: var(--font); transition: all .15s; }
 .filter-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 .filter-tab:hover:not(.active) { background: var(--bg4); color: var(--text1); }
 
-/* Scrollbar */
 * { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
 </style>
 
 <div class="dash-wrap">
 
-  <!-- ══════════════════════════════════════════
+  <!-- ═══════════════════════════════════════
        KPI STRIP
-  ══════════════════════════════════════════ -->
+  ═══════════════════════════════════════ -->
   <div class="kpi-grid">
+
+    <!-- Type -->
     <div class="kpi blue">
       <div class="kpi-accent"></div>
       <div class="kpi-top"><span class="kpi-label">Type</span><div class="kpi-icon-wrap">📟</div></div>
       <div class="kpi-val" style="font-size:24px;">{{ equipement.type }}</div>
-      <div class="kpi-sub">Code: {{ equipement.code }}</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+      <div class="kpi-sub">Code : {{ equipement.code }}</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" data-width="100"></div></div>
     </div>
+
+    <!-- Statut -->
     <div class="kpi {% if equipement.statut == 'actif' %}green{% elif equipement.statut == 'maintenance' %}amber{% else %}red{% endif %}">
       <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Statut</span><div class="kpi-icon-wrap">{% if equipement.statut == 'actif' %}✅{% elif equipement.statut == 'maintenance' %}🔧{% else %}❌{% endif %}</div></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Statut</span>
+        <div class="kpi-icon-wrap">{% if equipement.statut == 'actif' %}✅{% elif equipement.statut == 'maintenance' %}🔧{% else %}❌{% endif %}</div>
+      </div>
       <div class="kpi-val" style="font-size:22px;">
         {% if equipement.statut == 'actif' %}ACTIF{% elif equipement.statut == 'maintenance' %}MAINT.{% else %}INACTIF{% endif %}
       </div>
       <div class="kpi-sub">En service</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" data-width="100"></div></div>
     </div>
+
+    <!-- Activité 24h — barre dynamique basée sur la moyenne des 7 derniers jours -->
     <div class="kpi purple">
       <div class="kpi-accent"></div>
       <div class="kpi-top"><span class="kpi-label">Activité 24h</span><div class="kpi-icon-wrap">📊</div></div>
       <div class="kpi-val">{{ stats.logs_24h|default:"0" }}</div>
-      <div class="kpi-sub">Accès enregistrés</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%"></div></div>
+      <div class="kpi-sub">
+        accès enregistrés
+        {% if stats.logs_7j > 0 %}
+        · moy. {{ stats.logs_7j|divisibleby:7|default:"0" }}j
+        {% endif %}
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" data-width="{{ stats.activite_24h_pct|default:0 }}"></div></div>
     </div>
+
+    <!-- Dernière connexion -->
     <div class="kpi amber">
       <div class="kpi-accent"></div>
       <div class="kpi-top"><span class="kpi-label">Dernière connexion</span><div class="kpi-icon-wrap">🕐</div></div>
-      <div class="kpi-val" style="font-size:18px;">{{ equipement.derniere_connexion|date:"d/m/Y H:i"|default:"Jamais" }}</div>
-      <div class="kpi-sub">Timestamp</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:50%"></div></div>
+      <div class="kpi-val" style="font-size:18px;">{{ equipement.derniere_connexion|date:"d/m H:i"|default:"Jamais" }}</div>
+      <div class="kpi-sub">{{ equipement.derniere_connexion|date:"Y"|default:"—" }}</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" data-width="50"></div></div>
     </div>
-    <div class="kpi cyan">
+
+    <!-- Taux de succès — couleur dynamique selon le niveau -->
+    <div class="kpi {% if stats.taux_succes >= 80 %}taux-high{% elif stats.taux_succes >= 50 %}taux-mid{% else %}taux-low{% endif %}">
       <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Taux succès</span><div class="kpi-icon-wrap">📈</div></div>
-      <div class="kpi-val">{{ stats.taux_succes|default:"0" }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Autorisations</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ stats.taux_succes|default:0 }}%"></div></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Taux de succès</span>
+        <div class="kpi-icon-wrap">
+          {% if stats.taux_succes >= 80 %}✅{% elif stats.taux_succes >= 50 %}⚠️{% else %}🔴{% endif %}
+        </div>
+      </div>
+      <div class="kpi-val">
+        {{ stats.taux_succes|default:"0" }}<span style="font-size:18px;opacity:.6;">%</span>
+      </div>
+      <div class="kpi-sub">
+        {{ stats.autorises|default:"0" }} auto. · {{ stats.refuses|default:"0" }} refus
+      </div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" data-width="{{ stats.taux_succes|default:0 }}"></div></div>
     </div>
+
   </div>
 
-  <!-- ══════════════════════════════════════════
+  <!-- ═══════════════════════════════════════
        INFORMATIONS + STATISTIQUES
-  ══════════════════════════════════════════ -->
+  ═══════════════════════════════════════ -->
   <div class="grid-2">
 
     <!-- Informations générales -->
@@ -306,46 +276,87 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       </div>
     </div>
 
-    <!-- Statistiques -->
+    <!-- Statistiques d'utilisation — VERSION AMÉLIORÉE -->
     <div class="card">
       <div class="card-head">
         <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📊</div>
         <span class="card-title">Statistiques d'utilisation</span>
       </div>
       <div style="padding: 20px 24px;">
+
+        <!-- Compteurs autorisés / refusés -->
         <div class="stats-dual">
           <div class="stat-card">
             <div class="stat-val" style="color:var(--green);">{{ stats.autorises|default:"0" }}</div>
             <div class="stat-label">Accès autorisés</div>
-            <div class="kpi-bar" style="margin-top:10px;">
-              <div class="kpi-bar-fill" style="width:{{ stats.taux_succes|default:0 }}%;background:var(--green);"></div>
-            </div>
+            <div class="stat-pct" style="color:var(--green);">{{ stats.taux_succes|default:"0" }}%</div>
           </div>
           <div class="stat-card">
             <div class="stat-val" style="color:var(--red);">{{ stats.refuses|default:"0" }}</div>
             <div class="stat-label">Accès refusés</div>
-            <div class="kpi-bar" style="margin-top:10px;">
-              <div class="kpi-bar-fill" style="width:{{ stats.taux_refus|default:0 }}%;background:var(--red);"></div>
-            </div>
+            <div class="stat-pct" style="color:var(--red);">{{ stats.taux_refus|default:"0" }}%</div>
           </div>
         </div>
+
+        <!-- Barre de ratio succès / refus -->
+        {% if stats.autorises or stats.refuses %}
+        <div style="margin-bottom:18px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:11px;color:var(--text3);">
+            <span>Ratio succès / refus</span>
+            <span style="font-family:var(--mono);font-weight:600;color:var(--text1);">
+              {{ stats.taux_succes|default:0 }}% / {{ stats.taux_refus|default:0 }}%
+            </span>
+          </div>
+          <div class="ratio-bar">
+            <div class="ratio-bar-green" id="ratio-green" style="width:0%"></div>
+            <div class="ratio-bar-red"   id="ratio-red"   style="width:0%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--text3);">
+            <span style="color:var(--green);">● Autorisés</span>
+            <span style="color:var(--red);">● Refusés</span>
+          </div>
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:20px;color:var(--text3);font-size:12px;margin-bottom:16px;">
+          Aucun accès enregistré pour cet équipement
+        </div>
+        {% endif %}
+
+        <!-- Activité temporelle -->
         <div style="padding:14px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border2);">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:11.5px;">
-            <span style="color:var(--text3);">Activité 7 derniers jours</span>
-            <span style="font-family:var(--mono);font-weight:600;color:var(--text1);">{{ stats.logs_7j|default:0 }} accès</span>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:12px;">
+            Activité temporelle
           </div>
-          <div class="kpi-bar" style="height:6px;">
-            <div class="kpi-bar-fill" style="width:{{ stats.tendance_7j|default:0 }}%;background:linear-gradient(90deg,var(--blue),var(--cyan));"></div>
+
+          <div class="activity-row">
+            <span class="activity-label">Dernières 24h</span>
+            <div class="activity-bar-wrap">
+              <div class="activity-bar-fill"
+                   style="background:linear-gradient(90deg,var(--purple),#a78bfa);"
+                   data-width="{{ stats.activite_24h_pct|default:0 }}"></div>
+            </div>
+            <span class="activity-val">{{ stats.logs_24h|default:0 }}</span>
           </div>
+
+          <div class="activity-row">
+            <span class="activity-label">7 derniers jours</span>
+            <div class="activity-bar-wrap">
+              <div class="activity-bar-fill"
+                   style="background:linear-gradient(90deg,var(--blue),var(--cyan));"
+                   data-width="{{ stats.tendance_7j|default:0 }}"></div>
+            </div>
+            <span class="activity-val">{{ stats.logs_7j|default:0 }}</span>
+          </div>
+
         </div>
       </div>
     </div>
 
   </div><!-- /grid-2 -->
 
-  <!-- ══════════════════════════════════════════
+  <!-- ═══════════════════════════════════════
        COMMANDES À DISTANCE
-  ══════════════════════════════════════════ -->
+  ═══════════════════════════════════════ -->
   <div class="card">
     <div class="card-head">
       <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">⚡</div>
@@ -361,7 +372,6 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
         <button class="command-btn" onclick="envoyerCommande('sync')">🔄 Synchroniser horloge</button>
       </div>
       <div class="alert-inline" id="commande-result"></div>
-      
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span style="font-size:11px;color:var(--text3);">⚡ Mode secours disponible :</span>
         <button onclick="emergencyUnlock()" style="padding:8px 16px;border-radius:20px;border:1px solid rgba(245,158,11,.3);background:rgba(245,158,11,.1);color:var(--amber);cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font);transition:all .15s;"
@@ -373,9 +383,9 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
     </div>
   </div>
 
-  <!-- ══════════════════════════════════════════
+  <!-- ═══════════════════════════════════════
        HISTORIQUE DES ACCÈS
-  ══════════════════════════════════════════ -->
+  ═══════════════════════════════════════ -->
   <div class="card">
     <div class="card-head">
       <div class="card-head-icon" style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.2);">📋</div>
@@ -429,26 +439,30 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 </div><!-- /dash-wrap -->
 
 <script>
+/* ─── Animation des barres au chargement ─── */
+document.addEventListener('DOMContentLoaded', function () {
+  /* KPI bars (data-width) */
+  document.querySelectorAll('.kpi-bar-fill[data-width]').forEach(function (el) {
+    setTimeout(function () { el.style.width = el.dataset.width + '%'; }, 100);
+  });
+
+  /* Barre d'activité (data-width) */
+  document.querySelectorAll('.activity-bar-fill[data-width]').forEach(function (el) {
+    setTimeout(function () { el.style.width = el.dataset.width + '%'; }, 200);
+  });
+
+  /* Ratio succès / refus */
+  var taux = {{ stats.taux_succes|default:0 }};
+  setTimeout(function () {
+    var g = document.getElementById('ratio-green');
+    var r = document.getElementById('ratio-red');
+    if (g) g.style.width = taux + '%';
+    if (r) r.style.width = (100 - taux) + '%';
+  }, 150);
+});
+
 /* ─── Test connexion ─── */
-function testerConnexion(btn) {
-  btn.disabled = true;
-  btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Test...';
-  
-  fetch('/equipements/{{ equipement.id }}/tester/')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.status === 'success') {
-        alert('✅ ' + data.message + '\nTemps de réponse: ' + (data.response_time || 'N/A') + 'ms');
-      } else {
-        alert('❌ ' + (data.message || 'Erreur'));
-      }
-    })
-    .catch(function() { alert('❌ Erreur de connexion'); })
-    .finally(function() {
-      btn.disabled = false;
-      btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Tester connexion';
-    });
-}
+
 
 /* ─── Commandes ─── */
 function envoyerCommande(commande) {
@@ -456,45 +470,40 @@ function envoyerCommande(commande) {
   var resultDiv = document.getElementById('commande-result');
   resultDiv.style.display = 'block';
   resultDiv.className = 'alert-inline info';
-  resultDiv.innerHTML = '⏳ Envoi de la commande "' + (labels[commande] || commande) + '"...';
-
+  resultDiv.innerHTML = '⏳ Envoi de la commande "' + (labels[commande] || commande) + '"…';
   fetch('/api/equipements/{{ equipement.id }}/commande/', {
     method: 'POST',
-    headers: {'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token }}'},
-    body: JSON.stringify({commande: commande})
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify({ commande: commande })
   })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    resultDiv.innerHTML = '📡 ' + (data.message || 'Commande envoyée');
-    setTimeout(function() { resultDiv.style.display = 'none'; }, 3000);
-  })
-  .catch(function() {
-    resultDiv.innerHTML = '❌ Erreur réseau';
-    setTimeout(function() { resultDiv.style.display = 'none'; }, 3000);
-  });
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      resultDiv.innerHTML = '📡 ' + (data.message || 'Commande envoyée');
+      setTimeout(function () { resultDiv.style.display = 'none'; }, 3000);
+    })
+    .catch(function () {
+      resultDiv.innerHTML = '❌ Erreur réseau';
+      setTimeout(function () { resultDiv.style.display = 'none'; }, 3000);
+    });
 }
 
 /* ─── Déverrouillage urgence ─── */
 function emergencyUnlock() {
   if (!confirm('⚠️ ACTION D\'URGENCE\n\nCette action déverrouillera TOUS les accès de cet équipement.\nElle sera journalisée.\n\nConfirmer ?')) return;
-  
   fetch('/api/equipements/{{ equipement.id }}/emergency-unlock/', {
-    method:'POST',
-    headers:{'X-CSRFToken':'{{ csrf_token }}'}
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' }
   })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    alert(data.message || '✅ Déverrouillage activé');
-    location.reload();
-  })
-  .catch(function() { alert('❌ Erreur'); });
+    .then(function (r) { return r.json(); })
+    .then(function (data) { alert(data.message || '✅ Déverrouillage activé'); location.reload(); })
+    .catch(function () { alert('❌ Erreur'); });
 }
 
 /* ─── Filtre logs ─── */
 function filterLogs(filter, btn) {
-  document.querySelectorAll('.filter-tab').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.filter-tab').forEach(function (b) { b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
-  document.querySelectorAll('#logs-tbody .log-row').forEach(function(row) {
+  document.querySelectorAll('#logs-tbody .log-row').forEach(function (row) {
     var r = row.dataset.resultat;
     row.style.display = (filter === 'all' || (filter === 'autorise' && r === 'autorise') || (filter === 'refuse' && r === 'refuse')) ? '' : 'none';
   });
@@ -503,17 +512,16 @@ function filterLogs(filter, btn) {
 /* ─── Export logs ─── */
 function exportEquipmentLogs() {
   var csv = 'Date,Employé,Badge,Résultat\n';
-  var rows = document.querySelectorAll('#logs-tbody .log-row');
-  rows.forEach(function(row) {
+  document.querySelectorAll('#logs-tbody .log-row').forEach(function (row) {
     if (row.style.display !== 'none') {
       var cells = row.querySelectorAll('td');
       csv += '"' + cells[0].textContent.trim() + '","' + cells[1].textContent.trim() + '","' + cells[2].textContent.trim() + '","' + cells[3].textContent.trim() + '"\n';
     }
   });
-  var blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'});
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'equipement_{{ equipement.code }}_logs_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = 'equipement_{{ equipement.code }}_logs_' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
 }
 

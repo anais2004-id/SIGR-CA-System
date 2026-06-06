@@ -402,16 +402,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total_employes %}{% widthratio inactifs total_employes 100 %}{% else %}0{% endif %}%"></div></div>
     </div>
 
-    <div class="kpi purple">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top">
-        <span class="kpi-label">Départements</span>
-        <div class="kpi-icon-wrap">🏢</div>
-      </div>
-      <div class="kpi-val">{{ total_departements }}</div>
-      <div class="kpi-sub">Unités actives</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%"></div></div>
-    </div>
+
 
     <div class="kpi amber">
       <div class="kpi-accent"></div>
@@ -424,18 +415,9 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:65%"></div></div>
     </div>
 
-    <div class="kpi cyan">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top">
-        <span class="kpi-label">Taux de succès</span>
-        <div class="kpi-icon-wrap">📈</div>
-      </div>
-      <div class="kpi-val">{{ taux_global|default:"0" }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub up">Global</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_global|default:0 }}%"></div></div>
-    </div>
+    
 
-  </div><!-- /kpi-grid -->
+</div><!-- /kpi-grid -->
 
   <!-- ══════════════════════════════════════════
        FILTRES AVANCÉS
@@ -605,46 +587,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
     </div>
   </div>
 
-  <!-- ══════════════════════════════════════════
-       STATISTIQUES PAR DÉPARTEMENT
-  ══════════════════════════════════════════ -->
-  <div class="card">
-    <div class="card-head">
-      <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">📊</div>
-      <span class="card-title">Statistiques par département</span>
-      <span class="card-badge" style="background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2);">{{ total_departements }} unités</span>
-    </div>
-    <div style="padding:18px 20px;">
-      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
-        {% for dept in dept_stats %}
-        <div class="dept-card">
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-            <div style="width:36px;height:36px;border-radius:10px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.2);display:flex;align-items:center;justify-content:center;font-size:16px;">🏢</div>
-            <div style="font-weight:700;font-size:13px;color:var(--text1);">{{ dept.nom }}</div>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;">
-            <span style="color:var(--text3);">👥 Effectif</span>
-            <span style="font-family:var(--mono);font-weight:600;color:var(--text1);">{{ dept.total }}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;">
-            <span style="color:var(--text3);">🔑 Accès total</span>
-            <span style="font-family:var(--mono);font-weight:600;color:var(--text1);">{{ dept.total_acces }}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:12px;">
-            <span style="color:var(--text3);">📈 Taux succès</span>
-            <span style="font-family:var(--mono);font-weight:700;{% if dept.taux >= 80 %}color:var(--green);{% elif dept.taux >= 50 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ dept.taux }}%</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width:{{ dept.taux }}%;{% if dept.taux >= 80 %}background:var(--green);{% elif dept.taux >= 50 %}background:var(--amber);{% else %}background:var(--red);{% endif %}"></div>
-          </div>
-        </div>
-        {% empty %}
-        <div style="color:var(--text3);padding:20px;grid-column:1/-1;text-align:center;">Aucun département enregistré</div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-
+ 
 </div><!-- /dash-wrap -->
 
 <!-- ══════════════════════════════════════════
@@ -836,7 +779,6 @@ function showHistoryModal(empId, empName) {
       `;
     });
 }
-
 /* ─── Modal Ajout Employé ─── */
 function openAddModal() {
   const modalContent = document.getElementById('modal-content');
@@ -856,18 +798,19 @@ function openAddModal() {
           <div>
             <label class="form-label">Nom <span style="color:var(--red);">*</span></label>
             <input class="form-input" type="text" name="nom" placeholder="Nom de famille" required
-                   pattern="[A-Za-zÀ-ÿ\s\-]+"
-                   title="Lettres uniquement"
-                   oninput="this.value = this.value.replace(/[^A-Za-zÀ-ÿ\s\-]/g, '')">
+                   pattern="[A-Za-zÀ-ÿ\\s\\-]+"
+                   title="Lettres, espaces et tirets autorisés"
+                   oninput="this.value = this.value.replace(/[^A-Za-zÀ-ÿ\\s\\-]/g, '')">
           </div>
           <div>
             <label class="form-label">Prénom</label>
             <input class="form-input" type="text" name="prenom" placeholder="Prénom"
-                   pattern="[A-Za-zÀ-ÿ\s\-]+"
-                   title="Lettres uniquement"
-                   oninput="this.value = this.value.replace(/[^A-Za-zÀ-ÿ\s\-]/g, '')">
+                   pattern="[A-Za-zÀ-ÿ\\s\\-]+"
+                   title="Lettres, espaces et tirets autorisés"
+                   oninput="this.value = this.value.replace(/[^A-Za-zÀ-ÿ\\s\\-]/g, '')">
           </div>
         </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
           <div>
             <label class="form-label">Email</label>

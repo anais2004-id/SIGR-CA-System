@@ -9,7 +9,6 @@ from django.contrib import messages
 import json
 import random
 from django.contrib.auth import login, logout, authenticate
-from django.contrib.auth.decorators import login_required
 from django.contrib.sessions.models import Session
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt, csrf_protect, ensure_csrf_cookie
@@ -54,28 +53,89 @@ from reportlab.platypus import (
 )
 
 
+
+# ──── Helpers session MongoDB (remplacent Django ORM auth) ────────────────────
+from functools import wraps as _wraps
+
+def session_required(view_func):
+    """Remplace @session_required — verifie la session MongoDB."""
+    @_wraps(view_func)
+    def _wrapper(request, *args, **kwargs):
+        if not request.session.get("user_id"):
+            from django.conf import settings as _s
+            login_url = getattr(_s, "LOGIN_URL", "/employe/login/")
+            from django.shortcuts import redirect as _r
+            return _r(f"{login_url}?next={request.path}")
+        return view_func(request, *args, **kwargs)
+    return _wrapper
+
+def staff_required(view_func):
+    """Acces reserve aux admins (is_staff = True en session)."""
+    @_wraps(view_func)
+    def _wrapper(request, *args, **kwargs):
+        from django.shortcuts import redirect as _r
+        if not request.session.get("user_id"):
+            return _r("/login/")
+        if not request.session.get("is_staff"):
+            return _r("employe_espace")
+        return view_func(request, *args, **kwargs)
+    return _wrapper
+
+def get_session_user(request):
+    """Retourne un dict avec les infos utilisateur depuis la session."""
+    uid = request.session.get("user_id", "")
+    return {
+        "id":             uid,
+        "username":       request.session.get("username", ""),
+        "is_staff":       request.session.get("is_staff", False),
+        "is_superuser":   request.session.get("is_superuser", False),
+        "is_authenticated": bool(uid),
+        "first_name":     request.session.get("prenom", ""),
+        "last_name":      request.session.get("nom", ""),
+        "email":          request.session.get("email", ""),
+    }
+# ─────────────────────────────────────────────────────────────────────────────
 db = settings.MONGO_DB
-User = get_user_model()
 logger = logging.getLogger(__name__)
 
+# ====================== HELPER : VÉRIFICATION DISPONIBILITÉ ======================
 # ====================== HELPER : VÉRIFICATION DISPONIBILITÉ ======================
 def check_ressource_disponibilite(ressource_id, ressource_type, date_debut, date_fin, exclude_resa_id=None):
     """
     Vérifie si une ressource (salle ou matériel) est disponible sur un créneau.
-    Prend en compte :
-      - Les réservations existantes (confirmées / en attente)
-      - Les indisponibilités planifiées (maintenance, fermeture, blocage)
-    
-    Retourne un dict :
-      { 'disponible': True/False, 'motif': str, 'conflit_type': 'reservation'|'indisponibilite'|None }
+    Accepte les IDs en format ObjectId MongoDB OU entier Djongo.
+    Retourne : { 'disponible': bool, 'motif': str, 'conflit_type': str|None }
     """
+    # ── Résoudre l'ID en ObjectId MongoDB ─────────────────────────────────────
+    ressource_oid = None
+
+    # Cas 1 : string ObjectId valide (24 hex chars)
     try:
-        ressource_oid = ObjectId(ressource_id)
+        ressource_oid = ObjectId(str(ressource_id))
     except Exception:
-        return {'disponible': False, 'motif': 'ID ressource invalide', 'conflit_type': None}
-    # 1) Vérifier les INDISPONIBILITÉS PLANIFIÉES
+        pass
+
+    # Cas 2 : entier Djongo — on cherche le document par champ 'id'
+    if ressource_oid is None:
+        try:
+            id_int = int(ressource_id)
+            collection = 'bureaux' if ressource_type == 'salle' else 'materiels'
+            doc = db[collection].find_one({'id': id_int})
+            if doc:
+                ressource_oid = doc['_id']
+        except Exception:
+            pass
+
+    if ressource_oid is None:
+        return {
+            'disponible':   False,
+            'motif':        'ID ressource invalide ou introuvable',
+            'conflit_type': None,
+        }
+
+    # ── 1) Vérifier les INDISPONIBILITÉS PLANIFIÉES ───────────────────────────
     indispo = db.indisponibilites.find_one({
-        'ressource_id': ressource_oid,
+        'ressource_id':   ressource_oid,
         'ressource_type': ressource_type,
         '$or': [
             {'date_debut': {'$lt': date_fin}, 'date_fin': {'$gt': date_debut}},
@@ -83,26 +143,29 @@ def check_ressource_disponibilite(ressource_id, ressource_type, date_debut, date
     })
     if indispo:
         type_lib = {
-            'maintenance': 'Maintenance programmée',
-            'reservation_bloquee': 'Créneau bloqué',
-            'fermeture': 'Fermeture exceptionnelle',
+            'maintenance':          'Maintenance programmée',
+            'reservation_bloquee':  'Créneau bloqué',
+            'fermeture':            'Fermeture exceptionnelle',
         }.get(indispo.get('type_indispo', 'maintenance'), 'Indisponibilité')
         return {
-            'disponible': False,
-            'motif': f"{type_lib} : {indispo.get('titre', 'sans titre')} "
-                     f"(du {indispo['date_debut'].strftime('%d/%m %H:%M')} "
-                     f"au {indispo['date_fin'].strftime('%d/%m %H:%M')})",
+            'disponible':   False,
+            'motif':        (
+                f"{type_lib} : {indispo.get('titre', 'sans titre')} "
+                f"(du {indispo['date_debut'].strftime('%d/%m %H:%M')} "
+                f"au {indispo['date_fin'].strftime('%d/%m %H:%M')})"
+            ),
             'conflit_type': 'indisponibilite',
-            'indispo_id': str(indispo['_id']),
+            'indispo_id':   str(indispo['_id']),
         }
-    # 2) Vérifier les RÉSERVATIONS existantes (hors annulées)
+
+    # ── 2) Vérifier les RÉSERVATIONS existantes (hors annulées) ───────────────
     query_resa = {
         '$or': [
-            {'bureau_id':    ressource_oid},
-            {'materiel_id':  ressource_oid},
-            {'resource_id':  ressource_oid},
+            {'bureau_id':   ressource_oid},
+            {'materiel_id': ressource_oid},
+            {'resource_id': ressource_oid},
         ],
-        'statut': {'$in': ['confirmee', 'en_attente']},
+        'statut':     {'$in': ['confirmee', 'en_attente']},
         'date_debut': {'$lt': date_fin},
         'date_fin':   {'$gt': date_debut},
     }
@@ -111,15 +174,19 @@ def check_ressource_disponibilite(ressource_id, ressource_type, date_debut, date
             query_resa['_id'] = {'$ne': ObjectId(exclude_resa_id)}
         except Exception:
             pass
+
     resa_conflit = db.reservations.find_one(query_resa)
     if resa_conflit:
         return {
-            'disponible': False,
-            'motif': f"Déjà réservé : {resa_conflit.get('titre', 'sans titre')} "
-                     f"(du {resa_conflit['date_debut'].strftime('%d/%m %H:%M')} "
-                     f"au {resa_conflit['date_fin'].strftime('%d/%m %H:%M')})",
+            'disponible':   False,
+            'motif':        (
+                f"Déjà réservé : {resa_conflit.get('titre', 'sans titre')} "
+                f"(du {resa_conflit['date_debut'].strftime('%d/%m %H:%M')} "
+                f"au {resa_conflit['date_fin'].strftime('%d/%m %H:%M')})"
+            ),
             'conflit_type': 'reservation',
         }
+
     return {'disponible': True, 'motif': '', 'conflit_type': None}
 # ====================== AUTHENTIFICATION ======================
 def _check_password(password, stored_hash):
@@ -163,14 +230,7 @@ def login_view(request):
         user_doc = None
         user_id  = None
 
-        # ── 1. Anciens users (dashboard_utilisateur, id entier) ──────────
-        old_user = db['dashboard_utilisateur'].find_one(
-            {'username': username, 'is_active': True}
-        )
-        if old_user and _check_password(password, old_user.get('password', '')):
-            user_doc = old_user
-            user_id  = str(old_user['id'])  # entier → '1'
-
+        
         # ── 2. Nouveaux users (utilisateurs, ObjectId) ───────────────────
         if not user_doc:
             new_user = db['utilisateurs'].find_one(
@@ -315,17 +375,17 @@ def register_employe(request):
  
     return render(request, 'dashboard/register_employe.html', {'form_data': {}})
 # ====================== ESPACE EMPLOYÉ ======================
-@login_required
+@session_required
 def employe_espace(request):
     """Tableau de bord employé amélioré"""
-    if request.user.is_staff or request.user.is_superuser:
+    if request.session.get('is_staff', False) or request.session.get('is_superuser', False):
         return redirect('dashboard')
 
     from datetime import datetime, timedelta
 
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
 
     if not employe:
         messages.error(request, "Profil employé introuvable. Contactez l'administrateur.")
@@ -509,15 +569,15 @@ def employe_espace(request):
         'now':                  datetime.now(),
     })
 # dashboard/views.py - Modifiez la fonction employe_mes_reservations
-@login_required
+@session_required
 def api_employe_notif_unread_count(request):
     from django.http import JsonResponse
-    if request.user.is_staff or request.user.is_superuser:
+    if request.session.get('is_staff', False) or request.session.get('is_superuser', False):
         return JsonResponse({'count': 0})
     
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     if not employe:
         return JsonResponse({'count': 0})
     
@@ -526,23 +586,30 @@ def api_employe_notif_unread_count(request):
         'status':     {'$ne': 'lu'}
     })
     return JsonResponse({'count': count})
-@login_required
+@session_required
 def employe_mes_reservations(request):
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
 
     from datetime import datetime
     from bson import ObjectId
     import json
 
-    employe = db.employees.find_one({'django_user_id': request.user.id}) \
-              or db.employees.find_one({'django_username': request.user.username})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')}) \
+              or db.employees.find_one({'django_username': request.session.get('username', '')})
 
     if not employe:
         messages.error(request, "Profil employé introuvable.")
         return redirect('login')
 
     employe['id'] = str(employe['_id'])
+
+    # ── Paramètres de réservation (toujours chargés, GET et POST) ──────────
+    params_resa  = db.parametres.find_one({'cle': 'reservation'}) or {}
+    salle_min    = params_resa.get('salle_min_minutes',      30)
+    salle_max    = params_resa.get('salle_max_minutes',    1440)
+    materiel_min = params_resa.get('materiel_min_minutes',   60)
+    materiel_max = params_resa.get('materiel_max_minutes', 525600)
 
     # ============ TRAITEMENT POST (création de réservation) ============
     if request.method == 'POST':
@@ -583,20 +650,20 @@ def employe_mes_reservations(request):
             duree_minutes = int((date_fin - date_debut).total_seconds() / 60)
 
             if resource_type == 'salle':
-             # Salle : 30 min minimum, 1 jours (1440 min) maximum
-                if duree_minutes < 30:
-                    messages.error(request, "Une salle ne peut pas être réservée moins de 30 minutes.")
+                if duree_minutes < salle_min:
+                    messages.error(request, f"Une salle ne peut pas être réservée moins de {salle_min} minute(s).")
                     return redirect('employe_mes_reservations')
-                if duree_minutes > 1440:
-                    messages.error(request, "Une salle ne peut pas être réservée plus de 1 jour (24h maximum).")
+                if duree_minutes > salle_max:
+                    h = salle_max // 60
+                    messages.error(request, f"Une salle ne peut pas être réservée plus de {salle_max} minutes ({h}h maximum).")
                     return redirect('employe_mes_reservations')
             else:
-                # Ressource/matériel : 1h minimum, 1 an (525600 min) maximum
-                if duree_minutes < 60:
-                    messages.error(request, "Une ressource ne peut pas être réservée moins d'1 heure.")
+                if duree_minutes < materiel_min:
+                    messages.error(request, f"Une ressource ne peut pas être réservée moins de {materiel_min} minute(s).")
                     return redirect('employe_mes_reservations')
-                if duree_minutes > 525600:
-                    messages.error(request, "Une ressource ne peut pas être réservée plus d'un an.")
+                if duree_minutes > materiel_max:
+                    j = materiel_max // 1440
+                    messages.error(request, f"Une ressource ne peut pas être réservée plus de {materiel_max} minutes ({j} jour(s) maximum).")
                     return redirect('employe_mes_reservations')
 
             if date_debut < datetime.now():
@@ -654,7 +721,7 @@ def employe_mes_reservations(request):
                 'resource_id':     resource_oid,
                 'bureau_nom':      ressource_nom,
                 'created_at':      datetime.now(),
-                'created_by':      request.user.username,
+                'created_by':      request.session.get('username', ''),
             }
 
             if resource_type == 'salle':
@@ -680,8 +747,8 @@ def employe_mes_reservations(request):
             })
 
             # --- Notifications admins (PyMongo direct) ---
-            admins = list(db['dashboard_utilisateur'].find(
-                {'is_staff': True, 'is_active': True}, {'id': 1, 'email': 1}
+            admins = list(db['utilisateurs'].find(
+                {'is_staff': True, 'is_active': True}, {'_id': 1, 'email': 1}
             ))
 
             admin_message = (
@@ -697,7 +764,7 @@ def employe_mes_reservations(request):
 
             for admin in admins:
                 db.admin_notifications.insert_one({
-                    'admin_id':       admin.get('id'),
+                    'admin_id':       admin.get('_id'),
                     'titre':          '🆕 Nouvelle réservation en attente',
                     'message':        (
                         f"{employe.get('prenom', '')} {employe.get('nom', '')} "
@@ -765,7 +832,6 @@ def employe_mes_reservations(request):
     now = datetime.now()
     employe_id_str = str(employe['_id'])
 
-    # Comptage direct MongoDB — plus fiable que la liste Python
     total_confirmees = db.reservations.count_documents({
         'employe_id': employe_id_str,
         'statut':     'confirmee'
@@ -784,7 +850,8 @@ def employe_mes_reservations(request):
     en_attente = db.reservations.count_documents({
         'employe_id': employe_id_str,
         'statut':     'en_attente'
-})
+    })
+
     bureaux = list(db.bureaux.find())
     for b in bureaux:
         b['id']           = str(b['_id'])
@@ -819,17 +886,18 @@ def employe_mes_reservations(request):
         'en_attente':        en_attente,
         'reservations_json': reservations_json,
         'total_confirmees':  total_confirmees,
+        'params_resa':       params_resa,
     })
-@login_required
+@session_required
 def employe_annuler_reservation(request, reservation_id):
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
     
     from datetime import datetime
     from bson import ObjectId
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     
     if not employe:
         return redirect('login')
@@ -851,7 +919,7 @@ def employe_annuler_reservation(request, reservation_id):
                     {'$set': {
                         'statut': 'annulee', 
                         'cancelled_at': datetime.now(), 
-                        'cancelled_by': request.user.username
+                        'cancelled_by': request.session.get('username', '')
                     }}
                 )
                 
@@ -871,12 +939,12 @@ def employe_annuler_reservation(request, reservation_id):
                 
                 # === NOTIFICATION AUX ADMINISTRATEURS (PyMongo direct) ===
                 try:
-                    admins = list(db['dashboard_utilisateur'].find(
-                        {'is_staff': True, 'is_active': True}, {'id': 1}
+                    admins = list(db['utilisateurs'].find(
+                        {'is_staff': True, 'is_active': True}, {'_id': 1}
                     ))
                     for admin in admins:
                         db.admin_notifications.insert_one({
-                            'admin_id':       admin.get('id'),
+                            'admin_id':       admin.get('_id'),
                             'titre':          '🗑️ Réservation annulée',
                             'message':        f"{employe.get('prenom', '')} {employe.get('nom', '')} a annulé sa réservation '{resa.get('titre', 'Sans titre')}' pour la salle {bureau_nom}.",
                             'categorie':      'reservation',
@@ -901,17 +969,16 @@ def employe_annuler_reservation(request, reservation_id):
 # ═══════════════════════════════════════════════════════════════
 import csv
 from django.http import HttpResponse
-from django.contrib.auth.decorators import login_required
 from datetime import datetime
 
-@login_required
+@session_required
 def reservations_export_csv(request):
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
 
     # ── Même logique que employe_mes_reservations ──────────────
-    employe = db.employees.find_one({'django_user_id': request.user.id}) \
-              or db.employees.find_one({'django_username': request.user.username})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')}) \
+              or db.employees.find_one({'django_username': request.session.get('username', '')})
 
     if not employe:
         return HttpResponse("Profil employé introuvable.", status=403)
@@ -954,7 +1021,6 @@ def reservations_export_csv(request):
 #  EXPORT PDF — RÉSERVATIONS
 # ═══════════════════════════════════════════════════════════════
 from django.http import HttpResponse
-from django.contrib.auth.decorators import login_required
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -1040,7 +1106,7 @@ def _fmt(val):
         return val.strftime('%d/%m/%Y %H:%M')
     return str(val)
 
-@login_required
+@session_required
 def reservations_export_pdf(request):
     """Export PDF réservations — même structure exacte que api_employes_export_pdf."""
     import io, os, traceback
@@ -1130,8 +1196,8 @@ def reservations_export_pdf(request):
 
         # ── Données ───────────────────────────────────────────────
         employe = (
-            db.employees.find_one({'django_user_id': request.user.id})
-            or db.employees.find_one({'django_username': request.user.username})
+            db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
+            or db.employees.find_one({'django_username': request.session.get('username', '')})
         )
         if not employe:
             return HttpResponse("Profil employé introuvable.", status=403)
@@ -1381,14 +1447,14 @@ def reservations_export_pdf(request):
         return HttpResponse(
             f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
             content_type='text/plain', status=500)
-@login_required
+@session_required
 def employe_mon_historique(request):
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
     
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     
     if not employe:
         return redirect('login')
@@ -1419,7 +1485,7 @@ def employe_mon_historique(request):
 
 # dashboard/views.py - Version simplifiée de l'API
 
-@login_required
+@session_required
 def api_reservation_details(request, reservation_id):
     """API pour récupérer les détails d'une réservation (version simplifiée)"""
     try:
@@ -1470,7 +1536,7 @@ def api_reservation_details(request, reservation_id):
 
 # dashboard/views.py - Remplacer api_reservations_calendrier
 
-@login_required
+@session_required
 def api_reservations_calendrier(request):
     """API améliorée pour le calendrier avec filtres"""
     try:
@@ -1544,7 +1610,7 @@ def api_reservations_calendrier(request):
         logger.error(f"Erreur calendrier: {e}")
         return JsonResponse({'events': [], 'error': str(e)})
 
-@login_required
+@session_required
 def api_disponibilite_bureau(request, bureau_id):
     """API : disponibilité d'une salle (réservations + indisponibilités)"""
     debut = request.GET.get('debut')
@@ -1566,13 +1632,12 @@ def api_disponibilite_bureau(request, bureau_id):
 # dashboard/views.py - Version corrigée de dashboard()
 from datetime import datetime, timedelta
 from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
 from bson import ObjectId
 import os
 
-@login_required
+@session_required
 def dashboard(request):
-    if not request.user.is_staff and not request.user.is_superuser:
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
         return redirect('employe_espace')
 
     # Statistiques de base
@@ -1720,7 +1785,6 @@ from collections import Counter
 from bson import ObjectId
 
 from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
 # ── Votre connexion MongoDB (adaptez selon votre projet) ──
@@ -1765,14 +1829,13 @@ def save_photo(request, employe_id):
 #  LISTE DES EMPLOYÉS (VERSION CORRIGÉE)
 # ─────────────────────────────────────────────
 from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
 from datetime import datetime
 import pymongo
 
 # Connexion MongoDB (à adapter selon votre config)
 # db = client.votre_base
 
-@login_required
+@session_required
 def employe_list(request):
     try:
         employes_raw = list(db.employees.find({}))
@@ -1843,6 +1906,7 @@ def employe_list(request):
     
     # Taux global
     taux_global = round((total_autorises_global / total_acces_global * 100), 1) if total_acces_global > 0 else 0
+
     
     return render(request, 'dashboard/employe_list.html', {
         'employes': employes,
@@ -1867,62 +1931,71 @@ from datetime import datetime
 mongo_client = MongoClient('localhost', 27017)
 mongo_db = mongo_client['general_emballage']
 
-@login_required
+@session_required
 def employe_details(request, employe_id):
-    """Fiche détaillée d'un employé"""
-    
-    # Récupérer l'employé depuis MongoDB
     employe = mongo_db.employees.find_one({'_id': ObjectId(employe_id)})
-    
     if not employe:
         return render(request, '404.html', {'message': 'Employé non trouvé'})
-    
-    # IMPORTANT: Créer un champ 'id' pour le template (Django n'accepte pas '_id')
+
     employe['id'] = str(employe['_id'])
-    
-    # Récupérer les accès
+
+    # Même requête que employe_list : utilisateur_id en ObjectId
     acces_list = list(mongo_db.acces_logs.find({
-        'employe_id': str(employe['_id'])
-    }).sort('timestamp', -1))
-    
-    # Ajouter les noms des bureaux
+        '$or': [
+            {'utilisateur_id': employe['_id']},
+            {'utilisateur_id': str(employe['_id'])},
+            {'employe_id':     str(employe['_id'])},
+        ]
+    }).sort('timestamp', -1).limit(200))
+
     for acces in acces_list:
-        if acces.get('bureau_id'):
-            bureau = mongo_db.bureaux.find_one({'_id': ObjectId(acces['bureau_id'])})
-            acces['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
-    
-    # Récupérer les réservations
+        bid = acces.get('bureau_id')
+        if bid:
+            try:
+                bureau = mongo_db.bureaux.find_one({'_id': ObjectId(str(bid))})
+                acces['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+            except Exception:
+                acces['bureau_nom'] = 'Salle inconnue'
+        else:
+            acces['bureau_nom'] = 'Zone inconnue'
+
     reservations_list = list(mongo_db.reservations.find({
-        'employe_id': str(employe['_id'])
+        '$or': [
+            {'employe_id': employe['_id']},
+            {'employe_id': str(employe['_id'])},
+        ]
     }).sort('date_debut', -1))
-    
+
     for resa in reservations_list:
-        if resa.get('bureau_id'):
-            bureau = mongo_db.bureaux.find_one({'_id': ObjectId(resa['bureau_id'])})
-            resa['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
-    
-    # Statistiques
-    total_acces = len(acces_list)
-    acces_autorises = len([a for a in acces_list if a.get('resultat') in ['AUTORISE', 'AUTORISED']])
-    acces_refuses = total_acces - acces_autorises
-    taux_succes = round((acces_autorises / total_acces * 100), 1) if total_acces > 0 else 0
-    
-    context = {
-        'employe': employe,
-        'acces_list': acces_list,
+        bid = resa.get('bureau_id')
+        if bid:
+            try:
+                bureau = mongo_db.bureaux.find_one({'_id': ObjectId(str(bid))})
+                resa['bureau_nom'] = bureau['nom'] if bureau else 'Salle inconnue'
+            except Exception:
+                resa['bureau_nom'] = 'Salle inconnue'
+        else:
+            resa['bureau_nom'] = 'Salle inconnue'
+
+    total_acces     = len(acces_list)
+    acces_autorises = len([a for a in acces_list if a.get('resultat') == 'AUTORISE'])
+    acces_refuses   = total_acces - acces_autorises
+    taux_succes = round((acces_autorises / total_acces * 100)) if total_acces > 0 else 0
+
+    return render(request, 'dashboard/employe_details.html', {
+        'employe':           employe,
+        'acces_list':        acces_list,
         'reservations_list': reservations_list,
-        'total_acces': total_acces,
-        'acces_autorises': acces_autorises,
-        'acces_refuses': acces_refuses,
-        'taux_succes': taux_succes,
-        'dernier_acces': acces_list[0] if acces_list else None,
-    }
-    
-    return render(request, 'dashboard/employe_details.html', context)
+        'total_acces':       total_acces,
+        'acces_autorises':   acces_autorises,
+        'acces_refuses':     acces_refuses,
+        'taux_succes':       taux_succes,
+        'dernier_acces':     acces_list[0] if acces_list else None,
+    })
 # ─────────────────────────────────────────────
 #  AJOUTER UN EMPLOYÉ  (avec photo)
 # ─────────────────────────────────────────────
-@login_required
+@session_required
 def employe_ajouter(request):
     import re
     JOURS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -2054,7 +2127,7 @@ def employe_ajouter(request):
     return render(request, 'dashboard/employe_form.html', {
         'employe': {}, 'jours_semaine': JOURS,
     })
-@login_required
+@session_required
 def api_check_badge(request):
     """Vérifie si un badge RFID existe déjà. Retourne {exists: true/false}."""
     from django.http import JsonResponse
@@ -2082,10 +2155,10 @@ def api_check_badge(request):
 # ─────────────────────────────────────────────
 #  MODIFIER UN EMPLOYÉ  (avec photo)
 # ─────────────────────────────────────────────
-@login_required
+@session_required
 def employe_modifier(request, employe_id):
     # Vérification droits
-    if not request.user.is_staff and not request.user.is_superuser:
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
         messages.error(request, "Accès non autorisé.")
         return redirect('employe_list')
 
@@ -2156,7 +2229,7 @@ def employe_modifier(request, employe_id):
             else:
                 messages.info(request, "Aucune modification détectée.")
 
-            return redirect('employe_detail', employe_id=employe_id)
+            return redirect('employe_details', employe_id=employe_id)
 
         except Exception as e:
             import traceback; traceback.print_exc()
@@ -2171,7 +2244,7 @@ def employe_modifier(request, employe_id):
 # ─────────────────────────────────────────────
 #  ARCHIVER (soft delete)
 # ─────────────────────────────────────────────
-@login_required
+@session_required
 def employe_supprimer(request, employe_id):
     if request.method == 'POST':
         try:
@@ -2188,7 +2261,6 @@ def employe_supprimer(request, employe_id):
 #  EXPORT PDF — RAPPORT EMPLOYÉS AVEC LOGO
 from django.http import HttpResponse
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
 from bson import ObjectId
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
@@ -2301,7 +2373,6 @@ def statut_para(statut, style):
 # ═══════════════════════════════════════════
 from django.http import HttpResponse
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
 from bson import ObjectId
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
@@ -2423,7 +2494,7 @@ def hex_color(c):
 # ═══════════════════════════════════════════
 #  VUE PRINCIPALE
 # ═══════════════════════════════════════════
-@login_required
+@session_required
 def api_employes_export_pdf(request):
     """
     Export PDF professionnel de la liste des employés — SIGR-CA.
@@ -2764,7 +2835,7 @@ def api_employes_export_pdf(request):
 
 # ====================== HISTORIQUE ======================
 
-@login_required
+@session_required
 def historique(request):
     logs = list(db.acces_logs.find().sort('timestamp', -1).limit(500))
     for log in logs:
@@ -2786,36 +2857,38 @@ def historique(request):
 
 
 # ====================== LIVE / SUPERVISION ======================
-@login_required
+@session_required
 def live(request):
     """Surveillance live - Dashboard temps réel"""
     from datetime import datetime, timedelta
-    
-    # Statistiques de la dernière heure
-    one_hour_ago = datetime.now() - timedelta(hours=1)
-    acces_ok_hour = db.acces_logs.count_documents({
-        'resultat': 'AUTORISE',
-        'timestamp': {'$gte': one_hour_ago}
-    })
-    acces_no_hour = db.acces_logs.count_documents({
-        'resultat': 'REFUSE',
-        'timestamp': {'$gte': one_hour_ago}
-    })
+
+    one_hour_ago    = datetime.now() - timedelta(hours=1)
+    today_start     = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = (datetime.now() - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    acces_ok_hour = db.acces_logs.count_documents({'resultat': 'AUTORISE', 'timestamp': {'$gte': one_hour_ago}})
+    acces_no_hour = db.acces_logs.count_documents({'resultat': 'REFUSE',   'timestamp': {'$gte': one_hour_ago}})
     total_acces_hour = acces_ok_hour + acces_no_hour
-    taux_succes_hour = round((acces_ok_hour / total_acces_hour * 100), 1) if total_acces_hour > 0 else 0
-    
-    # Statistiques globales du jour
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    acces_ok_today = db.acces_logs.count_documents({
+
+    acces_ok_today = db.acces_logs.count_documents({'resultat': 'AUTORISE', 'timestamp': {'$gte': today_start}})
+    acces_no_today = db.acces_logs.count_documents({'resultat': 'REFUSE',   'timestamp': {'$gte': today_start}})
+    total_today = acces_ok_today + acces_no_today
+
+    if total_acces_hour > 0:
+        taux_succes_hour = round(acces_ok_hour / total_acces_hour * 100, 1)
+    elif total_today > 0:
+        taux_succes_hour = round(acces_ok_today / total_today * 100, 1)
+    else:
+        taux_succes_hour = 0
+
+    acces_ok_yesterday = db.acces_logs.count_documents({
         'resultat': 'AUTORISE',
-        'timestamp': {'$gte': today_start}
+        'timestamp': {'$gte': yesterday_start, '$lt': today_start}
     })
-    acces_no_today = db.acces_logs.count_documents({
-        'resultat': 'REFUSE',
-        'timestamp': {'$gte': today_start}
-    })
-    
-    # Alertes actives
+    delta_ok = round(
+        (acces_ok_today - acces_ok_yesterday) / acces_ok_yesterday * 100, 1
+    ) if acces_ok_yesterday > 0 else 0
+
     alertes = 0
     alertes_list = []
     if 'alertes' in db.list_collection_names():
@@ -2823,66 +2896,57 @@ def live(request):
         alertes_list = list(db.alertes.find({'statut': 'NON_TRAITEE'}).sort('timestamp', -1).limit(10))
         for a in alertes_list:
             a['id'] = str(a['_id'])
-            if a.get('timestamp'):
-                a['timestamp'] = a['timestamp']
-    
-    # Derniers logs
+
+    TYPES_SYSTEME = {'SYSTEM', 'URGENCE', 'ADMIN', 'EMERGENCY', 'LOCK', 'UNLOCK'}
+
     derniers_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(30))
     for log in derniers_logs:
         b = db.bureaux.find_one({'_id': log.get('bureau_id')})
         log['bureau_nom'] = b['nom'] if b else 'Inconnu'
-        e = db.employees.find_one({'_id': log.get('utilisateur_id')})
-        if e:
-            log['nom_utilisateur'] = f"{e.get('nom', '')} {e.get('prenom', '')}".strip() or 'Inconnu'
-            log['badge_id'] = e.get('badge_id', '???')
+        type_acces = log.get('type_acces', 'RFID')
+        log['type_acces'] = type_acces
+        if type_acces in TYPES_SYSTEME or log.get('utilisateur_id') is None:
+            log['nom_utilisateur'] = 'Système'
+            log['badge_id'] = 'SYS'
         else:
-            log['nom_utilisateur'] = 'Inconnu'
-            log['badge_id'] = '???'
-        log['type_acces'] = log.get('type_acces', 'RFID')
+            e = db.employees.find_one({'_id': log.get('utilisateur_id')})
+            if e:
+                nom = f"{e.get('nom', '')} {e.get('prenom', '')}".strip()
+                log['nom_utilisateur'] = nom if nom else 'Inconnu'
+                log['badge_id'] = e.get('badge_id', '???')
+            else:
+                log['nom_utilisateur'] = 'Inconnu'
+                log['badge_id'] = '???'
         log['resultat'] = log.get('resultat', 'REFUSE')
-    
-    # Bureaux
+
     bureaux = list(db.bureaux.find())
     total_employes = db.employees.count_documents({'statut': 'actif'})
-    
     for b in bureaux:
         b['id'] = str(b['_id'])
         b['capacite_max'] = b.get('capacite_max', 10)
-        # Occupation en temps réel (dernière heure)
-        recent_logs = db.acces_logs.count_documents({
-            'bureau_id': b['_id'],
-            'timestamp': {'$gte': one_hour_ago}
-        })
+        recent_logs = db.acces_logs.count_documents({'bureau_id': b['_id'], 'timestamp': {'$gte': one_hour_ago}})
         b['occupation'] = min(recent_logs, b['capacite_max'])
-        b['taux'] = round((b['occupation'] / b['capacite_max'] * 100), 1) if b['capacite_max'] > 0 else 0
-    
-    # Équipements
+        b['taux'] = round(b['occupation'] / b['capacite_max'] * 100, 1) if b['capacite_max'] > 0 else 0
+
     equipements = []
     if 'equipements' in db.list_collection_names():
         equipements = list(db.equipements.find().limit(10))
         for eq in equipements:
             eq['id'] = str(eq['_id'])
-    
-    # Évolution des KPIs (pour les deltas)
-    yesterday_start = (datetime.now() - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    acces_ok_yesterday = db.acces_logs.count_documents({
-        'resultat': 'AUTORISE',
-        'timestamp': {'$gte': yesterday_start, '$lt': today_start}
-    })
-    delta_ok = round(((acces_ok_today - acces_ok_yesterday) / acces_ok_yesterday * 100), 1) if acces_ok_yesterday > 0 else 0
-    
+
     return render(request, 'dashboard/live.html', {
-        'acces_ok': acces_ok_today,
-        'acces_no': acces_no_today,
+        'acces_ok':      acces_ok_today,
+        'acces_no':      acces_no_today,
         'total_bureaux': len(bureaux),
-        'alertes': alertes,
-        'alertes_list': alertes_list,
+        'alertes':       alertes,
+        'alertes_list':  alertes_list,
         'derniers_logs': derniers_logs,
-        'bureaux': bureaux,
-        'equipements': equipements,
+        'bureaux':       bureaux,
+        'equipements':   equipements,
         'total_employes': total_employes,
-        'taux_succes': taux_succes_hour,
-        'delta_ok': delta_ok,
+        'taux_succes':   taux_succes_hour,
+        'delta_ok':      delta_ok,
+        'taux_label':    'Dernière heure' if total_acces_hour > 0 else "Aujourd'hui",
     })
 def _creer_alerte(message, zone='Système', niveau='MEDIUM'):
     """Insère une alerte dans la collection alertes."""
@@ -2906,7 +2970,6 @@ from bson import ObjectId
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.contrib.auth.decorators import login_required
 from django.conf import settings
  
 # Import de ta connexion MongoDB (adapter selon ton projet)
@@ -3148,7 +3211,7 @@ def api_rfid_scan(request):
         })
 # ====================== GESTION DES RESSOURCES (ZONES & MATÉRIEL) ======================
 
-@login_required
+@session_required
 def ressources(request):
     """Gestion des ressources - Zones et matériel"""
     from datetime import datetime, timedelta
@@ -3209,9 +3272,22 @@ def ressources(request):
         'os':           m.get('os', ''),
         'ecran':        m.get('ecran', ''),
     } for m in materiels], default=str)
-
+    import json as _json
+    bureaux_json = _json.dumps([{
+        'id':              str(b['_id']),
+        'nom':             b.get('nom', ''),
+        'code_bureau':     b.get('code_bureau', ''),
+        'etage':           b.get('etage', 0),
+        'capacite_max':    b.get('capacite_max', 10),
+        'niveau_securite': b.get('niveau_securite', 'standard'),
+        'description':     b.get('description', ''),
+        'statut':          b.get('statut', 'actif'),
+        'taux_occupation': b.get('taux_occupation', 0),
+    } for b in bureaux], default=str)
+    params_resa = db.parametres.find_one({'cle': 'reservation'}) or {}
     return render(request, 'dashboard/ressources.html', {
         'bureaux':             bureaux,
+        'bureaux_json':        bureaux_json,
         'total_bureaux':       total_bureaux,
         'zones_actives':       zones_actives,
         'capacite_totale':     capacite_totale,
@@ -3221,6 +3297,7 @@ def ressources(request):
         'materiel_disponible': materiel_disponible,
         'materiel_maintenance':materiel_maintenance,
         'materiels_json':      materiels_json,
+        'params_resa': params_resa,
     })
 
 
@@ -3275,7 +3352,7 @@ def _generer_num_inventaire(categorie, fournisseur='', annee_inv=None, seq_inv=N
 
 # ─── CRUD Zones ───────────────────────────────────────────────────────────────
 
-@login_required
+@session_required
 def bureau_ajouter(request):
     from bson import ObjectId
     from datetime import datetime
@@ -3306,7 +3383,7 @@ def bureau_ajouter(request):
     return redirect('ressources')
 
 
-@login_required
+@session_required
 def bureau_supprimer(request, bureau_id):
     from bson import ObjectId
 
@@ -3324,7 +3401,7 @@ def bureau_supprimer(request, bureau_id):
 
 # ─── API CRUD Matériel ─────────────────────────────────────────────────────────
 
-@login_required
+@session_required
 def api_materiel_list(request):
     materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
     result = [{
@@ -3341,8 +3418,34 @@ def api_materiel_list(request):
     } for m in materiels]
     return JsonResponse({'materiels': result})
 
+@session_required
+def parametres_reservation_save(request):
+    """Sauvegarde les durées max/min de réservation (admin seulement)."""
+    if not request.session.get('is_staff'):
+        return JsonResponse({'status': 'error', 'message': 'Accès refusé'}, status=403)
 
-@login_required
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            db.parametres.update_one(
+                {'cle': 'reservation'},
+                {'$set': {
+                    'cle': 'reservation',
+                    'salle_max_minutes':     int(data.get('salle_max_minutes',     1440)),
+                    'salle_min_minutes':     int(data.get('salle_min_minutes',       30)),
+                    'materiel_max_minutes':  int(data.get('materiel_max_minutes', 525600)),
+                    'materiel_min_minutes':  int(data.get('materiel_min_minutes',     60)),
+                    'updated_at': datetime.now(),
+                    'updated_by': request.session.get('username', ''),
+                }},
+                upsert=True
+            )
+            return JsonResponse({'status': 'success', 'message': 'Paramètres sauvegardés.'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    return JsonResponse({'status': 'error', 'message': 'Méthode invalide'}, status=405)
+@session_required
 @require_http_methods(["POST"])
 def api_materiel_ajouter(request):
     from bson import ObjectId
@@ -3399,7 +3502,7 @@ def api_materiel_ajouter(request):
             return JsonResponse({'status': 'success', 'message': 'Matériel modifié', 'id': materiel_id, 'num_inventaire': num_inventaire})
         else:
             materiel_data['created_at'] = datetime.now()
-            materiel_data['created_by'] = request.user.username
+            materiel_data['created_by'] = request.session.get('username', '')
             result = db.materiels.insert_one(materiel_data)
             return JsonResponse({'status': 'success', 'message': f'Matériel ajouté', 'id': str(result.inserted_id), 'num_inventaire': num_inventaire})
 
@@ -3407,7 +3510,7 @@ def api_materiel_ajouter(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_materiel_supprimer(request, materiel_id):
     from bson import ObjectId
 
@@ -3426,7 +3529,7 @@ def api_materiel_supprimer(request, materiel_id):
 
 
 # ─── FICHE D'INVENTAIRE — 1 seul matériel ────────────────────────────────────
-@login_required
+@session_required
 def api_materiel_pdf(request, materiel_id):
     """Génère la fiche d'inventaire PDF complète pour un matériel — SIGR-CA."""
     try:
@@ -3875,7 +3978,7 @@ def api_materiel_pdf(request, materiel_id):
             status=500
         )
 # ─── RAPPORT PDF — Zone + tout son matériel ────────────────────────────────────
-@login_required
+@session_required
 def api_zone_pdf(request, zone_id):
     """Rapport PDF d'une zone avec tout son matériel — logo SIGR-CA."""
     try:
@@ -4246,7 +4349,7 @@ def api_zone_pdf(request, zone_id):
         )
 
 # ─── RAPPORT PDF — Toutes les zones ───────────────────────────────────────────
-@login_required
+@session_required
 def api_zones_rapport_pdf(request):
     """Rapport PDF global toutes zones — avec logo SIGR-CA."""
     try:
@@ -4649,7 +4752,7 @@ def api_zones_rapport_pdf(request):
 
 # ─── Export CSV ───────────────────────────────────────────────────────────────
 
-@login_required
+@session_required
 def api_export_ressources_csv(request):
     import csv
     from django.http import HttpResponse
@@ -4684,7 +4787,7 @@ def api_export_ressources_csv(request):
 
 # ─── API bureau stats ─────────────────────────────────────────────────────────
 
-@login_required
+@session_required
 def api_bureau_stats(request, bureau_id):
     from bson import ObjectId
     from datetime import datetime, timedelta
@@ -4720,7 +4823,7 @@ def api_bureau_stats(request, bureau_id):
 
 # ====================== CALENDRIER ET RÈGLES ======================
 
-@login_required
+@session_required
 def calendrier(request):
     """Page du calendrier des règles d'accès"""
     from bson import ObjectId
@@ -4739,7 +4842,7 @@ def calendrier(request):
     })
 
 
-@login_required
+@session_required
 def api_get_employee_rules(request, employe_id):
     """API pour récupérer les règles d'un employé"""
     from bson import ObjectId
@@ -4764,7 +4867,7 @@ def api_get_employee_rules(request, employe_id):
         return JsonResponse({'rules': {}, 'status': 'error', 'message': str(e)})
 
 
-@login_required
+@session_required
 def api_save_day_rules(request):
     """API pour sauvegarder les règles d'un jour"""
     from datetime import datetime
@@ -4822,7 +4925,7 @@ def api_save_day_rules(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_save_all_rules(request):
     """API pour sauvegarder toutes les règles d'un employé"""
     from datetime import datetime
@@ -4864,7 +4967,7 @@ def api_save_all_rules(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_bureaux(request):
     """API pour récupérer la liste des bureaux"""
     bureaux = list(db.bureaux.find())
@@ -4892,7 +4995,7 @@ def api_bureaux(request):
 
 
 # ====================== STATISTIQUES ======================
-@login_required
+@session_required
 def statistiques(request):
     from datetime import datetime, timedelta
     import json
@@ -5055,10 +5158,10 @@ def statistiques(request):
     return render(request, 'dashboard/statistiques.html', context)
     # ====================== STATISTIQUES AVANCÉES ======================
 
-@login_required
+@session_required
 def api_stats_export_csv(request):
     """Export des statistiques en CSV"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     import csv
@@ -5099,10 +5202,10 @@ def api_stats_export_csv(request):
     return response
 
 
-@login_required
+@session_required
 def api_stats_export_pdf(request):
     """Export des statistiques en PDF"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     from datetime import datetime, timedelta
@@ -5166,10 +5269,10 @@ def api_stats_export_pdf(request):
     return response
 
 
-@login_required
+@session_required
 def api_stats_departement(request):
     """Statistiques par département"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     from datetime import datetime, timedelta
@@ -5215,10 +5318,10 @@ def api_stats_departement(request):
     return JsonResponse({'departements': dept_stats})
 
 
-@login_required
+@session_required
 def api_stats_period_custom(request):
     """Statistiques pour une période personnalisée"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     from datetime import datetime
@@ -5262,7 +5365,7 @@ def api_stats_period_custom(request):
     })
 
 
-@login_required
+@session_required
 def api_stats_trend_cache(request):
     """Version avec cache des statistiques de tendance"""
     from django.core.cache import cache
@@ -5307,56 +5410,31 @@ def api_stats_trend_cache(request):
     
     return JsonResponse(data)
 
-
-## ====================== PARAMETRES VIEWS ======================
-# dashboard/views_parametres.py
-# Coller ce code dans votre fichier dashboard/views.py
+# ================================================================
+# PARAMETRES VIEWS — version finale (MongoDB, pas Django ORM)
+# Collez ce code dans votre views.py
+# ================================================================
 
 import json
-import os
 from datetime import datetime
 from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import update_session_auth_hash
-from django.contrib.auth.models import User
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 
-
-# ─── Helper : connexion MongoDB (adapter selon votre projet) ───────────────────
-# Si vous avez déjà un objet `db` global, supprimez ce bloc et gardez le vôtre
-
-
-
-# ─── Clé MongoDB pour stocker la config ───────────────────────────────────────
 CONFIG_COLLECTION = 'config_systeme'
 CONFIG_DOC_ID     = 'global'
 
 DEFAULTS = {
-    # Sécurité
     's_2fa_global'    : False,
-    't_direction'     : True,
-    't_serveur'       : True,
-    't_archives'      : True,
-    't_lab'           : True,
-    't_reunion'       : False,
-    't_entree'        : False,
-    'session_timeout' : '30',
-    'max_failures'    : '5',
-    'ip_whitelist'    : False,
-    'ip_whitelist_list': '',
-    # Système
-    's_qr_dyn'        : True,
-    's_qr_single'     : True,
-    's_alert3'        : True,
     's_block5'        : True,
+    's_alert3'        : True,
     's_keep'          : True,
     's_refresh'       : True,
+    'session_timeout' : '30',
+    'max_failures'    : '5',
     'dark_default'    : True,
-    'ui_animations'   : True,
     'default_language': 'fr',
-    # Notifications
+    'log_retention'   : '365',
     'n_email_resa'    : True,
     'n_reminder'      : True,
     'n_weekly'        : False,
@@ -5364,23 +5442,18 @@ DEFAULTS = {
     'n_maintenance'   : True,
     'n_sms'           : False,
     'notification_email': '',
-    # Sauvegarde
     'backup_auto'     : True,
     'backup_ftp'      : False,
-    'log_retention'   : '365',
-    # API
     'api_external'    : False,
     'ldap_auth'       : False,
     'webhook_alerts'  : False,
-    'api_key'         : 'sk_live_ge_8x7k9m2n4p6q8r',
+    'api_key'         : '',
     'webhook_url'     : '',
-    # Backup info
     'last_backup_date': 'Aucune',
 }
 
 
 def _load_config():
-    """Charge la configuration depuis MongoDB, fusionne avec les defaults."""
     doc = db[CONFIG_COLLECTION].find_one({'_id': CONFIG_DOC_ID}) or {}
     config = dict(DEFAULTS)
     config.update({k: v for k, v in doc.items() if k != '_id'})
@@ -5388,53 +5461,41 @@ def _load_config():
 
 
 def _save_config(data: dict):
-    """Sauvegarde la configuration dans MongoDB."""
     db[CONFIG_COLLECTION].update_one(
         {'_id': CONFIG_DOC_ID},
         {'$set': data},
-        upsert=True
+        upsert=True,
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VUE PRINCIPALE : GET /parametres/
-# ─────────────────────────────────────────────────────────────────────────────
-@login_required
+@session_required
 def parametres(request):
     """Affiche la page de paramètres."""
-    if not request.user.is_staff and not request.user.is_superuser:
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
         return redirect('employe_espace')
 
     config = _load_config()
 
-    # Profil admin étendu (optionnel — stocké dans une collection séparée)
-    admin_profile_doc = db['admin_profiles'].find_one({'user_id': str(request.user.id)}) or {}
+    user_id = str(request.session.get('user_id', ''))
+    admin_profile_doc = db['admin_profiles'].find_one({'user_id': user_id}) or {}
     admin_profile = {
         'phone': admin_profile_doc.get('phone', ''),
         'role' : admin_profile_doc.get('role', 'Administrateur Système'),
-        'two_factor_enabled': admin_profile_doc.get('two_factor_enabled', False),
     }
 
     context = {
         'config'       : config,
-        'user'         : request.user,
+        'user'         : get_session_user(request),
         'admin_profile': admin_profile,
     }
     return render(request, 'dashboard/parametres.html', context)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# API : POST /api/parametres/save/
-# ─────────────────────────────────────────────────────────────────────────────
-@login_required
+@session_required
 @require_POST
 def api_parametres_save(request):
-    """
-    Reçoit un JSON avec tous les paramètres + éventuellement profile_update.
-    Sauvegarde la config dans MongoDB.
-    Si profile_update est présent, met à jour le profil admin.
-    """
-    if not request.user.is_staff and not request.user.is_superuser:
+    """Reçoit JSON, sauvegarde config + profil admin dans MongoDB."""
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
         return JsonResponse({'status': 'error', 'message': 'Accès refusé'}, status=403)
 
     try:
@@ -5447,19 +5508,43 @@ def api_parametres_save(request):
     # ── 1. Mise à jour du profil admin ────────────────────────────────────────
     profile_data = body.pop('profile_update', None)
     if profile_data:
-        user: User = request.user
+        from django.contrib.auth.hashers import check_password, make_password
+        from bson import ObjectId
+
+        user_id  = request.session.get('user_id', '')
+        username = request.session.get('username', '')
+
+        # Chercher l'utilisateur dans MongoDB
+        u_doc = None
+        if user_id:
+            try:
+                u_doc = db['utilisateurs'].find_one({'_id': ObjectId(str(user_id))})
+            except Exception:
+                pass
+        if not u_doc:
+            u_doc = db['utilisateurs'].find_one({'username': username})
+
+        if not u_doc:
+            return JsonResponse({'status': 'error', 'message': 'Utilisateur introuvable en base.'})
+
+        update_fields = {}
 
         # Email
         new_email = (profile_data.get('email') or '').strip()
-        if new_email and new_email != user.email:
-            if User.objects.filter(email=new_email).exclude(pk=user.pk).exists():
+        current_email = (u_doc.get('email') or '').strip()
+        if new_email and new_email != current_email:
+            if db['utilisateurs'].find_one({'email': new_email, '_id': {'$ne': u_doc['_id']}}):
                 errors.append('Cet email est déjà utilisé.')
             else:
-                user.email = new_email
+                update_fields['email'] = new_email
 
         # Prénom / Nom
-        user.first_name = (profile_data.get('first_name') or '').strip()
-        user.last_name  = (profile_data.get('last_name')  or '').strip()
+        new_firstname = (profile_data.get('first_name') or '').strip()
+        new_lastname  = (profile_data.get('last_name')  or '').strip()
+        if new_firstname:
+            update_fields['first_name'] = new_firstname
+        if new_lastname:
+            update_fields['last_name'] = new_lastname
 
         # Mot de passe
         current_pwd = profile_data.get('current_password', '')
@@ -5467,40 +5552,51 @@ def api_parametres_save(request):
         confirm_pwd = profile_data.get('confirm_password', '')
 
         if new_pwd:
-            if not user.check_password(current_pwd):
+            stored_hash = u_doc.get('password', '')
+            if not check_password(current_pwd, stored_hash):
                 errors.append('Mot de passe actuel incorrect.')
             elif new_pwd != confirm_pwd:
                 errors.append('Les mots de passe ne correspondent pas.')
             elif len(new_pwd) < 8:
                 errors.append('Le mot de passe doit contenir au moins 8 caractères.')
             else:
-                user.set_password(new_pwd)
-                update_session_auth_hash(request, user)   # garde la session active
+                update_fields['password'] = make_password(new_pwd)
 
-        if not errors:
-            user.save()
+        if errors:
+            return JsonResponse({'status': 'error', 'message': ' | '.join(errors)})
 
-        # Profil étendu (phone, role, 2FA)
+        # Sauvegarder dans utilisateurs
+        if update_fields:
+            db['utilisateurs'].update_one(
+                {'_id': u_doc['_id']},
+                {'$set': update_fields}
+            )
+            # Mettre à jour la session
+            if 'email' in update_fields:
+                request.session['email'] = update_fields['email']
+            if 'first_name' in update_fields:
+                request.session['prenom'] = update_fields['first_name']
+            if 'last_name' in update_fields:
+                request.session['nom'] = update_fields['last_name']
+            request.session.modified = True
+
+        # Profil étendu (téléphone, fonction)
+        user_id_str = str(u_doc['_id'])
         db['admin_profiles'].update_one(
-            {'user_id': str(user.id)},
+            {'user_id': user_id_str},
             {'$set': {
-                'phone'              : (profile_data.get('phone') or '').strip(),
-                'role'               : (profile_data.get('role')  or 'Administrateur Système').strip(),
-                'two_factor_enabled' : bool(body.get('admin_2fa', False)),
-                'updated_at'         : datetime.now(),
+                'phone'     : (profile_data.get('phone') or '').strip(),
+                'role'      : (profile_data.get('role')  or 'Administrateur Système').strip(),
+                'updated_at': datetime.now(),
             }},
-            upsert=True
+            upsert=True,
         )
 
-    if errors:
-        return JsonResponse({'status': 'error', 'message': ' | '.join(errors)})
-
     # ── 2. Sauvegarde configuration système ───────────────────────────────────
-    # Filtrer uniquement les clés connues pour éviter les injections
-    allowed_keys = set(DEFAULTS.keys()) | {'admin_2fa'}
+    allowed_keys = set(DEFAULTS.keys())
     clean_data = {k: v for k, v in body.items() if k in allowed_keys}
     clean_data['updated_at'] = datetime.now()
-    clean_data['updated_by'] = request.user.username
+    clean_data['updated_by'] = request.session.get('username', '')
 
     _save_config(clean_data)
 
@@ -5510,48 +5606,39 @@ def api_parametres_save(request):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# API : POST /api/parametres/reset/  (optionnel)
-# ─────────────────────────────────────────────────────────────────────────────
-@login_required
+@session_required
 @require_POST
 def api_parametres_reset(request):
     """Remet la configuration aux valeurs par défaut."""
-    if not request.user.is_superuser:
+    if not request.session.get('is_superuser', False):
         return JsonResponse({'status': 'error', 'message': 'Réservé au superadmin'}, status=403)
-
     _save_config(dict(DEFAULTS))
     return JsonResponse({'status': 'success', 'message': 'Configuration réinitialisée'})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# API : GET /api/parametres/sysinfo/  (optionnel)
-# ─────────────────────────────────────────────────────────────────────────────
-@login_required
+@session_required
 def api_system_info(request):
-    """Retourne des infos système dynamiques (version, DB, etc.)."""
-    if not request.user.is_staff:
+    """Retourne des infos système dynamiques."""
+    if not request.session.get('is_staff', False):
         return JsonResponse({'status': 'error'}, status=403)
-
     try:
         db.command('ping')
         db_status = 'Connecté'
     except Exception:
         db_status = 'Erreur'
 
-    import django
-    import sys
-
+    import django, sys
     return JsonResponse({
-        'status'    : 'success',
-        'django'    : django.get_version(),
-        'python'    : sys.version.split()[0],
-        'db_status' : db_status,
-        'timestamp' : datetime.now().isoformat(),
+        'status'   : 'success',
+        'django'   : django.get_version(),
+        'python'   : sys.version.split()[0],
+        'db_status': db_status,
+        'timestamp': datetime.now().isoformat(),
     })
+
 # ====================== API OCCUPATION ======================
 
-@login_required
+@session_required
 def api_occupation(request):
     bureaux = list(db.bureaux.find())
     result = []
@@ -5565,7 +5652,7 @@ def api_occupation(request):
     return JsonResponse({'bureaux': result})
 
 
-@login_required
+@session_required
 def api_bureau_stats(request, bureau_id):
     dates = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     acces = [random.randint(20, 90) for _ in range(7)]
@@ -5573,57 +5660,79 @@ def api_bureau_stats(request, bureau_id):
 
 
 # ====================== API LIVE FEED ======================
-@login_required
+@session_required
 def api_live_feed(request):
-    """
-    Retourne les derniers logs + stats pour le dashboard live.
-    Appelé par live.html toutes les 10 secondes via JS.
-    """
+    """API JSON — flux live pour le refresh automatique"""
+    import json
+    from datetime import datetime, timedelta
+
     one_hour_ago = datetime.now() - timedelta(hours=1)
     today_start  = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
- 
-    # Derniers logs (30)
-    logs_raw = list(db.acces_logs.find().sort('timestamp', -1).limit(30))
-    logs = []
-    for log in logs_raw:
-        employe = db.employees.find_one({'_id': log.get('utilisateur_id')}) if log.get('utilisateur_id') else None
-        bureau  = db.bureaux.find_one({'_id': log.get('bureau_id')}) if log.get('bureau_id') else None
- 
-        nom = 'Inconnu'
-        if employe:
-            nom = f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip() or 'Inconnu'
- 
+
+    TYPES_SYSTEME = {'SYSTEM', 'URGENCE', 'ADMIN', 'EMERGENCY', 'LOCK', 'UNLOCK'}
+
+    # ── Logs ─────────────────────────────────────────────
+    raw_logs = list(db.acces_logs.find().sort('timestamp', -1).limit(20))
+    logs_out = []
+    for log in raw_logs:
+        b = db.bureaux.find_one({'_id': log.get('bureau_id')})
+        zone = b['nom'] if b else 'Zone inconnue'
+
+        type_acces = log.get('type_acces', 'RFID')
+
+        if type_acces in TYPES_SYSTEME or log.get('utilisateur_id') is None:
+            nom = 'Système'
+        else:
+            e = db.employees.find_one({'_id': log.get('utilisateur_id')})
+            if e:
+                nom = f"{e.get('nom', '')} {e.get('prenom', '')}".strip() or 'Inconnu'
+            else:
+                nom = 'Inconnu'
+
         ts = log.get('timestamp')
-        logs.append({
-            'id':       str(log['_id']),
+        time_str = ts.strftime('%H:%M:%S') if ts else '--:--:--'
+
+        logs_out.append({
             'nom':      nom,
-            'zone':     bureau['nom'] if bureau else 'Zone ?',
-            'method':   log.get('type_acces', 'RFID'),
+            'zone':     zone,
+            'method':   type_acces,
             'resultat': log.get('resultat', 'REFUSE'),
-            'time':     ts.strftime('%H:%M:%S') if ts else '--:--:--',
-            'badge_id': log.get('badge_id', '???'),
+            'time':     time_str,
         })
- 
-    # Stats
-    acces_ok = db.acces_logs.count_documents({'resultat': 'AUTORISE', 'timestamp': {'$gte': one_hour_ago}})
-    acces_no = db.acces_logs.count_documents({'resultat': 'REFUSE',   'timestamp': {'$gte': one_hour_ago}})
-    total    = acces_ok + acces_no
-    alertes  = 0
+
+    # ── Stats ─────────────────────────────────────────────
+    acces_ok_hour = db.acces_logs.count_documents({'resultat': 'AUTORISE', 'timestamp': {'$gte': one_hour_ago}})
+    acces_no_hour = db.acces_logs.count_documents({'resultat': 'REFUSE',   'timestamp': {'$gte': one_hour_ago}})
+    total_hour = acces_ok_hour + acces_no_hour
+
+    acces_ok_today = db.acces_logs.count_documents({'resultat': 'AUTORISE', 'timestamp': {'$gte': today_start}})
+    acces_no_today = db.acces_logs.count_documents({'resultat': 'REFUSE',   'timestamp': {'$gte': today_start}})
+    total_today = acces_ok_today + acces_no_today
+
+    if total_hour > 0:
+        taux = round(acces_ok_hour / total_hour * 100, 1)
+    elif total_today > 0:
+        taux = round(acces_ok_today / total_today * 100, 1)
+    else:
+        taux = 0
+
+    alertes = 0
     if 'alertes' in db.list_collection_names():
         alertes = db.alertes.count_documents({'statut': 'NON_TRAITEE'})
- 
-    stats = {
-        'acces_ok':    acces_ok,
-        'acces_no':    acces_no,
-        'taux_succes': round(acces_ok / total * 100, 1) if total > 0 else 0,
-        'alertes':     alertes,
-    }
- 
-    return JsonResponse({'logs': logs, 'stats': stats})
+
+    return JsonResponse({
+        'logs': logs_out,
+        'stats': {
+            'acces_ok':    acces_ok_today,
+            'acces_no':    acces_no_today,
+            'taux_succes': taux,
+            'alertes':     alertes,
+        }
+    })
 
 # ====================== API DÉVERROUILLAGE D'URGENCE ======================
 
-@login_required
+@session_required
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_emergency_unlock(request):
@@ -5633,15 +5742,15 @@ def api_emergency_unlock(request):
             'type_acces':  'URGENCE',
             'resultat':    'AUTORISE',
             'message':     'Déverrouillage d\'urgence déclenché',
-            'utilisateur': request.user.username,
+            'utilisateur': request.session.get('username', ''),
             'timestamp':   datetime.now(),
         })
         _creer_alerte(
-            message=f"⚠️ DÉVERROUILLAGE D'URGENCE déclenché par {request.user.username}",
+            message=f"⚠️ DÉVERROUILLAGE D'URGENCE déclenché par {request.session.get('username', '')}",
             zone='SYSTÈME',
             niveau='CRITICAL'
         )
-        logger.warning(f"[URGENCE] Déverrouillage déclenché par {request.user.username}")
+        logger.warning(f"[URGENCE] Déverrouillage déclenché par {request.session.get('username', '')}")
         return JsonResponse({'status': 'success', 'message': 'Déverrouillage d\'urgence activé et journalisé'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
@@ -5650,7 +5759,7 @@ def api_emergency_unlock(request):
 
 # ====================== API STATISTIQUES TENDANCE ======================
 
-@login_required
+@session_required
 def api_stats_trend(request):
     days = min(int(request.GET.get('days', 30)), 365)
     now = datetime.now()
@@ -5672,7 +5781,7 @@ def api_stats_trend(request):
 
 # ====================== API RÉSERVATIONS ACTIVES ======================
 
-@login_required
+@session_required
 def api_reservations_active(request):
     now = datetime.now()
     reservations_actives = list(db.reservations.find({
@@ -5697,7 +5806,7 @@ def api_reservations_active(request):
 
 # ====================== API TOP RESSOURCES ======================
 
-@login_required
+@session_required
 def api_resources_top(request):
     pipeline = [{'$group': {'_id': '$bureau_id', 'reservations': {'$sum': 1}}},
                 {'$sort': {'reservations': -1}},
@@ -5718,7 +5827,7 @@ def api_resources_top(request):
 
 # ====================== GESTION DES ÉQUIPEMENTS ======================
 
-@login_required
+@session_required
 def equipement_list(request):
     equipements = list(db.equipements.find().sort('type', 1))
     nb_rfid = sum(1 for e in equipements if e.get('type') == 'RFID')
@@ -5750,38 +5859,87 @@ def equipement_list(request):
         'nb_inactifs': nb_inactifs,
     })
 
-
-@login_required
+@session_required
 def equipement_detail(request, equipement_id):
     try:
         equipement = db.equipements.find_one({'_id': ObjectId(equipement_id)})
         if not equipement:
             messages.error(request, "Équipement non trouvé")
             return redirect('equipement_list')
+
         equipement['id'] = str(equipement['_id'])
         if equipement.get('bureau_id'):
             equipement['bureau'] = db.bureaux.find_one({'_id': equipement['bureau_id']})
-        
-        logs = list(db.acces_logs.find({'equipement_code': equipement.get('code')}).sort('timestamp', -1).limit(100))
+
+        logs = list(db.acces_logs.find(
+            {'equipement_code': equipement.get('code')}
+        ).sort('timestamp', -1).limit(100))
+
         for log in logs:
             employe = db.employees.find_one({'_id': log.get('utilisateur_id')})
-            log['nom_utilisateur'] = f"{employe.get('nom', '')} {employe.get('prenom', '')}" if employe else 'Inconnu'
-        
+            log['nom_utilisateur'] = (
+                f"{employe.get('nom', '')} {employe.get('prenom', '')}"
+                if employe else 'Inconnu'
+            )
+
         yesterday = datetime.now() - timedelta(days=1)
-        week_ago = datetime.now() - timedelta(days=7)
+        week_ago  = datetime.now() - timedelta(days=7)
+
+        logs_24h  = db.acces_logs.count_documents({
+            'equipement_code': equipement.get('code'),
+            'timestamp': {'$gte': yesterday}
+        })
+        logs_7j   = db.acces_logs.count_documents({
+            'equipement_code': equipement.get('code'),
+            'timestamp': {'$gte': week_ago}
+        })
+        autorises = db.acces_logs.count_documents({
+            'equipement_code': equipement.get('code'),
+            'resultat': 'AUTORISE'
+        })
+        refuses   = db.acces_logs.count_documents({
+            'equipement_code': equipement.get('code'),
+            'resultat': 'REFUSE'
+        })
+
+        total = autorises + refuses
+
+        # Taux de succès / refus
+        taux_succes = round(autorises / total * 100) if total > 0 else 0
+        taux_refus  = round(refuses  / total * 100) if total > 0 else 0
+
+        # Barre activité 24h : % par rapport à 150% de la moyenne journalière 7j
+        moyenne_jour = logs_7j / 7 if logs_7j > 0 else 0
+        if moyenne_jour > 0:
+            activite_24h_pct = min(round(logs_24h / (moyenne_jour * 1.5) * 100), 100)
+        else:
+            activite_24h_pct = 100 if logs_24h > 0 else 0
+
+        # Tendance 7j : part des logs récents sur le total historique
+        logs_total  = db.acces_logs.count_documents({'equipement_code': equipement.get('code')})
+        tendance_7j = min(round(logs_7j / logs_total * 100), 100) if logs_total > 0 else 0
+
         stats = {
-            'logs_24h': db.acces_logs.count_documents({'equipement_code': equipement.get('code'), 'timestamp': {'$gte': yesterday}}),
-            'logs_7j': db.acces_logs.count_documents({'equipement_code': equipement.get('code'), 'timestamp': {'$gte': week_ago}}),
-            'autorises': db.acces_logs.count_documents({'equipement_code': equipement.get('code'), 'resultat': 'AUTORISE'}),
-            'refuses': db.acces_logs.count_documents({'equipement_code': equipement.get('code'), 'resultat': 'REFUSE'}),
+            'logs_24h':         logs_24h,
+            'logs_7j':          logs_7j,
+            'autorises':        autorises,
+            'refuses':          refuses,
+            'taux_succes':      taux_succes,
+            'taux_refus':       taux_refus,
+            'activite_24h_pct': activite_24h_pct,
+            'tendance_7j':      tendance_7j,
         }
-        return render(request, 'dashboard/equipement_detail.html', {'equipement': equipement, 'logs': logs, 'stats': stats})
+
+        return render(request, 'dashboard/equipement_detail.html', {
+            'equipement': equipement,
+            'logs': logs,
+            'stats': stats,
+        })
+
     except Exception as e:
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('equipement_list')
-
-
-@login_required
+@session_required
 def equipement_ajouter(request):
     bureaux = list(db.bureaux.find())
     for b in bureaux:
@@ -5812,7 +5970,7 @@ def equipement_ajouter(request):
     return render(request, 'dashboard/equipement_form.html', {'bureaux': bureaux, 'equipement': {}, 'is_edit': False})
 
 
-@login_required
+@session_required
 def equipement_modifier(request, equipement_id):
     try:
         equipement = db.equipements.find_one({'_id': ObjectId(equipement_id)})
@@ -5843,7 +6001,7 @@ def equipement_modifier(request, equipement_id):
         return redirect('equipement_list')
 
 
-@login_required
+@session_required
 def equipement_supprimer(request, equipement_id):
     if request.method == 'POST':
         try:
@@ -5855,7 +6013,7 @@ def equipement_supprimer(request, equipement_id):
     return redirect('equipement_list')
 
 
-@login_required
+@session_required
 def equipement_tester(request, equipement_id):
     try:
         equipement = db.equipements.find_one({'_id': ObjectId(equipement_id)})
@@ -5869,7 +6027,7 @@ def equipement_tester(request, equipement_id):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
-@login_required
+@session_required
 def api_equipements(request):
     equipements = list(db.equipements.find({'statut': 'actif'}))
     resultats = []
@@ -5890,7 +6048,7 @@ def api_equipements(request):
     return JsonResponse({'equipements': resultats}, encoder=JSONEncoder)
 
 
-@login_required
+@session_required
 def api_equipement_logs(request, equipement_id):
     try:
         equipement = db.equipements.find_one({'_id': ObjectId(equipement_id)})
@@ -5912,7 +6070,7 @@ def api_equipement_logs(request, equipement_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_equipement_commande(request, equipement_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Méthode non autorisée'}, status=405)
@@ -5929,7 +6087,7 @@ def api_equipement_commande(request, equipement_id):
             'equipement_nom': equipement['nom'],
             'commande': commande,
             'statut': 'envoyee',
-            'envoyee_par': request.user.username,
+            'envoyee_par': request.session.get('username', ''),
             'timestamp': datetime.now()
         })
         return JsonResponse({'status': 'success', 'message': f'Commande "{commande}" envoyée à {equipement["nom"]}'})
@@ -5938,10 +6096,10 @@ def api_equipement_commande(request, equipement_id):
 
 
 # ====================== RÉSERVATIONS ADMIN ======================
-@login_required
+@session_required
 def reservation_list(request):
     """Liste des réservations avec vue calendrier et tableau"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
     
     from datetime import datetime, timedelta
@@ -6049,7 +6207,7 @@ def reservation_list(request):
         'reservations_json': reservations_json,
         'bureaux': bureaux_list,
     })
-@login_required
+@session_required
 def reservation_ajouter(request):
     """Ajouter une nouvelle réservation (ressources et matériel) avec workflow d'approbation et file d'attente"""
     from bson import ObjectId
@@ -6076,6 +6234,13 @@ def reservation_ajouter(request):
     for e in employes:
         e['id'] = str(e['_id'])
 
+    # ── Paramètres de réservation (toujours chargés) ─────────────────────────
+    params_resa  = db.parametres.find_one({'cle': 'reservation'}) or {}
+    salle_min    = params_resa.get('salle_min_minutes',      30)
+    salle_max    = params_resa.get('salle_max_minutes',    1440)
+    materiel_min = params_resa.get('materiel_min_minutes',   60)
+    materiel_max = params_resa.get('materiel_max_minutes', 525600)
+
     if request.method == 'POST':
         try:
             date_debut     = datetime.strptime(request.POST.get('date_debut'), '%Y-%m-%dT%H:%M')
@@ -6089,6 +6254,7 @@ def reservation_ajouter(request):
             form_ctx = {
                 'bureaux': bureaux, 'materiels': materiels, 'employes': employes,
                 'ressources': bureaux + materiels, 'reservation': request.POST, 'is_edit': False,
+                'params_resa': params_resa,
             }
 
             # ── Validations de base ───────────────────────────────────────────
@@ -6099,18 +6265,20 @@ def reservation_ajouter(request):
             duree_minutes = int((date_fin - date_debut).total_seconds() / 60)
 
             if resource_type == 'salle':
-                if duree_minutes < 30:
-                    messages.error(request, "Une salle ne peut pas être réservée moins de 30 minutes.")
+                if duree_minutes < salle_min:
+                    messages.error(request, f"Une salle ne peut pas être réservée moins de {salle_min} minute(s).")
                     return render(request, 'dashboard/reservation_form.html', form_ctx)
-                if duree_minutes > 1440:
-                    messages.error(request, "Une salle ne peut pas être réservée plus d'une journée (24h maximum).")
+                if duree_minutes > salle_max:
+                    h = salle_max // 60
+                    messages.error(request, f"Une salle ne peut pas être réservée plus de {salle_max} minutes ({h}h maximum).")
                     return render(request, 'dashboard/reservation_form.html', form_ctx)
             else:
-                if duree_minutes < 60:
-                    messages.error(request, "Une ressource ne peut pas être réservée moins d'1 heure.")
+                if duree_minutes < materiel_min:
+                    messages.error(request, f"Une ressource ne peut pas être réservée moins de {materiel_min} minute(s).")
                     return render(request, 'dashboard/reservation_form.html', form_ctx)
-                if duree_minutes > 525600:
-                    messages.error(request, "Une ressource ne peut pas être réservée plus d'un an.")
+                if duree_minutes > materiel_max:
+                    j = materiel_max // 1440
+                    messages.error(request, f"Une ressource ne peut pas être réservée plus de {materiel_max} minutes ({j} jour(s) maximum).")
                     return render(request, 'dashboard/reservation_form.html', form_ctx)
 
             # ── Vérifier les conflits ─────────────────────────────────────────
@@ -6139,7 +6307,7 @@ def reservation_ajouter(request):
                     try:
                         from dashboard.queue_service import QueueService
                         QueueService.ajouter(
-                            user=request.user,
+                            user=get_session_user(request),
                             resource_type=resource_type,
                             resource_id=resource_id,
                             date_debut=date_debut,
@@ -6202,7 +6370,7 @@ def reservation_ajouter(request):
                 'nb_participants': int(request.POST.get('nb_participants', 1)),
                 'statut':          'en_attente',
                 'created_at':      datetime.now(),
-                'created_by':      request.user.username,
+                'created_by':      request.session.get('username', ''),
                 'date_debut':      date_debut,
                 'date_fin':        date_fin,
             }
@@ -6239,7 +6407,7 @@ def reservation_ajouter(request):
                 auto_approved = ApprovalService.creer_workflow(
                     reservation_id=reservation_id,
                     reservation_data=reservation_data,
-                    user=request.user,
+                    user=get_session_user(request),
                 )
             except Exception as e:
                 import traceback
@@ -6289,14 +6457,14 @@ def reservation_ajouter(request):
                 emp_prenom = employe.get('prenom', '') if employe else ''
                 emp_nom    = employe.get('nom', '')    if employe else ''
 
-                admins = list(db['dashboard_utilisateur'].find(
+                admins = list(db['utilisateurs'].find(
                     {'is_staff': True, 'is_active': True},
-                    {'id': 1, 'email': 1, 'username': 1}
+                    {'_id': 1, 'email': 1, 'username': 1}
                 ))
 
                 for admin in admins:
                     db.admin_notifications.insert_one({
-                        'admin_id':       admin.get('id'),
+                        'admin_id':       admin.get('_id'),
                         'titre':          '🆕 Nouvelle réservation en attente',
                         'message':        (
                             f"{emp_prenom} {emp_nom} a demandé une réservation "
@@ -6347,6 +6515,7 @@ def reservation_ajouter(request):
         'ressources': bureaux + materiels,
         'reservation': {},
         'is_edit':    False,
+        'params_resa': params_resa,
     })
 
 def get_materiel_icon(categorie):
@@ -6363,7 +6532,7 @@ def get_materiel_icon(categorie):
     }
     return icons.get(categorie, '📦')
 
-@login_required
+@session_required
 def reservation_modifier(request, reservation_id):
     try:
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
@@ -6408,7 +6577,7 @@ def reservation_modifier(request, reservation_id):
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('reservation_list')
 
-@login_required
+@session_required
 def reservation_annuler(request, reservation_id):
     """Annuler une réservation et notifier la file d'attente"""
     from bson import ObjectId
@@ -6425,7 +6594,7 @@ def reservation_annuler(request, reservation_id):
             {'$set': {
                 'statut': 'annulee',
                 'cancelled_at': datetime.now(),
-                'cancelled_by': request.user.username,
+                'cancelled_by': request.session.get('username', ''),
             }}
         )
 
@@ -6453,11 +6622,387 @@ def reservation_annuler(request, reservation_id):
         messages.success(request, "Réservation annulée.")
     return redirect('reservation_list')
 
+# ═══════════════════════════════════════════════════════════════
+#  ADMIN — EXPORT CSV RÉSERVATIONS
+# ═══════════════════════════════════════════════════════════════
+import csv
+from django.http import HttpResponse
+from datetime import datetime
+
+@session_required
+def admin_reservations_export_csv(request):
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
+        return HttpResponse("Accès non autorisé.", status=403)
+
+    reservations = list(db.reservations.find().sort('date_debut', -1))
+
+    # Enrichir avec le nom de l'employé
+    emp_cache = {}
+    for r in reservations:
+        eid = str(r.get('employe_id', ''))
+        if eid and eid not in emp_cache:
+            try:
+                emp = db.employees.find_one({'_id': ObjectId(eid)})
+                emp_cache[eid] = f"{emp.get('nom','')} {emp.get('prenom','')}" if emp else '—'
+            except Exception:
+                emp_cache[eid] = eid
+        r['_emp_nom'] = emp_cache.get(eid, '—')
+
+    now_str  = datetime.now().strftime('%Y%m%d_%H%M')
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="Admin_Reservations_{now_str}.csv"'
+    response.write('\ufeff')  # BOM UTF-8 pour Excel
+
+    writer = csv.writer(response)
+    writer.writerow([
+        'Titre', 'Employé', 'Salle / Ressource', 'Type',
+        'Début', 'Fin', 'Participants', 'Statut', 'Description', 'Créé le'
+    ])
+
+    for r in reservations:
+        debut   = r.get('date_debut')
+        fin     = r.get('date_fin')
+        created = r.get('created_at')
+        writer.writerow([
+            r.get('titre', ''),
+            r.get('_emp_nom', '—'),
+            r.get('bureau_nom', r.get('materiel_nom', '—')),
+            r.get('resource_type', 'salle'),
+            debut.strftime('%d/%m/%Y %H:%M')   if hasattr(debut,   'strftime') else '—',
+            fin.strftime('%d/%m/%Y %H:%M')     if hasattr(fin,     'strftime') else '—',
+            r.get('nb_participants', 1),
+            r.get('statut', ''),
+            r.get('description', ''),
+            created.strftime('%d/%m/%Y %H:%M') if hasattr(created, 'strftime') else '—',
+        ])
+
+    return response
+
+
+# ═══════════════════════════════════════════════════════════════
+#  ADMIN — EXPORT PDF RÉSERVATIONS
+# ═══════════════════════════════════════════════════════════════
+@session_required
+def admin_reservations_export_pdf(request):
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
+        return HttpResponse("Accès non autorisé.", status=403)
+
+    import io, os, traceback
+    from datetime import datetime
+    from django.contrib.staticfiles.finders import find as static_find
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        Image, HRFlowable, KeepTogether,
+    )
+    from reportlab.platypus.flowables import Flowable
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    try:
+        C_BLUE_DARK  = colors.HexColor('#0f172a')
+        C_BLUE_MAIN  = colors.HexColor('#1d4ed8')
+        C_BLUE_LIGHT = colors.HexColor('#dbeafe')
+        C_BLUE_MID   = colors.HexColor('#3b82f6')
+        C_PURPLE     = colors.HexColor('#7c3aed')
+        C_GREEN      = colors.HexColor('#059669')
+        C_AMBER      = colors.HexColor('#d97706')
+        C_RED        = colors.HexColor('#dc2626')
+        C_GREY_LIGHT = colors.HexColor('#f8fafc')
+        C_GREY_MID   = colors.HexColor('#e2e8f0')
+        C_GREY_TEXT  = colors.HexColor('#64748b')
+        C_WHITE      = colors.white
+        C_BLACK      = colors.HexColor('#0f172a')
+
+        class NumberedCanvas(rl_canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._saved_page_states = []
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+            def save(self):
+                n = len(self._saved_page_states)
+                for i, state in enumerate(self._saved_page_states):
+                    self.__dict__.update(state)
+                    self._draw_footer(i + 1, n)
+                    rl_canvas.Canvas.showPage(self)
+                rl_canvas.Canvas.save(self)
+            def _draw_footer(self, page_num, total_pages):
+                w, _ = A4
+                self.setFillColor(colors.HexColor('#64748b'))
+                self.setFont('Helvetica', 8)
+                self.drawCentredString(w / 2, 1.2 * cm,
+                    f"Page {page_num} / {total_pages}  —  SIGR-CA — Document confidentiel")
+                self.setStrokeColor(colors.HexColor('#e2e8f0'))
+                self.setLineWidth(0.5)
+                self.line(2*cm, 1.6*cm, w - 2*cm, 1.6*cm)
+
+        class ColorBand(Flowable):
+            def __init__(self, text, width, height=0.9*cm, bg=None, fg=None, font_size=11):
+                super().__init__()
+                self.text = text; self.band_width = width; self.band_height = height
+                self.bg = bg or colors.HexColor('#0f172a')
+                self.fg = fg or colors.white; self.font_size = font_size
+            def wrap(self, *args):
+                return self.band_width, self.band_height
+            def draw(self):
+                c = self.canv
+                c.setFillColor(self.bg)
+                c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+                c.setFillColor(self.fg)
+                c.setFont('Helvetica-Bold', self.font_size)
+                c.drawString(0.4*cm, 0.25*cm, self.text)
+
+        def hex_color(c):
+            try:
+                return f'{int(c.red*255):02x}{int(c.green*255):02x}{int(c.blue*255):02x}'
+            except Exception:
+                return '0f172a'
+
+        # ── Données : TOUTES les réservations ────────────────────
+        reservations = list(db.reservations.find().sort('date_debut', -1))
+
+        emp_cache = {}
+        for r in reservations:
+            eid = str(r.get('employe_id', ''))
+            if eid and eid not in emp_cache:
+                try:
+                    emp = db.employees.find_one({'_id': ObjectId(eid)})
+                    emp_cache[eid] = f"{emp.get('nom','')} {emp.get('prenom','')}" if emp else '—'
+                except Exception:
+                    emp_cache[eid] = '—'
+            r['_emp_nom'] = emp_cache.get(eid, '—')
+
+        now_str   = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file = datetime.now().strftime('%Y%m%d_%H%M')
+        admin_nom = request.session.get('full_name', request.session.get('username', 'Admin'))
+
+        buffer   = io.BytesIO()
+        PAGE_W, _ = A4
+        CONTENT_W = PAGE_W - 4*cm
+
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title="Rapport Réservations — Admin SIGR-CA",
+            author="SIGR-CA Système",
+        )
+
+        _sty = {}
+        def ps(name, **kw):
+            base  = kw.pop('parent', 'Normal')
+            sheet = getSampleStyleSheet()
+            parent = _sty.get(base) or sheet.get(base, sheet['Normal'])
+            p = ParagraphStyle(name, parent=parent, **kw)
+            _sty[name] = p
+            return p
+
+        th      = ps('TH',  fontName='Helvetica-Bold', fontSize=8, textColor=C_WHITE, alignment=TA_CENTER, leading=11)
+        th_left = ps('THL', parent='TH', alignment=TA_LEFT)
+        td      = ps('TD',  fontSize=8, alignment=TA_CENTER, leading=11, textColor=C_BLACK)
+        td_left = ps('TDL', parent='TD', alignment=TA_LEFT)
+        td_mono = ps('TDM', parent='TD', fontSize=7, fontName='Courier')
+        sec_sty = ps('SEC', fontName='Helvetica-Bold', fontSize=12,
+                     textColor=C_PURPLE, spaceBefore=20, spaceAfter=8, leading=16)
+        foot_sty = ps('FOT', fontSize=7.5, textColor=C_GREY_TEXT, alignment=TA_CENTER, leading=11)
+
+        _NO_PAD = TableStyle([
+            ('LEFTPADDING',  (0,0),(-1,-1), 0),
+            ('RIGHTPADDING', (0,0),(-1,-1), 0),
+            ('TOPPADDING',   (0,0),(-1,-1), 1),
+            ('BOTTOMPADDING',(0,0),(-1,-1), 1),
+        ])
+
+        elements = []
+
+        # ── En-tête ───────────────────────────────────────────────
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_tbl = Table([
+            [Paragraph('<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                       ps('LT', fontSize=22, leading=26, alignment=TA_LEFT))],
+            [Paragraph("Système Intégré de Gestion des Ressources<br/>"
+                       "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                       ps('LS', fontSize=9, leading=13, textColor=C_GREY_TEXT, alignment=TA_LEFT))],
+        ], colWidths=[11*cm])
+        title_tbl.setStyle(_NO_PAD)
+
+        logo_cell = (Image(LOGO_PATH, width=4*cm, height=2.6*cm)
+                     if LOGO_PATH and os.path.exists(LOGO_PATH)
+                     else Paragraph('<font color="#1d4ed8"><b>SIGR</b></font>',
+                                    ps('FL', fontSize=18, alignment=TA_RIGHT)))
+
+        meta_tbl = Table([
+            [Paragraph(f"<b>Généré par :</b> {admin_nom}",
+                       ps('M0', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Date :</b> {now_str}",
+                       ps('M1', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Total réservations :</b> {len(reservations)}",
+                       ps('M2', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>CONFIDENTIEL</b>",
+                       ps('M3', fontSize=8, textColor=C_RED, alignment=TA_RIGHT))],
+        ], colWidths=[4.5*cm])
+        meta_tbl.setStyle(_NO_PAD)
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',        (0,0),(-1,-1), 'RIGHT'),
+            ('LEFTPADDING',  (0,0),(-1,-1), 0),
+            ('RIGHTPADDING', (0,0),(-1,-1), 0),
+            ('TOPPADDING',   (0,0),(-1,-1), 2),
+            ('BOTTOMPADDING',(0,0),(-1,-1), 2),
+        ]))
+
+        header_tbl = Table([[title_tbl, right_col]], colWidths=[12.5*cm, 4.5*cm])
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',       (0,0),(-1,-1), 'TOP'),
+            ('LEFTPADDING',  (0,0),(-1,-1), 0),
+            ('RIGHTPADDING', (0,0),(-1,-1), 0),
+            ('TOPPADDING',   (0,0),(-1,-1), 0),
+            ('BOTTOMPADDING',(0,0),(-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2, color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+        elements.append(ColorBand(
+            "  RAPPORT RÉSERVATIONS — ADMINISTRATION",
+            CONTENT_W, height=1.1*cm,
+            bg=C_PURPLE, fg=C_WHITE, font_size=12,
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ── Tableau principal ─────────────────────────────────────
+        elements.append(KeepTogether([Paragraph('Liste complète des réservations', sec_sty)]))
+
+        STATUT_MAP = {
+            'confirmee':  ('#059669', '✔ Confirmée'),
+            'en_attente': ('#d97706', '⏳ En attente'),
+            'annulee':    ('#dc2626', '✖ Annulée'),
+            'terminee':   ('#64748b', '■ Terminée'),
+        }
+
+        # colWidths : 3.6+3.0+2.8+2.6+2.6+1.2+1.2 = 17cm ✓
+        col_widths = [3.6*cm, 3.0*cm, 2.8*cm, 2.6*cm, 2.6*cm, 1.2*cm, 1.2*cm]
+        data = [[
+            Paragraph('Titre',     th_left),
+            Paragraph('Employé',   th_left),
+            Paragraph('Salle',     th),
+            Paragraph('Début',     th),
+            Paragraph('Fin',       th),
+            Paragraph('Part.',     th),
+            Paragraph('Statut',    th),
+        ]]
+
+        for r in reservations:
+            statut = r.get('statut', '')
+            color, label = STATUT_MAP.get(statut, ('#64748b', statut))
+            bureau = r.get('bureau_nom') or r.get('materiel_nom') or '—'
+            debut  = r.get('date_debut')
+            fin    = r.get('date_fin')
+            data.append([
+                Paragraph(f"<b>{r.get('titre') or '—'}</b>", td_left),
+                Paragraph(str(r.get('_emp_nom', '—')), td_left),
+                Paragraph(str(bureau), td),
+                Paragraph(debut.strftime('%d/%m %H:%M') if hasattr(debut,'strftime') else '—', td_mono),
+                Paragraph(fin.strftime('%d/%m %H:%M')   if hasattr(fin,  'strftime') else '—', td_mono),
+                Paragraph(str(r.get('nb_participants', 1)), td),
+                Paragraph(f'<font color="{color}"><b>{label.split()[0]}</b></font>', td),
+            ])
+
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,0),  C_PURPLE),
+            ('TEXTCOLOR',     (0,0), (-1,0),  C_WHITE),
+            ('ROWBACKGROUNDS',(0,1), (-1,-1), [C_WHITE, C_GREY_LIGHT]),
+            ('GRID',          (0,0), (-1,-1), 0.4, C_GREY_MID),
+            ('LINEBELOW',     (0,0), (-1,0),  1.5, C_PURPLE),
+            ('TOPPADDING',    (0,0), (-1,0),  9),
+            ('BOTTOMPADDING', (0,0), (-1,0),  9),
+            ('TOPPADDING',    (0,1), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,1), (-1,-1), 6),
+            ('LEFTPADDING',   (0,0), (-1,-1), 6),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+            ('BOX',           (0,0), (-1,-1), 1, C_PURPLE),
+        ]))
+        elements.append(tbl)
+
+        # ── Résumé statistique ────────────────────────────────────
+        elements.append(Spacer(1, 1*cm))
+        elements.append(Paragraph('Résumé statistique', sec_sty))
+
+        total      = len(reservations)
+        confirmees = sum(1 for r in reservations if r.get('statut') == 'confirmee')
+        en_attente = sum(1 for r in reservations if r.get('statut') == 'en_attente')
+        annulees   = sum(1 for r in reservations if r.get('statut') == 'annulee')
+        terminees  = sum(1 for r in reservations if r.get('statut') == 'terminee')
+        salles     = sum(1 for r in reservations if r.get('resource_type', 'salle') == 'salle')
+        mats       = sum(1 for r in reservations if r.get('resource_type') == 'materiel')
+        employes_u = len(set(str(r.get('employe_id','')) for r in reservations if r.get('employe_id')))
+
+        def stat_row(label, value, value_color=C_BLACK):
+            hv = hex_color(value_color)
+            return [
+                Paragraph(label, ps(f'SL{label[:5]}', fontSize=9, textColor=C_GREY_TEXT, alignment=TA_LEFT)),
+                Paragraph(f'<font color="#{hv}"><b>{value}</b></font>',
+                          ps(f'SV{label[:5]}', fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')),
+            ]
+
+        stats_data = [
+            stat_row('Total réservations',      str(total)),
+            stat_row('Confirmées',              str(confirmees),  C_GREEN),
+            stat_row('En attente de validation',str(en_attente),  C_AMBER),
+            stat_row('Annulées',                str(annulees),    C_RED),
+            stat_row('Terminées',               str(terminees),   C_GREY_TEXT),
+            stat_row('Réservations de salles',  str(salles)),
+            stat_row('Réservations de matériels', str(mats)),
+            stat_row('Employés ayant réservé',  str(employes_u),  C_PURPLE),
+        ]
+
+        stats_tbl = Table(stats_data, colWidths=[10*cm, 7*cm])
+        stats_tbl.setStyle(TableStyle([
+            ('ROWBACKGROUNDS',(0,0),(-1,-1), [C_WHITE, C_GREY_LIGHT]),
+            ('GRID',          (0,0),(-1,-1), 0.4, C_GREY_MID),
+            ('TOPPADDING',    (0,0),(-1,-1), 7),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 7),
+            ('LEFTPADDING',   (0,0),(-1,-1), 10),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 10),
+            ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
+            ('BOX',           (0,0),(-1,-1), 1, C_GREY_MID),
+        ]))
+        elements.append(stats_tbl)
+
+        # ── Pied de page document ─────────────────────────────────
+        elements.append(Spacer(1, 1.2*cm))
+        elements.append(HRFlowable(width='100%', thickness=1, color=C_GREY_MID, spaceAfter=6))
+        elements.append(Paragraph(
+            f"Rapport généré le <b>{now_str}</b> par <b>{admin_nom}</b> via le système SIGR-CA.",
+            foot_sty))
+        elements.append(Paragraph(
+            "Ce document est <b>confidentiel</b> et destiné à un usage interne uniquement.",
+            ps('CF2', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_CENTER, leading=10)))
+
+        doc.build(elements, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="Admin_Reservations_{date_file}.pdf"'
+        return response
+
+    except Exception as e:
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain', status=500)
     
 
 
 # ====================== API HISTORIQUE EMPLOYÉ ======================
-@login_required
+@session_required
 def api_employee_history(request, employe_id):
     """API pour récupérer l'historique d'un employé"""
     from bson import ObjectId
@@ -6514,14 +7059,14 @@ def api_employee_history(request, employe_id):
         }, status=500)
 # ====================== API PROFIL ADMIN ======================
 
-@login_required
+@session_required
 def update_admin_profile(request):
-    if not request.user.is_staff and not request.user.is_superuser:
+    if not request.session.get('is_staff', False) and not request.session.get('is_superuser', False):
         return JsonResponse({'status': 'error', 'message': 'Accès non autorisé'}, status=403)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            user = request.user
+            user = get_session_user(request)
             user.username = data.get('username', user.username)
             user.first_name = data.get('first_name', user.first_name)
             user.last_name = data.get('last_name', user.last_name)
@@ -6556,11 +7101,11 @@ def update_admin_profile(request):
     return JsonResponse({'status': 'error', 'message': 'Méthode non autorisée'}, status=405)
 
 
-@login_required
+@session_required
 def admin_login_history(request):
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Accès non autorisé'}, status=403)
-    logs = list(db.system_logs.find({'user_id': request.user.id}).sort('timestamp', -1).limit(50))
+    logs = list(db.system_logs.find({'user_id': request.session.get('user_id', '')}).sort('timestamp', -1).limit(50))
     history = [{'timestamp': log['timestamp'].isoformat() if log.get('timestamp') else '',
                 'ip_address': log.get('ip', '—'),
                 'user_agent': log.get('user_agent', '—'),
@@ -6568,16 +7113,16 @@ def admin_login_history(request):
     return JsonResponse({'history': history}, encoder=JSONEncoder)
 
 
-@login_required
+@session_required
 def update_admin_avatar(request):
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Accès non autorisé'}, status=403)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
             avatar_base64 = data.get('avatar')
             if avatar_base64:
-                db.admin_profiles.update_one({'user_id': request.user.id},
+                db.admin_profiles.update_one({'user_id': request.session.get('user_id', '')},
                                              {'$set': {'avatar': avatar_base64, 'updated_at': datetime.now()}}, upsert=True)
                 return JsonResponse({'status': 'success', 'message': 'Avatar mis à jour'})
         except Exception as e:
@@ -6591,7 +7136,7 @@ def update_admin_avatar(request):
 
 # ====================== GESTION DES RESSOURCES (SUITE) ======================
 
-@login_required
+@session_required
 @require_http_methods(["POST"])
 def api_materiel_upload_photo(request):
     import base64, uuid
@@ -6616,7 +7161,7 @@ def api_materiel_upload_photo(request):
         return JsonResponse({'status': 'success', 'path': filename})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-@login_required
+@session_required
 def bureau_detail(request, bureau_id):
     """Détail d'un bureau/zone avec affichage de la hiérarchie"""
     from bson import ObjectId
@@ -6687,7 +7232,7 @@ def bureau_detail(request, bureau_id):
         return redirect('ressources')
 
 
-@login_required
+@session_required
 def api_bureau_reservations(request, bureau_id):
     """API pour les réservations d'un bureau (simplifié)"""
     try:
@@ -6712,7 +7257,7 @@ def api_bureau_reservations(request, bureau_id):
         return JsonResponse({'reservations': [], 'error': str(e)})
 
 
-@login_required
+@session_required
 def api_materiel_list(request):
     """API pour la liste du matériel"""
     materiels = list(db.materiels.find()) if 'materiels' in db.list_collection_names() else []
@@ -6721,7 +7266,7 @@ def api_materiel_list(request):
     return JsonResponse({'materiels': materiels})
 
 
-@login_required
+@session_required
 def api_materiel_supprimer(request, materiel_id):
     """API pour supprimer du matériel"""
     if request.method != 'DELETE':
@@ -6738,7 +7283,7 @@ def api_materiel_supprimer(request, materiel_id):
 
 # ====================== API RESSOURCES ======================
 
-@login_required
+@session_required
 def api_resources(request):
     ressources = list(db.resources.find({'statut': {'$ne': 'hors_service'}}))
     result = []
@@ -6759,7 +7304,7 @@ def api_resources(request):
 
 # ====================== GESTION DES RÉSERVATIONS AVANCÉES ======================
 
-@login_required
+@session_required
 def reservation_ajouter_avance(request):
     bureaux = list(db.bureaux.find())
     for b in bureaux:
@@ -6818,7 +7363,7 @@ def reservation_ajouter_avance(request):
                 'nb_participants': int(request.POST.get('nb_participants', 1)),
                 'statut': 'confirmee',
                 'recurrence': recurrence if recurrence != 'none' else '',
-                'created_by': request.user.username,
+                'created_by': request.session.get('username', ''),
                 'created_at': datetime.now(),
             }
             
@@ -7000,7 +7545,7 @@ def log_access(utilisateur_id, zone_code, resultat, message, method):
 
 # ====================== NOTIFICATIONS ET ALERTES ======================
 
-@login_required
+@session_required
 def api_send_notification(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -7037,7 +7582,7 @@ def api_send_notification(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_alerts(request):
     alerts = list(db.alertes.find({'statut': 'NON_TRAITEE'}).sort('timestamp', -1).limit(50))
     result = []
@@ -7054,7 +7599,7 @@ def api_alerts(request):
 
 # ====================== STATISTIQUES AVANCÉES ======================
 
-@login_required
+@session_required
 def api_stats_predictions(request):
     today = datetime.now()
     predictions = []
@@ -7094,7 +7639,6 @@ def api_stats_predictions(request):
         ]
     })
 
-
 # ====================== HELPERS PARTAGÉS ======================
 from django.utils.timezone import make_aware, is_naive
 import pytz
@@ -7109,14 +7653,16 @@ def _make_aware_dt(dt, algiers):
     if dt is None:
         return None
     return make_aware(dt, algiers) if is_naive(dt) else dt
+
 def _normalize_uid(raw_uid):
-    """Retourne (uid_key, is_int) — uid_key est int ou str selon le format."""
+    """Retourne uid_key — int si possible, sinon str."""
     if not raw_uid:
         return 0, True
     try:
         return int(raw_uid), True
     except (ValueError, TypeError):
         return str(raw_uid), False
+
 def _get_users_map(db, user_ids):
     """
     Construit un dict  id → doc utilisateur.
@@ -7127,7 +7673,6 @@ def _get_users_map(db, user_ids):
 
     int_ids = []
     str_ids = []
-
     for uid in user_ids:
         if not uid:
             continue
@@ -7138,12 +7683,10 @@ def _get_users_map(db, user_ids):
 
     users_map = {}
 
-    # Anciens utilisateurs (dashboard_utilisateur avec id entier)
     if int_ids:
-        for u in db['dashboard_utilisateur'].find({'id': {'$in': int_ids}}):
+        for u in db['utilisateurs'].find({'id': {'$in': int_ids}}):
             users_map[u['id']] = u
 
-    # Nouveaux utilisateurs (utilisateurs avec ObjectId string)
     if str_ids:
         from bson import ObjectId
         oids = []
@@ -7159,23 +7702,45 @@ def _get_users_map(db, user_ids):
     return users_map
 
 def _get_employee_photo(db, uid):
-    """Retourne l'URL de la photo de l'employé ou None."""
     emp = db['employees'].find_one({'django_user_id': uid}, {'avatar': 1, 'photo': 1})
     if not emp:
         return None
     return emp.get('avatar') or emp.get('photo')
 
 
+def _dedup_sessions(sessions_data):
+    """
+    Supprime les doublons par session_key (le middleware peut insérer
+    plusieurs documents pour la même session Django).
+    Garde le document avec la last_activity la plus récente.
+    """
+    best = {}   # session_key → doc
+    for s in sessions_data:
+        key = s.get('session_key') or str(s.get('_id', ''))
+        if not key:
+            continue
+        existing = best.get(key)
+        if existing is None:
+            best[key] = s
+        else:
+            # Garde le plus récent
+            cur_ts  = s.get('last_activity')
+            prev_ts = existing.get('last_activity')
+            if cur_ts and (prev_ts is None or cur_ts > prev_ts):
+                best[key] = s
+    return list(best.values())
+
+
 # ─────────────────────────────────────────────────────────────
-@login_required
+@session_required
 def active_sessions(request):
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
 
     from types import SimpleNamespace
     db, algiers = _get_db_algiers()
 
-    sessions_data = list(
+    raw_sessions = list(
         db['dashboard_usersession'].find({
             'is_active': True,
             '$or': [
@@ -7185,13 +7750,16 @@ def active_sessions(request):
         }).sort('last_activity', -1)
     )
 
+    # ── Dédupliquer par session_key ──────────────────────────
+    sessions_data = _dedup_sessions(raw_sessions)
+
     user_ids  = [s.get('user_id') for s in sessions_data if s.get('user_id')]
     users_map = _get_users_map(db, user_ids)
 
     active_sessions_list = []
     for s in sessions_data:
-        uid, _ = _normalize_uid(s.get('user_id'))
-        user_data = users_map.get(uid, {})
+        uid, _     = _normalize_uid(s.get('user_id'))
+        user_data  = users_map.get(uid, {})
         login_time_aware    = _make_aware_dt(s.get('login_time'), algiers)
         last_activity_aware = _make_aware_dt(s.get('last_activity'), algiers)
         fn       = user_data.get('first_name', '')
@@ -7232,16 +7800,15 @@ def active_sessions(request):
     desktop_sessions   = sum(1 for s in active_sessions_list if s.device_type == 'desktop')
     mobile_sessions    = sum(1 for s in active_sessions_list if s.device_type == 'mobile')
     tablet_sessions    = sum(1 for s in active_sessions_list if s.device_type == 'tablet')
-    total_users        = db['dashboard_utilisateur'].count_documents({'is_active': True})
+    total_users        = db['utilisateurs'].count_documents({'is_active': True})
 
-    # ── Historique 24h enrichi avec données utilisateur ──────────────────
+    # ── Historique 24h ────────────────────────────────────────
     last_24h    = now - timedelta(hours=24)
     raw_history = list(
         db['dashboard_sessionlog'].find({'timestamp': {'$gte': last_24h}})
         .sort('timestamp', -1).limit(100)
     )
 
-    # ── Collecter les IDs en séparant int et ObjectId string ──────────────
     log_int_ids = []
     log_str_ids = []
     for l in raw_history:
@@ -7254,13 +7821,9 @@ def active_sessions(request):
             log_str_ids.append(str(uid))
 
     log_users_map = {}
-
-    # Anciens utilisateurs (int id)
     if log_int_ids:
-        for u in db['dashboard_utilisateur'].find({'id': {'$in': log_int_ids}}):
+        for u in db['utilisateurs'].find({'id': {'$in': log_int_ids}}):
             log_users_map[u['id']] = u
-
-    # Nouveaux utilisateurs (ObjectId string)
     if log_str_ids:
         from bson import ObjectId
         oids = []
@@ -7273,6 +7836,7 @@ def active_sessions(request):
             for u in db['utilisateurs'].find({'_id': {'$in': oids}}):
                 log_users_map[str(u['_id'])] = u
 
+    from types import SimpleNamespace
     recent_history = []
     for log in raw_history:
         raw_uid  = log.get('user_id')
@@ -7308,127 +7872,14 @@ def active_sessions(request):
 
 
 # ─────────────────────────────────────────────────────────────
-@login_required
-def terminate_session(request, session_id):
-    """
-    Termine une session.
-    - Admin : peut terminer n'importe quelle session → redirige vers active_sessions
-    - Employé : peut terminer seulement ses propres sessions → redirige vers employe_profil
-    """
-    if request.method != 'POST':
-        return redirect('active_sessions' if request.user.is_staff else 'employe_profil')
-
-    db, algiers = _get_db_algiers()
-
-    try:
-        from bson import ObjectId
-        oid     = ObjectId(session_id)
-        session = db['dashboard_usersession'].find_one({'_id': oid})
-
-        if not session:
-            messages.error(request, "Session non trouvée.")
-            return redirect('active_sessions' if request.user.is_staff else 'employe_profil')
-
-        # ── Vérification des droits ──────────────────────────────────
-        session_user_id = session.get('user_id')
-        if not request.user.is_staff:
-            # Un employé ne peut terminer que ses propres sessions
-            if str(session_user_id) != str(request.user.id):
-                messages.error(request, "Vous ne pouvez pas terminer la session d'un autre utilisateur.")
-                return redirect('employe_profil')
-
-        now = timezone.now()
-
-        # ── Journalisation ───────────────────────────────────────────
-        try:
-            uid = int(session_user_id) if session_user_id is not None else 0
-            db['dashboard_sessionlog'].insert_one({
-                'user_id':     uid,
-                'action':      'terminated',
-                'terminated_by': request.user.id,
-                'ip_address':  session.get('ip_address', ''),
-                'session_key': session.get('session_key', ''),
-                'timestamp':   now,
-            })
-        except Exception:
-            pass
-
-        # ── Désactivation de la session ──────────────────────────────
-        db['dashboard_usersession'].update_one(
-            {'_id': oid},
-            {'$set': {'is_active': False, 'logout_time': now}}
-        )
-
-        # ── Suppression de la session Django ────────────────────────
-        sk = session.get('session_key', '')
-        if sk:
-            try:
-                db['django_session'].delete_one({'session_key': sk})
-            except Exception:
-                pass
-
-        messages.success(request, "Session terminée avec succès.")
-
-    except Exception as e:
-        messages.error(request, f"Erreur : {e}")
-
-    return redirect('active_sessions' if request.user.is_staff else 'employe_profil')
-
-
-# ─────────────────────────────────────────────────────────────
-@login_required
-def terminate_all_sessions(request):
-    if not request.user.is_staff:
-        return JsonResponse({'error': 'Non autorisé'}, status=403)
-
-    if request.method != 'POST':
-        return redirect('active_sessions')
-
-    db, algiers = _get_db_algiers()
-    current_key = request.session.session_key
-    now         = timezone.now()
-
-    other_sessions = list(
-        db['dashboard_usersession'].find({
-            'is_active': True,
-            '$or': [
-                {'logout_time': None},
-                {'logout_time': {'$exists': False}},
-            ],
-            'session_key': {'$ne': current_key},
-        })
-    )
-
-    for session in other_sessions:
-        uid, _ = _normalize_uid(session.get('user_id'))
-        db['dashboard_sessionlog'].insert_one({
-            'user_id':     uid,
-            'action':      'terminated',
-            'ip_address':  session.get('ip_address', ''),
-            'session_key': session.get('session_key', ''),
-            'timestamp':   now,
-        })
-        db['dashboard_usersession'].update_one(
-            {'_id': session['_id']},
-            {'$set': {'is_active': False, 'logout_time': now}}
-        )
-        sk = session.get('session_key', '')
-        if sk:
-            db['django_session'].delete_one({'session_key': sk})
-
-    messages.success(request, f"{len(other_sessions)} session(s) terminée(s)")
-    return redirect('active_sessions')
-
-
-# ─────────────────────────────────────────────────────────────
-@login_required
+@session_required
 def api_connected_users(request):
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Permission refusée'}, status=403)
 
     db, algiers = _get_db_algiers()
 
-    sessions_data = list(
+    raw_sessions = list(
         db['dashboard_usersession'].find({
             'is_active': True,
             '$or': [
@@ -7438,6 +7889,9 @@ def api_connected_users(request):
         }).sort('last_activity', -1)
     )
 
+    # ── Dédupliquer par session_key avant tout traitement ────
+    sessions_data = _dedup_sessions(raw_sessions)
+
     user_ids  = [s.get('user_id') for s in sessions_data if s.get('user_id')]
     users_map = _get_users_map(db, user_ids)
 
@@ -7446,8 +7900,8 @@ def api_connected_users(request):
     result             = []
 
     for s in sessions_data:
-        uid, _ = _normalize_uid(s.get('user_id'))
-        user_data     = users_map.get(uid, {})
+        uid, _     = _normalize_uid(s.get('user_id'))
+        user_data  = users_map.get(uid, {})
         login_time    = _make_aware_dt(s.get('login_time'), algiers)
         last_activity = _make_aware_dt(s.get('last_activity'), algiers)
 
@@ -7502,9 +7956,132 @@ def api_connected_users(request):
 
 
 # ─────────────────────────────────────────────────────────────
-@login_required
+@session_required
+def terminate_session(request, session_id):
+    if request.method != 'POST':
+        return redirect('active_sessions' if request.session.get('is_staff', False) else 'employe_profil')
+
+    db, algiers = _get_db_algiers()
+
+    try:
+        from bson import ObjectId
+        oid     = ObjectId(session_id)
+        session = db['dashboard_usersession'].find_one({'_id': oid})
+
+        if not session:
+            messages.error(request, "Session non trouvée.")
+            return redirect('active_sessions' if request.session.get('is_staff', False) else 'employe_profil')
+
+        session_user_id = session.get('user_id')
+        if not request.session.get('is_staff', False):
+            if str(session_user_id) != str(request.session.get('user_id', '')):
+                messages.error(request, "Vous ne pouvez pas terminer la session d'un autre utilisateur.")
+                return redirect('employe_profil')
+
+        now = timezone.now()
+
+        try:
+            uid = int(session_user_id) if session_user_id is not None else 0
+            db['dashboard_sessionlog'].insert_one({
+                'user_id':       uid,
+                'action':        'terminated',
+                'terminated_by': request.session.get('user_id', ''),
+                'ip_address':    session.get('ip_address', ''),
+                'session_key':   session.get('session_key', ''),
+                'timestamp':     now,
+            })
+        except Exception:
+            pass
+
+        # Désactiver TOUS les documents portant ce session_key (nettoie les doublons)
+        sk = session.get('session_key', '')
+        if sk:
+            db['dashboard_usersession'].update_many(
+                {'session_key': sk},
+                {'$set': {'is_active': False, 'logout_time': now}}
+            )
+            try:
+                db['django_session'].delete_one({'session_key': sk})
+            except Exception:
+                pass
+        else:
+            db['dashboard_usersession'].update_one(
+                {'_id': oid},
+                {'$set': {'is_active': False, 'logout_time': now}}
+            )
+
+        messages.success(request, "Session terminée avec succès.")
+
+    except Exception as e:
+        messages.error(request, f"Erreur : {e}")
+
+    return redirect('active_sessions' if request.session.get('is_staff', False) else 'employe_profil')
+
+
+# ─────────────────────────────────────────────────────────────
+@session_required
+def terminate_all_sessions(request):
+    if not request.session.get('is_staff', False):
+        return JsonResponse({'error': 'Non autorisé'}, status=403)
+
+    if request.method != 'POST':
+        return redirect('active_sessions')
+
+    db, algiers = _get_db_algiers()
+    current_key = request.session.session_key
+    now         = timezone.now()
+
+    other_sessions = list(
+        db['dashboard_usersession'].find({
+            'is_active': True,
+            '$or': [
+                {'logout_time': None},
+                {'logout_time': {'$exists': False}},
+            ],
+            'session_key': {'$ne': current_key},
+        })
+    )
+
+    # Collecter les session_keys uniques à terminer
+    keys_to_terminate = set()
+    for session in other_sessions:
+        uid, _ = _normalize_uid(session.get('user_id'))
+        db['dashboard_sessionlog'].insert_one({
+            'user_id':     uid,
+            'action':      'terminated',
+            'ip_address':  session.get('ip_address', ''),
+            'session_key': session.get('session_key', ''),
+            'timestamp':   now,
+        })
+        sk = session.get('session_key', '')
+        if sk:
+            keys_to_terminate.add(sk)
+        else:
+            db['dashboard_usersession'].update_one(
+                {'_id': session['_id']},
+                {'$set': {'is_active': False, 'logout_time': now}}
+            )
+
+    # Désactiver tous les documents de ces session_keys (y compris doublons)
+    if keys_to_terminate:
+        db['dashboard_usersession'].update_many(
+            {'session_key': {'$in': list(keys_to_terminate)}},
+            {'$set': {'is_active': False, 'logout_time': now}}
+        )
+        for sk in keys_to_terminate:
+            try:
+                db['django_session'].delete_one({'session_key': sk})
+            except Exception:
+                pass
+
+    messages.success(request, f"{len(keys_to_terminate)} session(s) terminée(s)")
+    return redirect('active_sessions')
+
+
+# ─────────────────────────────────────────────────────────────
+@session_required
 def api_session_stats(request):
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     db, algiers    = _get_db_algiers()
@@ -7516,7 +8093,6 @@ def api_session_stats(request):
         'action':    'login',
         'timestamp': {'$gte': today_start},
     })
-
     week_logins = db['dashboard_sessionlog'].count_documents({
         'action':    'login',
         'timestamp': {'$gte': seven_days_ago},
@@ -7540,84 +8116,9 @@ def api_session_stats(request):
 
 
 # ─────────────────────────────────────────────────────────────
-@login_required
-def api_session_details(request, session_id):
-    if not request.user.is_staff:
-        return JsonResponse({'error': 'Non autorisé'}, status=403)
-
-    db, algiers = _get_db_algiers()
-
-    from bson import ObjectId
-    session = db['dashboard_usersession'].find_one({'id': session_id})
-    if not session:
-        try:
-            session = db['dashboard_usersession'].find_one({'_id': ObjectId(str(session_id))})
-        except Exception:
-            pass
-
-    if not session:
-        return JsonResponse({'error': 'Session introuvable'}, status=404)
-
-    uid, _ = _normalize_uid(session.get('user_id'))
-    users_map = _get_users_map(db, [uid])
-    user_data = users_map.get(uid, {})
-
-    now           = timezone.now()
-    login_time    = _make_aware_dt(session.get('login_time'), algiers)
-    last_activity = _make_aware_dt(session.get('last_activity'), algiers)
-    logout_time   = _make_aware_dt(session.get('logout_time'), algiers)
-
-    if login_time:
-        total_s  = int((now - login_time).total_seconds())
-        duration = f"{total_s // 3600}h {(total_s % 3600) // 60}m"
-    else:
-        duration = '—'
-
-    minutes_ago = int((now - last_activity).total_seconds() / 60) if last_activity else None
-    full_name   = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
-    session_key = session.get('session_key', '')
-
-    logs = []
-    if session_key:
-        for log in db['dashboard_sessionlog'].find({'session_key': session_key}).sort('timestamp', -1).limit(20):
-            ts = _make_aware_dt(log.get('timestamp'), algiers)
-            logs.append({
-                'action':     log.get('action', ''),
-                'ip_address': log.get('ip_address', ''),
-                'timestamp':  ts.isoformat() if ts else None,
-            })
-
-    return JsonResponse({
-        'id':            str(session.get('_id', '')),
-        'user': {
-            'id':           str(uid),
-            'username':     user_data.get('username', '?'),
-            'full_name':    full_name or user_data.get('username', '?'),
-            'email':        user_data.get('email', ''),
-            'is_staff':     bool(user_data.get('is_staff', False)),
-            'is_superuser': bool(user_data.get('is_superuser', False)),
-            'avatar':       _get_employee_photo(db, uid),
-        },
-        'session_key':   session_key,
-        'ip_address':    session.get('ip_address', ''),
-        'device_type':   session.get('device_type', 'desktop'),
-        'location':      session.get('location', ''),
-        'user_agent':    session.get('user_agent', ''),
-        'is_active':     session.get('is_active', False),
-        'is_current':    session_key == request.session.session_key,
-        'login_time':    login_time.isoformat()    if login_time    else None,
-        'last_activity': last_activity.isoformat() if last_activity else None,
-        'logout_time':   logout_time.isoformat()   if logout_time   else None,
-        'duration':      duration,
-        'minutes_ago':   minutes_ago,
-        'logs':          logs,
-    })
-
-
-# ─────────────────────────────────────────────────────────────
-@login_required
+@session_required
 def clear_session_history(request):
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     if request.method != 'POST':
@@ -7654,7 +8155,7 @@ def _get_user_hash(user):
         pass
     # Essai 2 : dashboard_utilisateur (anciens comptes Django)
     try:
-        doc = db['dashboard_utilisateur'].find_one({'username': user.username})
+        doc = db['utilisateurs'].find_one({'username': user.username})
         if doc and doc.get('password'):
             return doc['password']
     except Exception:
@@ -7686,7 +8187,7 @@ def _save_user_password(user, new_password, request=None):
 
     updated = 0
     try:
-        updated += db['dashboard_utilisateur'].update_one(
+        updated += db['utilisateurs'].update_one(
             {'username': user.username},
             {'$set': {'password': new_hash}}
         ).modified_count
@@ -7714,7 +8215,7 @@ def _update_django_user(username, **fields):
     """
     Met à jour les champs du user Django via PyMongo (par username).
     Remplace user.save() partout dans le projet.
-    Exemple: _update_django_user(request.user.username, first_name='Jean')
+    Exemple: _update_django_user(request.session.get('username', ''), first_name='Jean')
     """
     if not fields:
         return
@@ -7723,18 +8224,18 @@ def _update_django_user(username, **fields):
             db[collection].update_one({'username': username}, {'$set': fields})
         except Exception as _e:
             logger.warning(f"_update_django_user [{collection}] échoué: {_e}")
-@login_required
+@session_required
 def employe_profil(request):
     """Modification du profil employé"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
 
     from datetime import datetime
 
     # Récupérer l'employé
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     if not employe:
         messages.error(request, "Profil employé introuvable.")
         return redirect('login')
@@ -7781,7 +8282,7 @@ def employe_profil(request):
     active_sessions = []
     try:
         raw_sessions = list(db['dashboard_usersession'].find({
-            'user_id': request.user.id,
+            'user_id': request.session.get('user_id', ''),
             'is_active': True,
             '$or': [{'logout_time': None}, {'logout_time': {'$exists': False}}],
         }).sort('last_activity', -1))
@@ -7812,7 +8313,7 @@ def employe_profil(request):
             new_password1 = request.POST.get('new_password1', '')
             new_password2 = request.POST.get('new_password2', '')
 
-            stored = _get_user_hash(request.user)
+            stored = _get_user_hash(get_session_user(request))
             if not _check_password(old_password, stored):
                 messages.error(request, "L'ancien mot de passe est incorrect.")
             elif len(new_password1) < 6:
@@ -7822,7 +8323,7 @@ def employe_profil(request):
             elif new_password1 == old_password:
                 messages.error(request, "Le nouveau mot de passe doit être différent de l'ancien.")
             else:
-                if _save_user_password(request.user, new_password1, request=request):
+                if _save_user_password(get_session_user(request), new_password1, request=request):
                     messages.success(request, "Mot de passe changé avec succès.")
                 else:
                     messages.error(request, "Erreur lors du changement de mot de passe.")
@@ -7875,7 +8376,7 @@ def employe_profil(request):
                     update_data['photo'] = f"data:{photo_file.content_type};base64,{photo_b64}"
 
                 db.employees.update_one({'_id': employe['_id']}, {'$set': update_data})
-                _update_django_user(request.user.username, first_name=prenom, last_name=nom, email=email)
+                _update_django_user(request.session.get('username', ''), first_name=prenom, last_name=nom, email=email)
                 messages.success(request, "Profil mis à jour avec succès.")
 
             except Exception as e:
@@ -7888,7 +8389,7 @@ def employe_profil(request):
     # ============================================================
     return render(request, 'dashboard/employe_profil.html', {
         'employe':            employe,
-        'user':               request.user,
+        'user':               get_session_user(request),
         'total_acces':        total_acces,
         'acces_autorises':    acces_autorises,
         'acces_refuses':      acces_refuses,
@@ -7900,10 +8401,10 @@ def employe_profil(request):
         'preferences':        preferences,
         'active_sessions':    active_sessions,
     })
-@login_required
+@session_required
 def employe_change_password(request):
     """Changer le mot de passe de l'employé"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
 
     if request.method == 'POST':
@@ -7911,7 +8412,7 @@ def employe_change_password(request):
         new_password1 = request.POST.get('new_password1', '')
         new_password2 = request.POST.get('new_password2', '')
 
-        stored = _get_user_hash(request.user)
+        stored = _get_user_hash(get_session_user(request))
         if not _check_password(old_password, stored):
             messages.error(request, "L'ancien mot de passe est incorrect.")
             return redirect('employe_profil')
@@ -7928,11 +8429,11 @@ def employe_change_password(request):
             messages.error(request, "Le nouveau mot de passe doit être différent de l'ancien.")
             return redirect('employe_profil')
 
-        if _save_user_password(request.user, new_password1, request=request):
+        if _save_user_password(get_session_user(request), new_password1, request=request):
             try:
                 db.system_logs.insert_one({
-                    'user_id':   request.user.id,
-                    'username':  request.user.username,
+                    'user_id':   request.session.get('user_id', ''),
+                    'username':  request.session.get('username', ''),
                     'action':    'PASSWORD_CHANGE',
                     'timestamp': datetime.now(),
                     'ip':        request.META.get('REMOTE_ADDR'),
@@ -7944,7 +8445,7 @@ def employe_change_password(request):
             messages.error(request, "Erreur lors du changement de mot de passe.")
 
     return redirect('employe_profil')
-@login_required
+@session_required
 def api_save_preferences(request):
     """API pour sauvegarder les préférences utilisateur"""
     if request.method != 'POST':
@@ -7953,9 +8454,9 @@ def api_save_preferences(request):
     try:
         data = json.loads(request.body)
         
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if not employe:
             return JsonResponse({'error': 'Employé non trouvé'}, status=404)
@@ -7983,7 +8484,7 @@ def api_save_preferences(request):
         
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-@login_required
+@session_required
 def employe_update_profil(request):
     """API pour mettre à jour le profil employé (AJAX)"""
     if request.method != 'POST':
@@ -7992,9 +8493,9 @@ def employe_update_profil(request):
     try:
         data = json.loads(request.body)
 
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         if not employe:
             return JsonResponse({'error': 'Employé non trouvé'}, status=404)
 
@@ -8012,13 +8513,13 @@ def employe_update_profil(request):
                 'email':      update_data.get('email'),
             }.items() if v is not None}
             if django_fields:
-                _update_django_user(request.user.username, **django_fields)
+                _update_django_user(request.session.get('username', ''), **django_fields)
 
         return JsonResponse({'status': 'success', 'message': 'Profil mis à jour'})
 
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-@login_required
+@session_required
 def api_employee_stats(request):
     """API pour les statistiques de l'employé (graphiques)"""
     if request.method != 'GET':
@@ -8027,9 +8528,9 @@ def api_employee_stats(request):
     try:
         period = request.GET.get('period', 'month')
         
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if not employe:
             return JsonResponse({'error': 'Employé non trouvé'}, status=404)
@@ -8087,10 +8588,10 @@ def api_employee_stats(request):
         return JsonResponse({'error': str(e)}, status=500)
         # dashboard/views.py - Ajoutez ces fonctions
 
-@login_required
+@session_required
 def reservation_list(request):
     """Liste des réservations avec vue calendrier et tableau"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
     
     from datetime import datetime, timedelta
@@ -8203,10 +8704,17 @@ def reservation_list(request):
         'reservations_json': reservations_json,
         'bureaux': bureaux_list,
     })
-@login_required
+# ================================================================
+# REMPLACEZ CES DEUX FONCTIONS dans votre views.py
+# 1. reservation_confirmer  (cherchez @session_required + def reservation_confirmer)
+# 2. reservation_annuler    (cherchez @session_required + def reservation_annuler)
+# ================================================================
+
+
+@session_required
 def reservation_confirmer(request, reservation_id):
     """Confirmer une réservation et générer un QR code"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -8221,15 +8729,17 @@ def reservation_confirmer(request, reservation_id):
             messages.error(request, "Réservation non trouvée")
             return redirect('reservation_list')
 
-        # Vérifier si déjà confirmée
         if reservation.get('statut') == 'confirmee':
             messages.warning(request, "Cette réservation est déjà confirmée")
             return redirect('reservation_detail', reservation_id=reservation_id)
 
         if request.method == 'POST':
-            # Générer le QR code
-            qr_data = f"RESA-{reservation_id}-{reservation.get('employe_id')}-{reservation.get('date_debut').strftime('%Y%m%d%H%M')}"
-
+            # ── QR code ─────────────────────────────────────────────
+            qr_data = (
+                f"RESA-{reservation_id}"
+                f"-{reservation.get('employe_id')}"
+                f"-{reservation.get('date_debut').strftime('%Y%m%d%H%M')}"
+            )
             qr = qrcode.QRCode(
                 version=1,
                 error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -8238,27 +8748,25 @@ def reservation_confirmer(request, reservation_id):
             )
             qr.add_data(qr_data)
             qr.make(fit=True)
-
-            img = qr.make_image(fill_color="black", back_color="white")
-
+            img    = qr.make_image(fill_color="black", back_color="white")
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-            # Mettre à jour la réservation
+            # ── Mettre à jour la réservation ─────────────────────────
             db.reservations.update_one(
                 {'_id': ObjectId(reservation_id)},
                 {'$set': {
                     'statut':       'confirmee',
                     'qr_code':      qr_base64,
                     'confirmed_at': datetime.now(),
-                    'confirmed_by': request.user.username,
+                    'confirmed_by': request.session.get('username', ''),
                 }}
             )
 
-            # Récupérer l'employé
+            # ── Récupérer l'employé ──────────────────────────────────
             employe_id = reservation.get('employe_id')
-            employe = None
+            employe    = None
             try:
                 if isinstance(employe_id, str) and len(employe_id) == 24:
                     employe = db.employees.find_one({'_id': ObjectId(employe_id)})
@@ -8267,8 +8775,8 @@ def reservation_confirmer(request, reservation_id):
             except Exception:
                 pass
 
-            # Récupérer la salle ou le matériel
-            bureau = None
+            # ── Récupérer la salle / matériel ────────────────────────
+            bureau    = None
             bureau_id = reservation.get('bureau_id')
             if bureau_id:
                 try:
@@ -8277,19 +8785,19 @@ def reservation_confirmer(request, reservation_id):
                     pass
             bureau_nom = bureau['nom'] if bureau else reservation.get('materiel_nom') or 'Ressource'
 
-            # === NOTIFICATION À L'EMPLOYÉ (UNE SEULE FOIS) ===
+            # ── Notification MongoDB (une seule fois) ────────────────
             if employe:
-                existing_notification = db.notifications.find_one({
+                existing_notif = db.notifications.find_one({
                     'employe_id':     str(employe['_id']),
                     'reservation_id': str(reservation['_id']),
-                    'categorie':      'confirmation'
+                    'categorie':      'confirmation',
                 })
 
-                if not existing_notification:
+                if not existing_notif:
                     db.notifications.insert_one({
                         'employe_id':     str(employe['_id']),
                         'titre':          '✅ Réservation confirmée',
-                        'message':        (
+                        'message': (
                             f"Votre réservation '{reservation.get('titre', 'Sans titre')}' "
                             f"a été confirmée pour le "
                             f"{reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')} "
@@ -8303,29 +8811,69 @@ def reservation_confirmer(request, reservation_id):
                         'created_at':     datetime.now(),
                     })
 
-                    # Email de confirmation
-                    if employe.get('email'):
-                        try:
-                            from dashboard.utils_email import email_reservation_confirmee
-                            email_reservation_confirmee(employe, reservation, bureau_nom)
-                        except Exception as _ee:
-                            logger.warning(f"Email confirmation: {_ee}")
+                    # ── Email (résolution email avec fallback utilisateurs) ──
+                    email_dest = (employe.get('email') or '').strip()
 
-            # === RAPPEL J-1 POUR RESSOURCES/MATÉRIEL UNIQUEMENT ===
+                    if not email_dest:
+                        uid   = employe.get('django_user_id') or employe.get('user_id', '')
+                        uname = employe.get('django_username') or employe.get('username', '')
+                        or_q  = []
+                        if uid:
+                            try:
+                                or_q.append({'_id': ObjectId(str(uid))})
+                            except Exception:
+                                pass
+                            or_q.append({'id': uid})
+                        if uname:
+                            or_q.append({'username': uname})
+                        if or_q:
+                            u_doc = db['utilisateurs'].find_one({'$or': or_q}, {'email': 1})
+                            if u_doc:
+                                email_dest = (u_doc.get('email') or '').strip()
+
+                    if email_dest:
+                        try:
+                            from django.core.mail import send_mail
+                            prenom     = employe.get('prenom', employe.get('first_name', ''))
+                            nom_emp    = employe.get('nom',    employe.get('last_name',  ''))
+                            date_str   = reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')
+                            heure_fin  = reservation['date_fin'].strftime('%H:%M') if reservation.get('date_fin') else '—'
+                            titre_resa = reservation.get('titre', 'Sans titre')
+                            corps = (
+                                f"Bonjour {prenom} {nom_emp},\n\n"
+                                f"Votre réservation a été CONFIRMÉE.\n\n"
+                                f"Réservation : {titre_resa}\n"
+                                f"Ressource   : {bureau_nom}\n"
+                                f"Date        : {date_str} → {heure_fin}\n\n"
+                                f"QR code disponible dans votre espace :\n"
+                                f"→ /employe/reservations/\n\n"
+                                f"Cordialement,\nL'équipe SIGR-CA"
+                            )
+                            send_mail(
+                                subject=f"✅ Réservation confirmée — {titre_resa}",
+                                message=corps,
+                                from_email=settings.DEFAULT_FROM_EMAIL,
+                                recipient_list=[email_dest],
+                                fail_silently=False,
+                            )
+                            logger.info(f"Email confirmation envoyé → {email_dest}")
+                        except Exception as email_err:
+                            logger.error(f"Échec email confirmation → {email_dest} : {email_err}")
+
+            # ── Rappel J-1 (matériel uniquement) ─────────────────────
             resource_type = reservation.get('resource_type', 'salle')
-            if resource_type != 'salle':
-                # Vérifier qu'un rappel n'existe pas déjà pour cette réservation
+            if resource_type != 'salle' and employe:
                 existing_rappel = db.rappels_email.find_one({
                     'reservation_id': str(reservation['_id']),
-                    'type': 'retour_ressource',
+                    'type':           'retour_ressource',
                 })
                 if not existing_rappel:
                     rappel_date = reservation['date_fin'] - timedelta(days=1)
                     db.rappels_email.insert_one({
                         'reservation_id': str(reservation['_id']),
-                        'employe_id':     str(employe['_id']) if employe else reservation.get('employe_id'),
-                        'employe_email':  employe.get('email', '') if employe else '',
-                        'employe_prenom': employe.get('prenom', '') if employe else '',
+                        'employe_id':     str(employe['_id']),
+                        'employe_email':  employe.get('email', ''),
+                        'employe_prenom': employe.get('prenom', ''),
                         'ressource_nom':  bureau_nom,
                         'date_fin_resa':  reservation['date_fin'],
                         'type':           'retour_ressource',
@@ -8340,8 +8888,8 @@ def reservation_confirmer(request, reservation_id):
                 return redirect('reservation_list')
             return redirect('reservation_detail', reservation_id=reservation_id)
 
-        # GET : Récupérer les détails pour l'affichage
-        employe = None
+        # ── GET : affichage ──────────────────────────────────────────
+        employe    = None
         employe_id = reservation.get('employe_id')
         if employe_id:
             try:
@@ -8352,7 +8900,7 @@ def reservation_confirmer(request, reservation_id):
             except Exception:
                 pass
 
-        bureau = None
+        bureau    = None
         bureau_id = reservation.get('bureau_id')
         if bureau_id:
             try:
@@ -8369,104 +8917,74 @@ def reservation_confirmer(request, reservation_id):
     except Exception as e:
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('reservation_list')
-@login_required
+
+
+@session_required
 def reservation_refuser(request, reservation_id):
-    """Refuser une réservation"""
-    if not request.user.is_staff:
-        return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+    """Refuser une réservation (admin)"""
     from bson import ObjectId
     from datetime import datetime
-    
+
     if request.method == 'POST':
         try:
             reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
             if not reservation:
                 messages.error(request, "Réservation non trouvée")
                 return redirect('reservation_list')
-            
-            motif = request.POST.get('motif', 'Non spécifié')
-            
-            # Vérifier si la réservation est déjà refusée
-            if reservation.get('statut') == 'annulee':
-                messages.warning(request, "Cette réservation est déjà annulée")
-                return redirect('reservation_list')
-            
-            # Mettre à jour la réservation
+
             db.reservations.update_one(
                 {'_id': ObjectId(reservation_id)},
                 {'$set': {
-                    'statut': 'annulee',
-                    'refused_at': datetime.now(),
-                    'refused_by': request.user.username,
-                    'refusal_reason': motif,
+                    'statut':       'annulee',
+                    'cancelled_at': datetime.now(),
+                    'cancelled_by': request.session.get('username', ''),
                 }}
             )
-            
-            # Récupérer l'employé
+
+            # ── Notification MongoDB à l'employé ─────────────────────
             employe_id = reservation.get('employe_id')
-            employe = None
+            employe    = None
             try:
                 if isinstance(employe_id, str) and len(employe_id) == 24:
                     employe = db.employees.find_one({'_id': ObjectId(employe_id)})
                 else:
                     employe = db.employees.find_one({'django_user_id': employe_id})
-            except:
+            except Exception:
                 pass
-            
-            # Récupérer la salle
-            bureau = None
-            bureau_id = reservation.get('bureau_id')
-            if bureau_id:
-                try:
-                    bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
-                except:
-                    pass
-            bureau_nom = bureau['nom'] if bureau else 'Salle'
-            
-            # === NOTIFICATION À L'EMPLOYÉ (UNE SEULE FOIS) ===
+
             if employe:
-                # Vérifier si une notification a déjà été envoyée pour ce refus
-                existing_notification = db.notifications.find_one({
-                    'employe_id': str(employe['_id']),
+                existing_notif = db.notifications.find_one({
+                    'employe_id':     str(employe['_id']),
                     'reservation_id': str(reservation['_id']),
-                    'categorie': 'annulation'
+                    'categorie':      'annulation',
                 })
-                
-                if not existing_notification:
-                    notification = {
-                        'employe_id': str(employe['_id']),
-                        'titre': '❌ Réservation refusée',
-                        'message': f"Votre réservation '{reservation.get('titre', 'Sans titre')}' pour la salle {bureau_nom} du {reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')} a été refusée.\nMotif: {motif}",
-                        'categorie': 'annulation',
-                        'icon': '❌',
-                        'status': 'non_lu',
-                        'action_url': '/employe/reservations/',
+                if not existing_notif:
+                    db.notifications.insert_one({
+                        'employe_id':     str(employe['_id']),
+                        'titre':          '🗑️ Réservation annulée',
+                        'message': (
+                            f"Votre réservation '{reservation.get('titre', 'Sans titre')}' "
+                            f"a été annulée par l'administrateur."
+                        ),
+                        'categorie':      'annulation',
+                        'icon':           '🗑️',
+                        'status':         'non_lu',
+                        'action_url':     '/employe/reservations/',
                         'reservation_id': str(reservation['_id']),
-                        'created_at': datetime.now()
-                    }
-                    db.notifications.insert_one(notification)
-                
-                # Email refus — utils_email (Python 3.12 compatible)
-                if employe.get('email') and not existing_notification:
-                    try:
-                        from dashboard.utils_email import email_reservation_refusee
-                        email_reservation_refusee(employe, reservation, motif)
-                    except Exception as _ee:
-                        logger.warning(f"Email refus: {_ee}")
-            
-            messages.warning(request, f"Réservation '{reservation.get('titre')}' refusée.")
-            
+                        'created_at':     datetime.now(),
+                    })
+
+            messages.success(request, "Réservation annulée.")
+
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
-    
+
     return redirect('reservation_list')
 
-
-@login_required
+@session_required
 def reservation_detail(request, reservation_id):
     """Voir les détails d'une réservation (avec QR code si confirmée)"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
     
     from bson import ObjectId
@@ -8598,16 +9116,16 @@ def send_reservation_refusal_email(employe, reservation, motif):
         pass
         # dashboard/views.py - Ajoutez cette API
 
-#@login_required
+#@session_required
 #def api_reservation_qr(request, reservation_id):
    # """API pour récupérer le QR code d'une réservation"""
    # try:
         # Vérifier que l'utilisateur a le droit d'accéder au QR code
-      #  if request.user.is_staff:
+      #  if request.session.get('is_staff', False):
         #    reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
        # else:
             # Pour les employés, vérifier que c'est bien leur réservation
-         #   employe = db.employees.find_one({'django_user_id': request.user.id})
+         #   employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
           #  if not employe:
           #      return JsonResponse({'error': 'Employé non trouvé'}, status=404)
           #  reservation = db.reservations.find_one({
@@ -8634,19 +9152,19 @@ def send_reservation_refusal_email(employe, reservation, motif):
 
 # dashboard/views.py - Remplacez la fonction employe_notifications par celle-ci
 
-@login_required
+@session_required
 def employe_notifications(request):
     """Centre de notifications de l'employé - Version MongoDB"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
     
     from bson import ObjectId
     from datetime import datetime
     
     # Récupérer l'employé
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     
     if not employe:
         return redirect('login')
@@ -8698,7 +9216,7 @@ def employe_notifications(request):
     })
 
 
-@login_required
+@session_required
 def api_mark_notification_read(request):
     """API pour marquer une notification comme lue (AJAX) - Version MongoDB"""
     if request.method != 'POST':
@@ -8712,9 +9230,9 @@ def api_mark_notification_read(request):
         data = json.loads(request.body)
         notification_id = data.get('notification_id')
         
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if notification_id:
             db.notifications.update_one(
@@ -8734,7 +9252,7 @@ def api_mark_notification_read(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_delete_notification(request):
     """API pour supprimer une notification (AJAX) - Version MongoDB"""
     if request.method != 'DELETE':
@@ -8747,9 +9265,9 @@ def api_delete_notification(request):
         data = json.loads(request.body)
         notification_id = data.get('notification_id')
         
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if notification_id:
             db.notifications.delete_one({
@@ -8765,16 +9283,16 @@ def api_delete_notification(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_delete_all_notifications(request):
     """API pour supprimer toutes les notifications - Version MongoDB"""
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
     try:
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         db.notifications.delete_many({'employe_id': str(employe['_id'])})
         
@@ -8784,7 +9302,7 @@ def api_delete_all_notifications(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_send_test_notification(request):
     """API pour envoyer une notification de test - Version MongoDB"""
     if request.method != 'POST':
@@ -8792,9 +9310,9 @@ def api_send_test_notification(request):
     
     from datetime import datetime
     
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     
     notification = {
         'employe_id': str(employe['_id']),
@@ -8863,13 +9381,13 @@ def send_reservation_notification(employe_id, reservation_data, action='created'
         'created_at': datetime.now()
     })
     
-@login_required
+@session_required
 def api_notifications_unread_count(request):
     """API pour récupérer le nombre de notifications non lues"""
     try:
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if not employe:
             return JsonResponse({'count': 0})
@@ -8886,7 +9404,7 @@ def api_notifications_unread_count(request):
         # ====================== STATISTIQUES GESTION DES RESSOURCES ======================
 # Ajoutez ces fonctions à la fin de votre fichier views.py
 
-@login_required
+@session_required
 def get_ressource_stats(request):
     """Statistiques de gestion des ressources pour le dashboard"""
     from datetime import datetime, timedelta
@@ -8942,7 +9460,7 @@ def get_ressource_stats(request):
     }
 
 
-@login_required
+@session_required
 def get_occupation_stats(request):
     """Statistiques d'occupation par salle"""
     from datetime import datetime, timedelta
@@ -8982,7 +9500,7 @@ def get_occupation_stats(request):
     }
 
 
-@login_required
+@session_required
 def get_top_ressources(request):
     """Top ressources les plus réservées"""
     from datetime import datetime, timedelta
@@ -9019,7 +9537,7 @@ def get_top_ressources(request):
     return top_ressources
 
 
-@login_required
+@session_required
 def get_weekly_schedule(request):
     """Planning des réservations pour les 7 prochains jours"""
     from datetime import datetime, timedelta
@@ -9046,7 +9564,7 @@ def get_weekly_schedule(request):
     return schedule
 
 
-@login_required
+@session_required
 def get_hour_stats(request):
     """Statistiques horaires des accès"""
     from datetime import datetime, timedelta
@@ -9074,7 +9592,7 @@ def get_hour_stats(request):
     }
 
 
-@login_required
+@session_required
 def get_zone_stats_data(request):
     """Statistiques par zone pour les graphiques"""
     from datetime import datetime, timedelta
@@ -9122,7 +9640,7 @@ def get_zone_stats_data(request):
 
 # ====================== API ENDPOINTS POUR LES STATISTIQUES ======================
 
-@login_required
+@session_required
 def api_stats_overview(request):
     """API endpoint pour les statistiques globales (pour AJAX)"""
     if request.method != 'GET':
@@ -9148,7 +9666,7 @@ def api_stats_overview(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@login_required
+@session_required
 def api_occupation(request):
     """Retourne l'occupation en temps réel de chaque bureau."""
     one_hour_ago = datetime.now() - timedelta(hours=1)
@@ -9176,7 +9694,7 @@ def api_occupation(request):
     return JsonResponse({'bureaux': bureaux})
  
 
-@login_required
+@session_required
 def api_top_ressources(request):
     """API pour le top des ressources"""
     if request.method != 'GET':
@@ -9192,7 +9710,7 @@ def api_top_ressources(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_weekly_schedule(request):
     """API pour le planning hebdomadaire"""
     if request.method != 'GET':
@@ -9208,7 +9726,7 @@ def api_weekly_schedule(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_hour_stats(request):
     """API pour les statistiques horaires"""
     if request.method != 'GET':
@@ -9224,17 +9742,17 @@ def api_hour_stats(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
         # ====================== PLAN DES ZONES ======================
-@login_required
+@session_required
 def employe_plan_zones(request):
     """Plan interactif des zones et matériels — côté employé"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
 
     from datetime import datetime, timedelta
 
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
 
     now = datetime.now()
 
@@ -9378,7 +9896,7 @@ def employe_plan_zones(request):
         'etages':          etages,
         'materiels':       materiels,
         'categories_mat':  categories_mat,
-        'user':            request.user,
+        'user':            get_session_user(request),
         'now':             now,
         # Stats zones
         'total_zones':     total_zones,
@@ -9393,17 +9911,17 @@ def employe_plan_zones(request):
         'mat_maintenance': mat_maintenance,
     })
     #============= BADGE VIRTUEL ======================#
-@login_required
+@session_required
 def employe_badge_virtuel(request):
     """Badge virtuel avec QR code, stats d'accès et horaires"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
 
     from datetime import datetime, timedelta
 
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     if not employe:
         return redirect('login')
 
@@ -9511,15 +10029,15 @@ def employe_badge_virtuel(request):
 
     # ====================== CENTRE D'AIDE ======================
 
-@login_required
+@session_required
 def employe_aide(request):
     """Centre d'information et d'aide"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
     
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     
     # FAQ
     faqs = [
@@ -9552,7 +10070,7 @@ def employe_aide(request):
 
 
 # Assurez-vous que ces fonctions sont au bon niveau d'indentation (sans espace avant def)
-@login_required
+@session_required
 def api_reservation_qr(request, reservation_id):
     """API pour récupérer le QR code d'une réservation"""
     from bson import ObjectId
@@ -9563,12 +10081,12 @@ def api_reservation_qr(request, reservation_id):
             return JsonResponse({'error': 'Réservation non trouvée'}, status=404)
         
         # Vérifier que l'utilisateur a le droit d'accéder à ce QR code
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if employe and str(employe['_id']) != reservation.get('employe_id'):
-            if not request.user.is_staff:
+            if not request.session.get('is_staff', False):
                 return JsonResponse({'error': 'Non autorisé'}, status=403)
         
         return JsonResponse({
@@ -9595,7 +10113,7 @@ def get_bureau_name(bureau_id):
         return 'Salle inconnue'
 
 
-@login_required
+@session_required
 def api_reservation_duplicate(request, reservation_id):
     """API pour dupliquer une réservation"""
     if request.method != 'POST':
@@ -9620,7 +10138,7 @@ def api_reservation_duplicate(request, reservation_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_bureau_schedule(request, bureau_id):
     """API pour récupérer les créneaux d'une salle"""
     date = request.GET.get('date')
@@ -9651,7 +10169,7 @@ def api_bureau_schedule(request, bureau_id):
         return JsonResponse({'creneaux': [], 'error': str(e)})
 
 
-@login_required
+@session_required
 def api_bureau_suggestions(request, bureau_id):
     """API pour suggérer des créneaux disponibles"""
     suggestions = [
@@ -9667,12 +10185,11 @@ def api_bureau_suggestions(request, bureau_id):
 import json, re
 from datetime import datetime, timedelta
 from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
 from .models import ChatbotConversation, ChatbotMessage
 
 
-@login_required
+@session_required
 def api_chatbot_message(request):
     """API pour le chatbot employé — PyMongo direct (MongoUser sans ForeignKey)"""
     if request.method != 'POST':
@@ -9686,7 +10203,7 @@ def api_chatbot_message(request):
         if not user_message:
             return JsonResponse({'error': 'Message vide'}, status=400)
 
-        user_key = str(request.session.get('user_id', request.user.username))
+        user_key = str(request.session.get('user_id', request.session.get('username', '')))
         now      = datetime.now()
 
         # ── Récupérer ou créer la conversation ───────────────────
@@ -9702,7 +10219,7 @@ def api_chatbot_message(request):
         if not conversation:
             result       = db['chatbot_conversations'].insert_one({
                 'user_key':  user_key,
-                'username':  request.user.username,
+                'username':  request.session.get('username', ''),
                 'is_active': True,
                 'created_at': now,
                 'updated_at': now,
@@ -9720,7 +10237,7 @@ def api_chatbot_message(request):
         })
 
         # ── Générer la réponse ────────────────────────────────────
-        response_data = process_chatbot_message(request.user, user_message, conversation)
+        response_data = process_chatbot_message(get_session_user(request), user_message, conversation)
 
         # ── Sauvegarder la réponse assistante ────────────────────
         db['chatbot_messages'].insert_one({
@@ -9752,10 +10269,10 @@ def api_chatbot_message(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_chatbot_conversations(request):
     """Récupérer l'historique des conversations — PyMongo direct"""
-    user_key = str(request.session.get('user_id', request.user.username))
+    user_key = str(request.session.get('user_id', request.session.get('username', '')))
     raw = list(
         db['chatbot_conversations']
         .find({'user_key': user_key, 'is_active': True})
@@ -9780,10 +10297,10 @@ def api_chatbot_conversations(request):
     return JsonResponse({'conversations': data})
 
 
-@login_required
+@session_required
 def api_chatbot_conversation_detail(request, conversation_id):
     """Détail d'une conversation — PyMongo direct"""
-    user_key = str(request.session.get('user_id', request.user.username))
+    user_key = str(request.session.get('user_id', request.session.get('username', '')))
     try:
         conv = db['chatbot_conversations'].find_one({
             '_id':      ObjectId(conversation_id),
@@ -10111,12 +10628,12 @@ def _create_reservation_from_chat(user, employe, data):
         )
 
         try:
-            admins = list(db['dashboard_utilisateur'].find(
-                {'is_staff': True, 'is_active': True}, {'id': 1, 'email': 1}
+            admins = list(db['utilisateurs'].find(
+                {'is_staff': True, 'is_active': True}, {'_id': 1, 'email': 1}
             ))
             for admin in admins:
                 db.admin_notifications.insert_one({
-                    'admin_id':       admin.get('id'),
+                    'admin_id':       admin.get('_id'),
                     'titre':          '🆕 Nouvelle réservation en attente (chatbot)',
                     'message':        (
                         f"{employe_nom} a demandé une réservation pour « {titre} » "
@@ -10199,11 +10716,11 @@ def _keyword_response(user, message, conversation):
     }
 
 
-@login_required
+@session_required
 def api_chatbot_conversation_detail(request, conversation_id):
     """Détail d'une conversation"""
     try:
-        conversation = ChatbotConversation.objects.get(id=conversation_id, user=request.user)
+        conversation = ChatbotConversation.objects.get(id=conversation_id, user=get_session_user(request))
         messages = []
         for msg in conversation.messages.all():
             messages.append({
@@ -10218,79 +10735,155 @@ def api_chatbot_conversation_detail(request, conversation_id):
         # dashboard/views.py - Ajoutez ces fonctions
 
 # ====================== NOTIFICATIONS ADMINISTRATEUR ======================
+def _normalize_notif(n, source, algiers):
+    """
+    Normalise un document notification quelle que soit sa collection.
+    Ajoute n['_source'] pour que les APIs sachent où écrire.
+    """
+    n['id']      = str(n['_id'])
+    n['source'] = source
+
+    if 'status' not in n:
+        n['status'] = 'non_lu'
+    if 'titre' not in n:
+        n['titre'] = n.get('sujet', 'Notification')
+    if 'categorie' not in n:
+        n['categorie'] = n.get('type', n.get('type_notification', 'info'))
+    if 'icon' not in n:
+        n['icon'] = '🔔'
+    if 'message' not in n:
+        n['message'] = ''
+    if 'action_url' not in n and n.get('reservation_id'):
+        n['action_url'] = f"/employe/reservations/"
+
+    raw_dt = n.get('created_at')
+    if raw_dt is not None:
+        n['created_at'] = _make_aware_dt(raw_dt, algiers)
+
+    return n
+
+
+def _try_update_notif(db, notification_id, update, now):
+    """
+    Tente de mettre à jour une notification dans 'notifications'
+    puis dans 'admin_notifications'. Retourne True si trouvée.
+    """
+    from bson import ObjectId
+    try:
+        oid = ObjectId(notification_id)
+    except Exception:
+        return False
+
+    for col in ('notifications', 'admin_notifications'):
+        res = db[col].update_one({'_id': oid}, update)
+        if res.matched_count:
+            return True
+    return False
+
+
+def _try_delete_notif(db, notification_id):
+    """Supprime par _id dans les deux collections."""
+    from bson import ObjectId
+    try:
+        oid = ObjectId(notification_id)
+    except Exception:
+        return False
+    for col in ('notifications', 'admin_notifications'):
+        res = db[col].delete_one({'_id': oid})
+        if res.deleted_count:
+            return True
+    return False
+
 
 # ── Helper pour résoudre l'admin_id entier ───────────────────────────────────
 def _resolve_admin_id(request, db):
     """Retourne toujours l'id entier depuis dashboard_utilisateur."""
-    raw_id = request.user.id
+    raw_id = request.session.get('user_id', '')
     try:
         return int(raw_id)  # '1' → 1 ✅
     except (ValueError, TypeError):
         pass
     # ObjectId string → chercher par username
-    username = getattr(request.user, 'username', None)
+    username = getattr(get_session_user(request), 'username', None)
     if username:
-        u = db['dashboard_utilisateur'].find_one({'username': username}, {'id': 1})
+        u = db['utilisateurs'].find_one({'username': username}, {'_id': 1})
         if u and u.get('id'):
             return int(u['id'])
     return raw_id
 
 
-@login_required
+@session_required
+# ====================== NOTIFICATIONS ADMIN - VUES CORRIGÉES ======================
+
+def _get_employe_from_session(request, db):
+    """Récupère l'employé depuis la session (cohérent avec le côté employé)"""
+    user_id  = request.session.get('user_id', '')
+    username = request.session.get('username', '')
+    employe  = db['employees'].find_one({'django_user_id': user_id})
+    if not employe:
+        employe = db['employees'].find_one({'django_username': username})
+    return employe
+
+
+@session_required
 def admin_notifications(request):
-    """Centre de notifications pour les administrateurs"""
-    if not request.user.is_staff:
+    """Centre de notifications pour les administrateurs."""
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
 
-    from bson import ObjectId
     from django.utils import timezone
 
     db, algiers = _get_db_algiers()
+    now         = timezone.now()
 
-    admin_id        = _resolve_admin_id(request, db)
-    admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-
-    # ── Traitement POST ──────────────────────────────────────────────
-    if request.method == 'POST':
-        now = timezone.now()
-
-        if 'mark_read' in request.POST:
-            notification_id = request.POST.get('notification_id')
-            if notification_id:
-                try:
-                    db['admin_notifications'].update_one(
-                        {'_id': ObjectId(notification_id), 'admin_id': admin_id_filter},
-                        {'$set': {'status': 'lu', 'read_at': now}}
-                    )
-                except Exception:
-                    pass
-            else:
-                db['admin_notifications'].update_many(
-                    {'admin_id': admin_id_filter, 'status': 'non_lu'},
-                    {'$set': {'status': 'lu', 'read_at': now}}
-                )
-            return redirect('admin_notifications')
-
-        elif 'delete_all' in request.POST:
-            db['admin_notifications'].delete_many({'admin_id': admin_id_filter})
-            return redirect('admin_notifications')
-
-    # ── Récupérer les notifications ──────────────────────────────────
-    notifications = list(
-        db['admin_notifications'].find({'admin_id': admin_id_filter})
+    # ── 1. Toutes les notifications employés (ce que l'admin surveille) ──
+    #    Collection : 'notifications'  →  champ : employe_id
+    notifs_employes = list(
+        db['notifications']
+        .find({})
         .sort('created_at', -1)
+        .limit(300)
     )
 
+    # ── 2. Notifications admin-spécifiques (alertes système, etc.) ──
+    #    Collection : 'admin_notifications'
+    notifs_admin = list(
+        db['admin_notifications']
+        .find({})
+        .sort('created_at', -1)
+        .limit(100)
+    )
+
+    # ── Fusion + normalisation ────────────────────────────────────────
+    notifications = (
+        [_normalize_notif(n, 'notifications',       algiers) for n in notifs_employes] +
+        [_normalize_notif(n, 'admin_notifications', algiers) for n in notifs_admin]
+    )
+
+    # Trier par date décroissante (None en dernier)
+    notifications.sort(
+        key=lambda x: x.get('created_at') or now.replace(year=2000),
+        reverse=True,
+    )
+
+    # Enrichir avec le nom de l'employé quand disponible
+    emp_ids = list({n.get('employe_id') for n in notifications if n.get('employe_id')})
+    emp_map = {}
+    if emp_ids:
+        from bson import ObjectId
+        oids = []
+        for eid in emp_ids:
+            try:
+                oids.append(ObjectId(eid))
+            except Exception:
+                pass
+        if oids:
+            for emp in db['employees'].find({'_id': {'$in': oids}}, {'prenom': 1, 'nom': 1}):
+                emp_map[str(emp['_id'])] = f"{emp.get('prenom', '')} {emp.get('nom', '')}".strip()
+
     for n in notifications:
-        n['id'] = str(n['_id'])
-        if 'status' not in n:
-            n['status'] = 'non_lu'
-        if 'categorie' not in n:
-            n['categorie'] = n.get('type', 'info')
-        if 'icon' not in n:
-            n['icon'] = '🔔'
-        if 'created_at' in n:
-            n['created_at'] = _make_aware_dt(n['created_at'], algiers)
+        eid = n.get('employe_id')
+        n['employe_nom'] = emp_map.get(str(eid), '') if eid else ''
 
     unread_count = sum(1 for n in notifications if n.get('status') == 'non_lu')
 
@@ -10300,106 +10893,77 @@ def admin_notifications(request):
     })
 
 
-@login_required
-def api_admin_notifications_unread_count(request):
-    """API pour récupérer le nombre de notifications admin non lues"""
-    if not request.user.is_staff:
-        return JsonResponse({'count': 0})
-    try:
-        db, _ = _get_db_algiers()
-        admin_id        = _resolve_admin_id(request, db)
-        admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-        count = db['admin_notifications'].count_documents({
-            'admin_id': admin_id_filter,
-            'status':   'non_lu'
-        })
-        return JsonResponse({'count': count})
-    except Exception:
-        return JsonResponse({'count': 0})
-
-
-@login_required
+@session_required
 def api_admin_mark_notification_read(request):
-    """API pour marquer une notification admin comme lue"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
+    from django.utils import timezone
+    from bson import ObjectId
+
+    db, _           = _get_db_algiers()
+    now             = timezone.now()
+    update_op       = {'$set': {'status': 'lu', 'read_at': now}}
+
     try:
-        import json
-        from bson import ObjectId
-        from django.utils import timezone
-
-        db, _ = _get_db_algiers()
-        admin_id        = _resolve_admin_id(request, db)
-        admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-        now             = timezone.now()
-
         data            = json.loads(request.body)
         notification_id = data.get('notification_id')
 
         if notification_id:
-            db['admin_notifications'].update_one(
-                {'_id': ObjectId(notification_id), 'admin_id': admin_id_filter},
-                {'$set': {'status': 'lu', 'read_at': now}}
-            )
+            # Marquer UNE notification (essaie les deux collections)
+            _try_update_notif(db, notification_id, update_op, now)
         else:
-            db['admin_notifications'].update_many(
-                {'admin_id': admin_id_filter, 'status': 'non_lu'},
-                {'$set': {'status': 'lu', 'read_at': now}}
+            # Marquer TOUTES dans les deux collections
+            db['notifications'].update_many(
+                {'status': 'non_lu'},
+                update_op,
             )
-        return JsonResponse({'status': 'success'})
+            db['admin_notifications'].update_many(
+                {'status': 'non_lu'},
+                update_op,
+            )
 
+        return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
-@login_required
+@session_required
 def api_admin_delete_notification(request):
-    """API pour supprimer une notification admin"""
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
+    db, _ = _get_db_algiers()
+
     try:
-        import json
-        from bson import ObjectId
-
-        db, _           = _get_db_algiers()
-        admin_id        = _resolve_admin_id(request, db)
-        admin_id_filter = {'$in': [admin_id, str(admin_id)]}
-
         data            = json.loads(request.body)
         notification_id = data.get('notification_id')
 
         if notification_id:
-            db['admin_notifications'].delete_one({
-                '_id':      ObjectId(notification_id),
-                'admin_id': admin_id_filter
-            })
+            _try_delete_notif(db, notification_id)
         else:
-            db['admin_notifications'].delete_many({'admin_id': admin_id_filter})
+            db['notifications'].delete_many({})
+            db['admin_notifications'].delete_many({})
 
         return JsonResponse({'status': 'success'})
-
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
-@login_required
+@session_required
 def api_admin_send_test_notification(request):
-    """API pour envoyer une notification de test à l'admin"""
+    """API - envoyer une notification de test admin"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     from django.utils import timezone
 
     db, _    = _get_db_algiers()
-    admin_id = _resolve_admin_id(request, db)  # toujours entier pour les anciens users
+    admin_id = _resolve_admin_id(request, db)
 
     db['admin_notifications'].insert_one({
         'admin_id':   admin_id,
@@ -10411,7 +10975,6 @@ def api_admin_send_test_notification(request):
         'action_url': '/admin/notifications/',
         'created_at': timezone.now(),
     })
-
     return JsonResponse({'status': 'success', 'message': 'Notification envoyée'})
 
 # ====================== FONCTIONS D'ENVOI DE NOTIFICATIONS ADMIN ======================
@@ -10439,13 +11002,13 @@ def send_notification_to_all_admins(titre, message, categorie='info', icon='🔔
     """Envoie une notification à tous les administrateurs (PyMongo direct)"""
     from datetime import datetime
     try:
-        admins = list(db['dashboard_utilisateur'].find(
-            {'is_staff': True, 'is_active': True}, {'id': 1}
+        admins = list(db['utilisateurs'].find(
+            {'is_staff': True, 'is_active': True}, {'_id': 1}
         ))
         if not admins:
             return
         notifications = [{
-            'admin_id':       admin.get('id'),
+            'admin_id':       admin.get('_id'),
             'titre':          titre,
             'message':        message,
             'categorie':      categorie,
@@ -10558,13 +11121,13 @@ def send_notification_to_all_admins(titre, message, categorie='info', icon='🔔
     """Envoie une notification à tous les administrateurs (PyMongo direct)"""
     from datetime import datetime
     try:
-        admins = list(db['dashboard_utilisateur'].find(
-            {'is_staff': True, 'is_active': True}, {'id': 1}
+        admins = list(db['utilisateurs'].find(
+            {'is_staff': True, 'is_active': True}, {'_id': 1}
         ))
         if not admins:
             return
         notifications = [{
-            'admin_id':       admin.get('id'),
+            'admin_id':       admin.get('_id'),
             'titre':          titre,
             'message':        message,
             'categorie':      categorie,
@@ -10647,31 +11210,28 @@ def notify_admins_high_occupation(zone_nom, occupation_rate):
 
 # ====================== APIS POUR NOTIFICATIONS ADMIN ======================
 
-@login_required
+@session_required
 def api_admin_notifications_unread_count(request):
-    """API pour récupérer le nombre de notifications admin non lues"""
+    if not request.session.get('is_staff', False):
+        return JsonResponse({'count': 0})
     try:
-        if not request.user.is_staff:
-            return JsonResponse({'count': 0})
-        
-        count = db.admin_notifications.count_documents({
-            'admin_id': request.user.id,
-            'status': 'non_lu'
-        })
-        
+        db, _ = _get_db_algiers()
+
+        count = (
+            db['notifications'].count_documents({'status': 'non_lu'}) +
+            db['admin_notifications'].count_documents({'status': 'non_lu'})
+        )
         return JsonResponse({'count': count})
-        
-    except Exception as e:
+    except Exception:
         return JsonResponse({'count': 0})
 
-
-@login_required
+@session_required
 def api_admin_mark_notification_read(request):
     """API pour marquer une notification admin comme lue"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     try:
@@ -10684,13 +11244,13 @@ def api_admin_mark_notification_read(request):
         
         if notification_id:
             db.admin_notifications.update_one(
-                {'_id': ObjectId(notification_id), 'admin_id': request.user.id},
+                {'_id': ObjectId(notification_id), 'admin_id': request.session.get('user_id', '')},
                 {'$set': {'status': 'lu', 'read_at': datetime.now()}}
             )
         else:
             # Marquer toutes comme lues
             db.admin_notifications.update_many(
-                {'admin_id': request.user.id, 'status': 'non_lu'},
+                {'admin_id': request.session.get('user_id', ''), 'status': 'non_lu'},
                 {'$set': {'status': 'lu', 'read_at': datetime.now()}}
             )
         
@@ -10700,13 +11260,13 @@ def api_admin_mark_notification_read(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_admin_delete_notification(request):
     """API pour supprimer une notification admin"""
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     try:
@@ -10719,10 +11279,10 @@ def api_admin_delete_notification(request):
         if notification_id:
             db.admin_notifications.delete_one({
                 '_id': ObjectId(notification_id),
-                'admin_id': request.user.id
+                'admin_id': request.session.get('user_id', '')
             })
         else:
-            db.admin_notifications.delete_many({'admin_id': request.user.id})
+            db.admin_notifications.delete_many({'admin_id': request.session.get('user_id', '')})
         
         return JsonResponse({'status': 'success'})
         
@@ -10730,30 +11290,29 @@ def api_admin_delete_notification(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_admin_send_test_notification(request):
-    """API pour envoyer une notification de test à l'admin"""
+    """API - envoyer une notification de test admin"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
-    from datetime import datetime
-    
-    notification = {
-        'admin_id': request.user.id,
-        'titre': '🔔 Notification de test',
-        'message': 'Ceci est une notification de test pour le centre d\'administration.',
-        'categorie': 'info',
-        'icon': '🔔',
-        'status': 'non_lu',
+
+    from django.utils import timezone
+
+    db, _    = _get_db_algiers()
+    admin_id = _resolve_admin_id(request, db)
+
+    db['admin_notifications'].insert_one({
+        'admin_id':   admin_id,
+        'titre':      '🔔 Notification de test',
+        'message':    "Ceci est une notification de test pour le centre d'administration.",
+        'categorie':  'info',
+        'icon':       '🔔',
+        'status':     'non_lu',
         'action_url': '/admin/notifications/',
-        'created_at': datetime.now()
-    }
-    
-    db.admin_notifications.insert_one(notification)
-    
+        'created_at': timezone.now(),
+    })
     return JsonResponse({'status': 'success', 'message': 'Notification envoyée'})
 def notify_admin_new_reservation(employe, reservation_data, reservation_id):
     """Notifie les administrateurs d'une nouvelle réservation"""
@@ -10777,95 +11336,90 @@ def notify_admin_new_reservation(employe, reservation_data, reservation_id):
         }
         db.admin_notifications.insert_one(admin_notification)
      # ====================== MOT DE PASSE OUBLIÉ ======================
+# ====================== MOT DE PASSE OUBLIÉ ======================
 
 def password_forgot(request):
-    """Étape 1 : l'utilisateur saisit son email pour recevoir le lien de réinitialisation."""
+    """Étape 1 : envoi du lien de réinitialisation par email."""
     if request.method == 'POST':
         email = request.POST.get('email', '').strip().lower()
         if not email:
             messages.error(request, "Veuillez saisir une adresse email.")
             return render(request, 'dashboard/password_forgot.html')
 
-        user_doc = db['dashboard_utilisateur'].find_one(
-            {'email': {'$regex': f'^{re.escape(email)}$', '$options': 'i'}}
+        # Chercher dans MongoDB uniquement
+        user_doc = db['utilisateurs'].find_one(
+            {'email': {'$regex': f'^{re.escape(email)}$', '$options': 'i'},
+             'is_active': True}
         )
+
+        # Toujours afficher le même message (sécurité anti-énumération)
+        msg_generique = "Si cet email existe dans notre système, un lien vous a été envoyé."
+
         if not user_doc:
-            messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
-            return render(request, 'dashboard/password_forgot.html')
-        try:
-            user = User.objects.get(pk=user_doc['id'])
-        except Exception:
-            messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
+            messages.success(request, msg_generique)
             return render(request, 'dashboard/password_forgot.html')
 
-        # Invalider les anciens tokens de cet utilisateur
-        from .models import PasswordResetToken
-        PasswordResetToken.objects.filter(user=user, used=False).update(used=True)
+        # Invalider les anciens tokens MongoDB
+        db['password_reset_tokens'].update_many(
+            {'user_id': str(user_doc['_id']), 'used': False},
+            {'$set': {'used': True}}
+        )
 
         # Générer un nouveau token sécurisé
         import secrets
         token = secrets.token_urlsafe(48)
-        expires_at = timezone.now() + timedelta(hours=1)
-        reset_token = PasswordResetToken.objects.create(
-            user=user,
-            token=token,
-            expires_at=expires_at,
-        )
+        expires_at = datetime.now() + timedelta(hours=1)
 
-        # Construire le lien de réinitialisation
+        db['password_reset_tokens'].insert_one({
+            'user_id':    str(user_doc['_id']),
+            'token':      token,
+            'expires_at': expires_at,
+            'used':       False,
+            'created_at': datetime.now(),
+            'email':      user_doc.get('email', ''),
+        })
+
         reset_url = request.build_absolute_uri(f"/password-reset/{token}/")
+        prenom = user_doc.get('first_name') or user_doc.get('prenom') or user_doc.get('username', '')
 
-        # Envoyer l'email
-        from django.core.mail import send_mail
-        from django.conf import settings as django_settings
-        sujet = "SIGR-CA — Réinitialisation de votre mot de passe"
-        corps_texte = f"""Bonjour {user.first_name or user.username},
-
-Vous avez demandé la réinitialisation de votre mot de passe sur SIGR-CA.
-
-Cliquez sur le lien ci-dessous pour choisir un nouveau mot de passe (valable 1 heure) :
-
-{reset_url}
-
-Si vous n'avez pas fait cette demande, ignorez simplement cet email.
-
-— L'équipe SIGR-CA
-"""
+        corps_texte = (
+            f"Bonjour {prenom},\n\n"
+            f"Cliquez sur ce lien pour réinitialiser votre mot de passe (valable 1 heure) :\n\n"
+            f"{reset_url}\n\n"
+            f"Si vous n'avez pas fait cette demande, ignorez cet email.\n\n— L'équipe SIGR-CA"
+        )
         corps_html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head><meta charset="UTF-8"></head>
+<html lang="fr"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#0a0c10;font-family:'Segoe UI',sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0c10;padding:40px 0;">
     <tr><td align="center">
-      <table width="520" cellpadding="0" cellspacing="0" style="background:#111318;border-radius:16px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
-        <!-- Header -->
+      <table width="520" cellpadding="0" cellspacing="0"
+             style="background:#111318;border-radius:16px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
         <tr>
           <td style="background:linear-gradient(135deg,#1f6feb,#06b6d4);padding:32px;text-align:center;">
-            <div style="width:56px;height:56px;background:rgba(255,255,255,0.15);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;">
-              <span style="font-size:26px;">🔐</span>
-            </div>
+            <div style="font-size:36px;margin-bottom:12px;">🔐</div>
             <h1 style="margin:0;color:#fff;font-size:22px;font-weight:600;">Réinitialisation du mot de passe</h1>
-            <p style="margin:8px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">SIGR-CA — Système de Gestion des Ressources</p>
+            <p style="margin:8px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">SIGR-CA</p>
           </td>
         </tr>
-        <!-- Body -->
         <tr>
           <td style="padding:36px 40px;">
-            <p style="color:#9ca3af;font-size:15px;margin:0 0 12px;">Bonjour <strong style="color:#f3f4f6;">{user.first_name or user.username}</strong>,</p>
+            <p style="color:#9ca3af;font-size:15px;margin:0 0 12px;">Bonjour <strong style="color:#f3f4f6;">{prenom}</strong>,</p>
             <p style="color:#9ca3af;font-size:15px;margin:0 0 28px;line-height:1.6;">
-              Nous avons reçu une demande de réinitialisation de mot de passe pour votre compte.<br>
               Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.
             </p>
             <div style="text-align:center;margin:0 0 28px;">
               <a href="{reset_url}"
-                 style="display:inline-block;background:linear-gradient(135deg,#1f6feb,#06b6d4);color:#fff;text-decoration:none;
-                        padding:14px 36px;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:.3px;">
+                 style="display:inline-block;background:linear-gradient(135deg,#1f6feb,#06b6d4);
+                        color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;
+                        font-size:15px;font-weight:600;">
                 Réinitialiser mon mot de passe
               </a>
             </div>
-            <div style="background:rgba(31,111,235,0.08);border:1px solid rgba(31,111,235,0.2);border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+            <div style="background:rgba(31,111,235,0.08);border:1px solid rgba(31,111,235,0.2);
+                        border-radius:8px;padding:14px 18px;margin-bottom:24px;">
               <p style="margin:0;color:#6b7280;font-size:13px;">
-                ⏱ Ce lien est valable <strong style="color:#f59e0b;">1 heure</strong> uniquement.<br>
+                ⏱ Lien valable <strong style="color:#f59e0b;">1 heure</strong> uniquement.<br>
                 🔒 Si vous n'avez pas fait cette demande, ignorez cet email.
               </p>
             </div>
@@ -10874,68 +11428,63 @@ Si vous n'avez pas fait cette demande, ignorez simplement cet email.
             </p>
           </td>
         </tr>
-        <!-- Footer -->
         <tr>
           <td style="padding:20px 40px;border-top:1px solid rgba(255,255,255,0.05);text-align:center;">
-            <p style="color:#4b5563;font-size:12px;margin:0;">© SIGR-CA — Cet email a été envoyé automatiquement, ne pas y répondre.</p>
+            <p style="color:#4b5563;font-size:12px;margin:0;">© SIGR-CA — Email automatique, ne pas répondre.</p>
           </td>
         </tr>
       </table>
     </td></tr>
   </table>
-</body>
-</html>"""
+</body></html>"""
 
         try:
-            import ssl
-            import smtplib
+            import ssl, smtplib
             from email.mime.multipart import MIMEMultipart
             from email.mime.text import MIMEText
+            from django.conf import settings as _s
 
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = sujet
-            msg['From']    = django_settings.DEFAULT_FROM_EMAIL
-            msg['To']      = user.email
-            msg.attach(MIMEText(corps_texte, 'plain', 'utf-8'))
-            msg.attach(MIMEText(corps_html,  'html',  'utf-8'))
+            msg_email = MIMEMultipart('alternative')
+            msg_email['Subject'] = "SIGR-CA — Réinitialisation de votre mot de passe"
+            msg_email['From']    = _s.DEFAULT_FROM_EMAIL
+            msg_email['To']      = user_doc['email']
+            msg_email.attach(MIMEText(corps_texte, 'plain', 'utf-8'))
+            msg_email.attach(MIMEText(corps_html,  'html',  'utf-8'))
 
-            # Port 587 + STARTTLS manuel — compatible Python 3.12
             ctx = ssl.create_default_context()
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.ehlo()
-                server.starttls(context=ctx)   # context= au lieu de keyfile=/certfile=
+                server.starttls(context=ctx)
                 server.ehlo()
-                server.login(django_settings.EMAIL_HOST_USER,
-                             django_settings.EMAIL_HOST_PASSWORD)
-                server.sendmail(django_settings.EMAIL_HOST_USER,
-                                user.email, msg.as_string())
+                server.login(_s.EMAIL_HOST_USER, _s.EMAIL_HOST_PASSWORD)
+                server.sendmail(_s.EMAIL_HOST_USER, user_doc['email'], msg_email.as_string())
 
-            logger.info(f"Email de réinitialisation envoyé à {user.email}")
+            logger.info(f"Email reset envoyé à {user_doc['email']}")
         except Exception as e:
             logger.error(f"Erreur envoi email reset: {e}")
-            messages.error(request, "Erreur lors de l'envoi de l'email. Contactez l'administrateur.")
+            messages.error(request, f"Erreur lors de l'envoi de l'email : {e}")
             return render(request, 'dashboard/password_forgot.html')
 
-        messages.success(request, "Si cet email existe dans notre système, un lien vous a été envoyé.")
+        messages.success(request, msg_generique)
         return render(request, 'dashboard/password_forgot.html')
 
     return render(request, 'dashboard/password_forgot.html')
 
+
 def password_reset_confirm(request, token):
-    """Étape 2 : l'utilisateur saisit son nouveau mot de passe via le lien reçu."""
-    from .models import PasswordResetToken
-    
-    try:
-        reset_token = PasswordResetToken.objects.select_related('user').get(token=token)
-    except PasswordResetToken.DoesNotExist:
+    """Étape 2 : saisie du nouveau mot de passe via le lien."""
+    # Vérifier le token dans MongoDB
+    token_doc = db['password_reset_tokens'].find_one({'token': token, 'used': False})
+
+    if not token_doc:
         messages.error(request, "Lien invalide ou déjà utilisé.")
         return redirect('password_forgot')
 
-    if not reset_token.is_valid():
-        messages.error(request, "Ce lien a expiré ou a déjà été utilisé. Veuillez en demander un nouveau.")
+    if token_doc['expires_at'] < datetime.now():
+        messages.error(request, "Ce lien a expiré. Veuillez en demander un nouveau.")
+        db['password_reset_tokens'].update_one({'token': token}, {'$set': {'used': True}})
         return redirect('password_forgot')
 
-    # TRAITEMENT POST - Changement du mot de passe
     if request.method == 'POST':
         password1 = request.POST.get('password1', '')
         password2 = request.POST.get('password2', '')
@@ -10949,63 +11498,54 @@ def password_reset_confirm(request, token):
             errors.append("Le mot de passe doit contenir au moins 8 caractères.")
         if password1.isdigit():
             errors.append("Le mot de passe ne peut pas être uniquement numérique.")
-        # Vérifier que le mot de passe n'est pas trop simple
         if password1.lower() in ['password', 'motdepasse', '12345678', 'azertyuiop']:
-            errors.append("Ce mot de passe est trop commun. Veuillez en choisir un plus sécurisé.")
+            errors.append("Ce mot de passe est trop commun.")
 
         if errors:
             for e in errors:
                 messages.error(request, e)
-            # Afficher à nouveau le formulaire avec les erreurs
             return render(request, 'dashboard/password_reset_form.html', {'token': token})
 
-        # Changer le mot de passe
-        user = reset_token.user
-        user.set_password(password1)
-        user.save()
+        # Hasher avec bcrypt et mettre à jour dans MongoDB
+        import bcrypt
+        from bson import ObjectId
+        hashed = bcrypt.hashpw(password1.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-        # Marquer le token comme utilisé
-        reset_token.used = True
-        reset_token.save()
+        db['utilisateurs'].update_one(
+            {'_id': ObjectId(token_doc['user_id'])},
+            {'$set': {'password': hashed, 'updated_at': datetime.now()}}
+        )
 
-        # Invalider toutes les sessions actives de l'utilisateur
-        try:
-            from django.contrib.sessions.models import Session
-            for session in Session.objects.all():
-                try:
-                    data = session.get_decoded()
-                    if str(data.get('_auth_user_id')) == str(user.pk):
-                        session.delete()
-                except Exception:
-                    pass
-        except Exception as _se:
-            logger.warning(f"Invalidation sessions Django échouée: {_se}")
+        # Invalider le token
+        db['password_reset_tokens'].update_one(
+            {'token': token},
+            {'$set': {'used': True, 'used_at': datetime.now()}}
+        )
+
+        # Invalider toutes les sessions actives (MongoDB)
         try:
             db['dashboard_usersession'].update_many(
-                {'user_id': user.pk},
+                {'user_id': token_doc['user_id']},
                 {'$set': {'is_active': False, 'logout_time': datetime.now()}}
             )
-        except Exception:
-            pass
+        except Exception as _se:
+            logger.warning(f"Invalidation sessions échouée: {_se}")
 
-        logger.info(f"Mot de passe réinitialisé pour {user.username}")
-        messages.success(request, "Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.")
+        logger.info(f"Mot de passe réinitialisé pour user_id={token_doc['user_id']}")
         return redirect('password_reset_done')
 
-    # GET - Afficher le formulaire de changement de mot de passe
     return render(request, 'dashboard/password_reset_form.html', {'token': token})
 
-def password_reset_done(request):
-    """Étape 3 : page de confirmation après réinitialisation réussie."""
-    return render(request, 'dashboard/password_reset_done.html')
-    # dashboard/views.py - Ajoutez ces fonctions
 
+def password_reset_done(request):
+    """Étape 3 : confirmation après réinitialisation réussie."""
+    return render(request, 'dashboard/password_reset_done.html')
 # ====================== GESTION HIÉRARCHIQUE DES RESSOURCES ======================
 
-@login_required
+@session_required
 def gestion_hierarchique(request):
     """Gestion hiérarchique des ressources (domaines → sites → bâtiments → étages → salles)"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
     
     # Récupérer la hiérarchie complète
@@ -11040,10 +11580,10 @@ def gestion_hierarchique(request):
     })
 
 
-@login_required
+@session_required
 def api_hierarchie_ajouter(request):
     """API pour ajouter un élément dans la hiérarchie"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     if request.method != 'POST':
@@ -11069,7 +11609,7 @@ def api_hierarchie_ajouter(request):
             'code': code,
             'description': description,
             'created_at': datetime.now(),
-            'created_by': request.user.username,
+            'created_by': request.session.get('username', ''),
         }
         
         if parent_id and niveau != 'domaine':
@@ -11087,10 +11627,10 @@ def api_hierarchie_ajouter(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_hierarchie_supprimer(request, niveau, element_id):
     """API pour supprimer un élément de la hiérarchie"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     if request.method != 'DELETE':
@@ -11140,10 +11680,10 @@ def get_parent_field(niveau):
 
 # ====================== GESTION DES INDISPONIBILITÉS PLANIFIÉES ======================
 
-@login_required
+@session_required
 def gestion_indisponibilites(request):
     """Gestion des indisponibilités planifiées (maintenance, réservations bloquées)"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
 
     from datetime import datetime, timedelta
@@ -11248,10 +11788,10 @@ def gestion_indisponibilites(request):
         'now':                   now,
     })
 
-@login_required
+@session_required
 def api_indisponibilite_ajouter(request):
     """API pour ajouter une indisponibilité planifiée"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
  
     if request.method != 'POST':
@@ -11304,7 +11844,7 @@ def api_indisponibilite_ajouter(request):
             'type_indispo':   type_indispo,
             'recurrence':     recurrence if recurrence != 'none' else None,
             'created_at':     datetime.now(),
-            'created_by':     request.user.username,
+            'created_by':     request.session.get('username', ''),
         }
  
         if recurrence_end and recurrence != 'none':
@@ -11341,10 +11881,10 @@ def api_indisponibilite_ajouter(request):
  
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-@login_required
+@session_required
 def api_indisponibilite_modifier(request, indispo_id):
     """API pour modifier une indisponibilité"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
  
     # FIX: accepter PUT (aligné avec le fetch du frontend)
@@ -11359,7 +11899,7 @@ def api_indisponibilite_modifier(request, indispo_id):
             'description': data.get('description'),
             'type_indispo': data.get('type_indispo'),
             'updated_at':  datetime.now(),
-            'updated_by':  request.user.username,
+            'updated_by':  request.session.get('username', ''),
         }
  
         if data.get('date_debut'):
@@ -11379,10 +11919,10 @@ def api_indisponibilite_modifier(request, indispo_id):
  
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-@login_required
+@session_required
 def api_indisponibilite_supprimer(request, indispo_id):
     """API pour supprimer une indisponibilité"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
  
     if request.method != 'DELETE':
@@ -11398,7 +11938,7 @@ def api_indisponibilite_supprimer(request, indispo_id):
  
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-@login_required
+@session_required
 def api_ressources_disponibles(request):
     """API pour récupérer les ressources disponibles sur une période"""
     date_debut_str = request.GET.get('date_debut')
@@ -11486,13 +12026,13 @@ def generate_recurring_indisponibilities(parent_indispo, parent_id):
 
 # ====================== EXPORT CSV — INDISPONIBILITÉS ======================
 
-@login_required
+@session_required
 def api_export_indisponibilites_csv(request):
     import csv
     from datetime import datetime
     from django.http import HttpResponse
 
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return HttpResponse("Non autorisé", status=403)
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -11555,7 +12095,7 @@ def api_export_indisponibilites_csv(request):
 
 # ====================== EXPORT PDF — INDISPONIBILITÉS ======================
 
-@login_required
+@session_required
 def api_export_indisponibilites_pdf(request):
     import io
     from datetime import datetime
@@ -11569,7 +12109,7 @@ def api_export_indisponibilites_pdf(request):
         Paragraph, Spacer, HRFlowable,
     )
 
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return HttpResponse("Non autorisé", status=403)
 
     now    = datetime.now()
@@ -11696,7 +12236,7 @@ def api_export_indisponibilites_pdf(request):
     elements.append(Spacer(1, 0.2*cm))
     elements.append(Paragraph(
         f"Rapport généré le {now.strftime('%d/%m/%Y à %H:%M')} "
-        f"par {request.user.get_full_name() or request.user.username} — SIGR-CA",
+        f"par {request.user.get_full_name() or request.session.get('username', '')} — SIGR-CA",
         footer_s
     ))
 
@@ -11733,10 +12273,10 @@ def get_materiel_icon(categorie):
     return icons.get(categorie, '📦')
  # dashboard/views.py - Assurez-vous que ces fonctions sont au bon niveau d'indentation
 
-@login_required
+@session_required
 def api_hierarchie_modifier(request, niveau, element_id):
     """API pour modifier un élément de la hiérarchie"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     if request.method != 'PUT':
@@ -11751,7 +12291,7 @@ def api_hierarchie_modifier(request, niveau, element_id):
             'code': data.get('code'),
             'description': data.get('description'),
             'updated_at': datetime.now(),
-            'updated_by': request.user.username,
+            'updated_by': request.session.get('username', ''),
         }
         
         result = db[collection_name].update_one(
@@ -11768,7 +12308,7 @@ def api_hierarchie_modifier(request, niveau, element_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
         # dashboard/views.py - Ajouter cette API
 
-@login_required
+@session_required
 def api_smart_suggestions(request):
     """API pour les suggestions intelligentes de créneaux"""
     if request.method != 'GET':
@@ -11787,8 +12327,8 @@ def api_smart_suggestions(request):
         
         # Récupérer l'employé si connecté
         employe_id = None
-        if not request.user.is_staff:
-            employe = db.employees.find_one({'django_user_id': request.user.id})
+        if not request.session.get('is_staff', False):
+            employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
             if employe:
                 employe_id = employe['_id']
         
@@ -11807,7 +12347,7 @@ def api_smart_suggestions(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_user_preferences_save(request):
     """Sauvegarder les préférences utilisateur pour les suggestions"""
     if request.method != 'POST':
@@ -11816,9 +12356,9 @@ def api_user_preferences_save(request):
     try:
         data = json.loads(request.body)
         
-        employe = db.employees.find_one({'django_user_id': request.user.id})
+        employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
         if not employe:
-            employe = db.employees.find_one({'django_username': request.user.username})
+            employe = db.employees.find_one({'django_username': request.session.get('username', '')})
         
         if not employe:
             return JsonResponse({'error': 'Employé non trouvé'}, status=404)
@@ -11844,10 +12384,10 @@ def api_user_preferences_save(request):
 
 # ====================== CONFIGURATION DES PLAGES HORAIRES ======================
 
-@login_required
+@session_required
 def horaires_activite(request):
     """Configuration des plages horaires d'activité globales"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
     
     # Récupérer la configuration existante
@@ -11882,10 +12422,10 @@ def horaires_activite(request):
     })
 
 
-@login_required
+@session_required
 def api_horaires_save(request):
     """Sauvegarder la configuration des horaires"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     if request.method != 'POST':
@@ -11899,7 +12439,7 @@ def api_horaires_save(request):
             'default': data.get('default', {}),
             'exceptions': data.get('exceptions', []),
             'updated_at': datetime.now(),
-            'updated_by': request.user.username
+            'updated_by': request.session.get('username', '')
         }
         
         db.system_config.update_one(
@@ -11914,10 +12454,10 @@ def api_horaires_save(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_zone_horaire_save(request):
     """Sauvegarder les horaires spécifiques d'une zone"""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
     
     if request.method != 'POST':
@@ -11933,7 +12473,7 @@ def api_zone_horaire_save(request):
             'horaires': data.get('horaires', {}),
             'is_active': data.get('is_active', True),
             'updated_at': datetime.now(),
-            'updated_by': request.user.username
+            'updated_by': request.session.get('username', '')
         }
         
         if 'zones_horaires' not in db.list_collection_names():
@@ -11982,16 +12522,16 @@ def is_access_allowed_by_schedule(zone_id, timestamp):
     return '08:00' <= current_time <= '18:00'
     # dashboard/views.py - Ajoutez cette fonction
 
-@login_required
+@session_required
 def preferences_reservation(request):
     """Page des préférences de réservation pour les suggestions IA"""
-    if request.user.is_staff:
+    if request.session.get('is_staff', False):
         return redirect('dashboard')
     
     # Récupérer l'employé
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
-        employe = db.employees.find_one({'django_username': request.user.username})
+        employe = db.employees.find_one({'django_username': request.session.get('username', '')})
     
     if not employe:
         return redirect('login')
@@ -12032,10 +12572,10 @@ def preferences_reservation(request):
 
 # ====================== ENRÔLEMENT RFID & PROVISIONNEMENT QR ======================
 
-@login_required
+@session_required
 def enrolement_badges(request):
     """Page principale de gestion des badges RFID et QR code des employés."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
 
     employes = list(db.employees.find().sort('nom', 1))
@@ -12058,11 +12598,11 @@ def enrolement_badges(request):
     })
 
 
-@login_required
+@session_required
 @require_http_methods(["POST"])
 def api_badge_affecter(request, employe_id):
     """Affecter ou modifier le badge RFID/QR d'un employé."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -12100,14 +12640,14 @@ def api_badge_affecter(request, employe_id):
                 'badge_id': badge_id,
                 'badge_type': badge_type,
                 'badge_updated_at': datetime.now(),
-                'badge_updated_by': request.user.username,
+                'badge_updated_by': request.session.get('username', ''),
             }}
         )
 
         # Mettre à jour badge_rfid dans MongoDB directement
         if employe.get('django_user_id'):
             try:
-                db['dashboard_utilisateur'].update_one(
+                db['utilisateurs'].update_one(
                     {'id': int(employe['django_user_id'])},
                     {'$set': {'badge_rfid': badge_id}}
                 )
@@ -12121,7 +12661,7 @@ def api_badge_affecter(request, employe_id):
             'badge_id': badge_id,
             'badge_type': badge_type,
             'ancien_badge': ancien_badge,
-            'fait_par': request.user.username,
+            'fait_par': request.session.get('username', ''),
             'timestamp': datetime.now(),
         })
 
@@ -12146,11 +12686,11 @@ def api_badge_affecter(request, employe_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 @require_http_methods(["POST"])
 def api_badge_supprimer(request, employe_id):
     """Révoquer le badge d'un employé."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -12165,12 +12705,12 @@ def api_badge_supprimer(request, employe_id):
         db.employees.update_one(
             {'_id': ObjectId(employe_id)},
             {'$unset': {'badge_id': '', 'badge_type': ''},
-             '$set': {'badge_revoked_at': datetime.now(), 'badge_revoked_by': request.user.username}}
+             '$set': {'badge_revoked_at': datetime.now(), 'badge_revoked_by': request.session.get('username', '')}}
         )
 
         if employe.get('django_user_id'):
             try:
-                db['dashboard_utilisateur'].update_one(
+                db['utilisateurs'].update_one(
                     {'id': int(employe['django_user_id'])},
                     {'$unset': {'badge_rfid': ''}}
                 )
@@ -12181,7 +12721,7 @@ def api_badge_supprimer(request, employe_id):
             'action': 'badge_revoque',
             'employe_id': ObjectId(employe_id),
             'badge_id': ancien_badge,
-            'fait_par': request.user.username,
+            'fait_par': request.session.get('username', ''),
             'timestamp': datetime.now(),
         })
 
@@ -12191,10 +12731,10 @@ def api_badge_supprimer(request, employe_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_badge_verifier(request):
     """Vérifie si un badge_id est déjà utilisé (pour validation en temps réel)."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     badge_id   = request.GET.get('badge_id', '').strip()
@@ -12215,10 +12755,10 @@ def api_badge_verifier(request):
     return JsonResponse({'disponible': True, 'message': 'Badge disponible'})
 
 
-@login_required
+@session_required
 def api_generer_qr_employe(request, employe_id):
     """Génère et affecte automatiquement un QR code unique à un employé."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -12240,7 +12780,7 @@ def api_generer_qr_employe(request, employe_id):
                 'badge_id': qr_id,
                 'badge_type': 'QR',
                 'badge_updated_at': datetime.now(),
-                'badge_updated_by': request.user.username,
+                'badge_updated_by': request.session.get('username', ''),
             }}
         )
 
@@ -12284,10 +12824,10 @@ def api_generer_qr_employe(request, employe_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_export_badges_csv(request):
     """Export CSV de tous les badges."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     import csv
@@ -12342,10 +12882,10 @@ def _verifier_indisponibilite(ressource_id, ressource_type, date_debut, date_fin
     return db.indisponibilites.find_one(query)
 
 
-@login_required
+@session_required
 def gestion_indisponibilites(request):
     """Page de gestion des indisponibilités planifiées."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return redirect('employe_espace')
 
     now = datetime.now()
@@ -12414,11 +12954,11 @@ def gestion_indisponibilites(request):
     })
 
 
-@login_required
+@session_required
 @require_http_methods(["POST"])
 def api_indisponibilite_ajouter(request):
     """Créer une indisponibilité et notifier les employés impactés."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -12460,7 +13000,7 @@ def api_indisponibilite_ajouter(request):
             'date_fin':       date_fin,
             'recurrence':     recurrence if recurrence != 'none' else None,
             'created_at':     datetime.now(),
-            'created_by':     request.user.username,
+            'created_by':     request.session.get('username', ''),
         }
         if recurrence_end and recurrence != 'none':
             indispo['recurrence_end'] = datetime.fromisoformat(recurrence_end)
@@ -12533,11 +13073,11 @@ def api_indisponibilite_ajouter(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 @require_http_methods(["PUT", "POST"])
 def api_indisponibilite_modifier(request, indispo_id):
     """Modifier une indisponibilité existante."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -12568,7 +13108,7 @@ def api_indisponibilite_modifier(request, indispo_id):
                 'date_debut':  date_debut,
                 'date_fin':    date_fin,
                 'updated_at':  datetime.now(),
-                'updated_by':  request.user.username,
+                'updated_by':  request.session.get('username', ''),
             }}
         )
 
@@ -12578,11 +13118,11 @@ def api_indisponibilite_modifier(request, indispo_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 @require_http_methods(["DELETE", "POST"])
 def api_indisponibilite_supprimer(request, indispo_id):
     """Supprimer une indisponibilité."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
     try:
@@ -12594,7 +13134,7 @@ def api_indisponibilite_supprimer(request, indispo_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@session_required
 def api_indisponibilite_check(request):
     """
     API appelée lors de la création d'une réservation pour vérifier
@@ -12657,7 +13197,7 @@ def _generate_recurring_indisponibilities(parent, parent_id):
         db.indisponibilites.insert_many(occurrences)
         
 
-@login_required
+@session_required
 def api_materiel_disponibilite(request, materiel_id):
     """Verifie si un materiel est libre sur un creneau donne."""
     from datetime import datetime
@@ -12714,15 +13254,12 @@ def api_materiel_disponibilite(request, materiel_id):
 
     return JsonResponse({'disponible': True})
 
-@login_required
+# ====================== API : SUGGESTIONS CRÉNEAUX IA ======================
+@session_required
 def api_suggestions_creneaux(request):
     """
     Suggère des créneaux libres pour une ressource donnée.
-    Paramètres GET :
-      - resource_id, resource_type
-      - date (YYYY-MM-DD) : jour cible
-      - duree (minutes, défaut 60)
-      - nb_participants (optionnel, pour filtrer les salles trop petites)
+    GET params : resource_id, resource_type, date (YYYY-MM-DD), duree (min), nb_participants
     """
     resource_id   = request.GET.get('resource_id')
     resource_type = request.GET.get('resource_type', 'salle')
@@ -12738,26 +13275,29 @@ def api_suggestions_creneaux(request):
     except Exception:
         return JsonResponse({'suggestions': [], 'error': 'Date invalide'})
 
-    # Vérifier capacité (pour les salles)
+    # ── Vérification capacité (salles uniquement) ──────────────────────────────
     if resource_type == 'salle':
         try:
             salle = db.bureaux.find_one({'_id': ObjectId(resource_id)})
+            if not salle and str(resource_id).isdigit():
+                salle = db.bureaux.find_one({'id': int(resource_id)})
             if salle and salle.get('capacite_max') and nb_part > salle['capacite_max']:
                 return JsonResponse({
                     'suggestions': [],
-                    'warning': f"Capacité insuffisante ({salle['capacite_max']} places max)",
+                    'warning': f"Capacité insuffisante ({salle['capacite_max']} places max pour {nb_part} participants)",
                 })
         except Exception:
             pass
 
-    # Plage horaire de travail : 8h → 19h, créneaux toutes les 30 min
-    suggestions = []
-    heure_debut, heure_fin = 8, 19
-    pas = 30  # minutes
+    # ── Génération des créneaux 8h–19h, pas de 30 min ─────────────────────────
+    suggestions   = []
+    heure_debut   = 8
+    heure_fin     = 19
+    pas           = 30  # minutes
+    duree         = timedelta(minutes=duree_min)
 
-    current = jour.replace(hour=heure_debut, minute=0)
-    limite  = jour.replace(hour=heure_fin, minute=0)
-    duree   = timedelta(minutes=duree_min)
+    current = jour.replace(hour=heure_debut, minute=0, second=0, microsecond=0)
+    limite  = jour.replace(hour=heure_fin,   minute=0, second=0, microsecond=0)
 
     while current + duree <= limite:
         creneau_debut = current
@@ -12768,7 +13308,7 @@ def api_suggestions_creneaux(request):
         )
 
         if check['disponible']:
-            # Score : on privilégie les heures « rondes » + matinée
+            # Score de pertinence
             score = 100
             if current.minute == 0:
                 score += 20
@@ -12788,10 +13328,9 @@ def api_suggestions_creneaux(request):
 
         current += timedelta(minutes=pas)
 
-    # Trier par score décroissant et garder les 6 meilleurs
+    # Trier par score puis ré-afficher par heure, garder les 6 meilleurs
     suggestions.sort(key=lambda s: -s['score'])
     suggestions = suggestions[:6]
-    # Re-trier par heure pour l'affichage
     suggestions.sort(key=lambda s: s['debut'])
 
     return JsonResponse({'suggestions': suggestions})
@@ -12804,7 +13343,7 @@ from dashboard.ai_engine import (
 )
 
 
-@login_required
+@session_required
 def api_predict_occupation(request, resource_id):
     """Heatmap 7j × 12h des taux d'occupation prédits."""
     predictor = OccupationPredictor()
@@ -12817,10 +13356,10 @@ def api_predict_occupation(request, resource_id):
     return JsonResponse({'heatmap': heatmap})
 
 
-@login_required
+@session_required
 def api_recommandations(request):
     """Top 3 ressources recommandées pour l'utilisateur connecté."""
-    employe = db.employees.find_one({'django_user_id': request.user.id})
+    employe = db.employees.find_one({'django_user_id': request.session.get('user_id', '')})
     if not employe:
         return JsonResponse({'recommendations': []})
 
@@ -12844,10 +13383,10 @@ def api_recommandations(request):
     return JsonResponse({'recommendations': enriched})
 
 
-@login_required
+@session_required
 def api_anomalies(request):
     """Liste des réservations anormales (admin uniquement)."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Accès refusé'}, status=403)
 
     detector = AnomalyDetector()
@@ -12868,10 +13407,10 @@ def api_anomalies(request):
     return JsonResponse({'anomalies': clean})
 
 
-@login_required
+@session_required
 def api_train_models(request):
     """Déclenche le réentraînement (admin uniquement)."""
-    if not request.user.is_staff:
+    if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Accès refusé'}, status=403)
 
     results = train_all_models()
@@ -12885,7 +13424,7 @@ def _client_ip(request):
 
 # Liste des demandes à traiter par le manager connecté
 def approbation_inbox(request):
-    user_id = str(request.user.id)
+    user_id = str(request.session.get('user_id', ''))
     try:
         demandes = ApprovalRequest.objects.filter(
             approbateur_id=user_id, statut='en_attente'
@@ -12905,7 +13444,7 @@ def reservation_approuver(request, reservation_id):
     if not ar:
         messages.error(request, "Aucune demande en attente.")
         return redirect('reservation_detail', reservation_id=reservation_id)
-    res = ApprovalService.approuver(ar.id, request.user,
+    res = ApprovalService.approuver(ar.id, get_session_user(request),
             commentaire=request.POST.get('commentaire',''),
             ip=_client_ip(request))
     messages.success(request, "Approbation enregistrée.")
@@ -12918,7 +13457,7 @@ def reservation_rejeter(request, reservation_id):
         reservation_id=reservation_id, statut='en_attente'
     ).order_by('niveau').first()
     if ar:
-        ApprovalService.rejeter(ar.id, request.user,
+        ApprovalService.rejeter(ar.id, get_session_user(request),
             commentaire=request.POST.get('commentaire',''),
             ip=_client_ip(request))
     messages.success(request, "Réservation rejetée.")
@@ -12927,8 +13466,8 @@ def reservation_rejeter(request, reservation_id):
 def delegation_creer(request):
     if request.method == 'POST':
         ApprovalDelegation.objects.create(
-            delegant_id=str(request.user.id),
-            delegant_nom=request.user.get_full_name() or request.user.username,
+            delegant_id=str(request.session.get('user_id', '')),
+            delegant_nom=request.user.get_full_name() or request.session.get('username', ''),
             delegataire_id=request.POST['delegataire_id'],
             delegataire_nom=request.POST['delegataire_nom'],
             delegataire_email=request.POST['delegataire_email'],
@@ -12959,7 +13498,7 @@ def queue_rejoindre(request, resource_id):
     wq = QueueService.ajouter(
         resource_id=resource_id,
         resource_nom=request.POST.get('resource_nom',''),
-        user=request.user,
+        user=get_session_user(request),
         date_debut=d1, date_fin=d2,
         titre=request.POST.get('titre',''),
         nb_participants=int(request.POST.get('nb_participants', 1)),
@@ -12983,7 +13522,7 @@ def queue_alternatives(request, resource_id):
 def queue_confirmer(request, queue_id):
     """L'utilisateur transforme sa place en file en réservation."""
     try:
-        wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
+        wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.session.get('user_id', '')))
     except Exception:
         messages.error(request, "File d'attente introuvable.")
         return redirect('employe_mes_reservations')
@@ -13013,14 +13552,14 @@ def queue_confirmer(request, queue_id):
     # Lancer le workflow d'approbation
     from .approval_service import ApprovalService
     ApprovalService.creer_workflow(str(result.inserted_id),
-                                   reservation_data, request.user)
+                                   reservation_data, get_session_user(request))
 
     messages.success(request, "Réservation créée depuis la file d'attente.")
     return redirect('employe_mes_reservations')
 
 def queue_quitter(request, queue_id):
     try:
-        wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.user.id))
+        wq = WaitingQueue.objects.get(id=queue_id, user_id=str(request.session.get('user_id', '')))
         wq.statut = 'annule'
         wq.save()
     except Exception as _e:
@@ -13028,10 +13567,10 @@ def queue_quitter(request, queue_id):
     messages.info(request, "Vous avez quitté la file d'attente.")
     return redirect('employe_mes_reservations')
 # dashboard/views.py - Ajoutez à la fin du fichier
-@login_required
+@session_required
 def api_stats_compare(request):
     """API pour comparer deux périodes"""
-    if not request.user.is_staff: return JsonResponse({'error': 'Non autorisé'}, status=403)
+    if not request.session.get('is_staff', False): return JsonResponse({'error': 'Non autorisé'}, status=403)
     from datetime import datetime, timedelta
     type_period = request.GET.get('type', 'month')
     now = datetime.now()
@@ -13053,10 +13592,10 @@ def api_stats_compare(request):
         label1, label2 = "Mois précédent", "Mois actuel"
     return JsonResponse({'period1': {'total': db.acces_logs.count_documents({'timestamp': {'$gte': period1_start, '$lt': period1_end}}), 'label': label1}, 'period2': {'total': db.acces_logs.count_documents({'timestamp': {'$gte': period2_start, '$lt': period2_end}}), 'label': label2}})
 
-@login_required
+@session_required
 def api_stats_export_excel(request):
     """Export Excel avec openpyxl"""
-    if not request.user.is_staff: return JsonResponse({'error': 'Non autorisé'}, status=403)
+    if not request.session.get('is_staff', False): return JsonResponse({'error': 'Non autorisé'}, status=403)
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.chart import BarChart, Reference

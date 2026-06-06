@@ -25,12 +25,24 @@
   </button>
   
   <!-- Bouton Export -->
-  <button onclick="exportReservations()" title="Exporter CSV"
-          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
-          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
-          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-  </button>
+<!-- Bouton Export CSV -->
+<a href="{% url 'admin_reservations_export_csv' %}"
+   title="Exporter CSV"
+   style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s; text-decoration:none;"
+   onmouseover="this.style.background='var(--bg4)';this.style.color='var(--green)';this.style.borderColor='var(--green)'"
+   onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+</a>
+
+<!-- Bouton Export PDF -->
+<a href="{% url 'admin_reservations_export_pdf' %}"
+   title="Rapport PDF"
+   target="_blank"
+   style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s; text-decoration:none;"
+   onmouseover="this.style.background='var(--bg4)';this.style.color='var(--red)';this.style.borderColor='var(--red)'"
+   onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+</a>
   
   <!-- Badge stats -->
   
@@ -344,13 +356,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{% if total %}{% widthratio annulees total 100 %}{% else %}0{% endif %}%"></div></div>
     </div>
 
-    <div class="kpi cyan">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Occupation</span><div class="kpi-icon-wrap">📊</div></div>
-      <div class="kpi-val">{{ taux_occupation|default:"0" }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Taux actuel</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_occupation|default:0 }}%"></div></div>
-    </div>
+    
 
   </div><!-- /kpi-grid -->
 

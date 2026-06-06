@@ -17,9 +17,8 @@
       Exporter ▾
     </button>
     <div id="export-menu" style="display:none; position:absolute; top:100%; left:0; z-index:999; background:var(--bg2); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,.4); min-width:180px; padding:6px 0; margin-top:6px;">
-      <button onclick="exportStats('excel');toggleExportMenu()" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;color:var(--text1);cursor:pointer;font-size:13px;font-family:var(--font);transition:all .1s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">📊 Export Excel</button>
       <button onclick="exportStats('csv');toggleExportMenu()" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;color:var(--text1);cursor:pointer;font-size:13px;font-family:var(--font);transition:all .1s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">📄 Export CSV</button>
-      <button onclick="exportStats('pdf');toggleExportMenu()" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;color:var(--text1);cursor:pointer;font-size:13px;font-family:var(--font);transition:all .1s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">📑 Export PDF</button>
+      <button onclick="exportStats('pdf');toggleExportMenu()" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;color:var(--text1);cursor:pointer;font-size:13px;font-family:var(--font);transition:all .1s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">📑 Rapport PDF complet</button>
     </div>
   </div>
   
@@ -30,9 +29,6 @@
           onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
   </button>
-  
-  <!-- Badge -->
-  
   
 </div>
 {% endblock %}
@@ -58,10 +54,10 @@
 body { font-family: var(--font) !important; background: var(--bg0) !important; }
 .dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
 
-/* ═══ KPI GRID ═══ */
-.kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
-@media (max-width:1300px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
-@media (max-width:768px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+/* ═══ KPI GRID — 4 colonnes ═══ */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width:1100px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width:600px)  { .kpi-grid { grid-template-columns: 1fr; } }
 
 .kpi {
   background: var(--bg2); border: 1px solid var(--border);
@@ -98,7 +94,8 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 
 /* ═══ CHARTS ═══ */
 .chart-box { padding: 20px; }
-.chart-box canvas { max-height: 280px; width: 100% !important; }
+.chart-wrap { position: relative; height: 260px; width: 100%; }
+.chart-wrap canvas { position: absolute; inset: 0; }
 
 /* ═══ BADGES ═══ */
 .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; font-family: var(--mono); letter-spacing: .5px; }
@@ -113,19 +110,16 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 .tbl tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
 .tbl tbody tr:hover { background: var(--bg3); }
 
-/* ═══ COMPARISON ═══ */
-.comp-card { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 18px; text-align: center; }
-.comp-val { font-size: 30px; font-weight: 700; font-family: var(--mono); }
-.comp-label { font-size: 10px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
-
 /* ═══ PROGRESS ═══ */
 .progress-bar { background: var(--bg4); border-radius: 4px; height: 5px; overflow: hidden; margin-top: 6px; }
 .progress-fill { height: 100%; border-radius: 4px; transition: width .3s; }
 
-/* ═══ BUTTONS ═══ */
-.btn { padding: 6px 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 11px; font-family: var(--font); transition: all .15s; display: inline-flex; align-items: center; gap: 4px; }
-.btn-primary { background: var(--blue); color: #fff; }
-.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+/* ═══ DONUT LEGEND ═══ */
+.zone-legend { display: flex; flex-direction: column; gap: 10px; padding: 0 20px 20px; }
+.zone-item { display: flex; align-items: center; gap: 10px; }
+.zone-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.zone-name { font-size: 12px; color: var(--text2); flex: 1; }
+.zone-pct { font-family: var(--mono); font-size: 12px; color: var(--text1); font-weight: 600; }
 
 /* Scrollbar */
 * { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
@@ -133,111 +127,109 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 
 <div class="dash-wrap">
 
-  <!-- ═══════════════ KPIs ═══════════════ -->
+  <!-- ═══════════════ KPIs — 4 cartes ═══════════════ -->
   <div class="kpi-grid">
+
+    <!-- 1. Total accès du mois -->
     <div class="kpi blue">
       <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Total accès (mois)</span><div class="kpi-icon-wrap">🔑</div></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Total accès (mois)</span>
+        <div class="kpi-icon-wrap">🔑</div>
+      </div>
       <div class="kpi-val" id="kpi-total">{{ total_mois|default:0 }}</div>
-      <div class="kpi-sub">Depuis le 1er</div>
+      <div class="kpi-sub">Depuis le 1er du mois</div>
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
     </div>
+
+    <!-- 2. Taux de succès -->
     <div class="kpi green">
       <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Taux de succès</span><div class="kpi-icon-wrap">✅</div></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Taux de succès</span>
+        <div class="kpi-icon-wrap">✅</div>
+      </div>
       <div class="kpi-val" id="kpi-taux">{{ taux_succes|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Global</div>
+      <div class="kpi-sub">Accès autorisés / total</div>
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:0 }}%"></div></div>
     </div>
+
+    <!-- 3. Accès refusés (remplace No-show) -->
     <div class="kpi red">
       <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">No-show</span><div class="kpi-icon-wrap">🚫</div></div>
-      <div class="kpi-val" id="kpi-noshow">{{ taux_no_show|default:"0" }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Réservations non honorées</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_no_show|default:0 }}%"></div></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Accès refusés (mois)</span>
+        <div class="kpi-icon-wrap">🚫</div>
+      </div>
+      <div class="kpi-val" id="kpi-refuses">{{ refus_mois|default:0 }}</div>
+      <div class="kpi-sub">{{ taux_refus|default:0 }}% des tentatives</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_refus|default:0 }}%"></div></div>
     </div>
+
+    <!-- 4. Occupation moyenne des salles -->
     <div class="kpi amber">
       <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Occupation moyenne</span><div class="kpi-icon-wrap">📊</div></div>
+      <div class="kpi-top">
+        <span class="kpi-label">Occupation moyenne</span>
+        <div class="kpi-icon-wrap">📊</div>
+      </div>
       <div class="kpi-val" id="kpi-occupation">{{ occupation_moy|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Des salles</div>
+      <div class="kpi-sub">{{ total_reservations|default:0 }} réservations ce mois</div>
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ occupation_moy|default:0 }}%"></div></div>
     </div>
-    <div class="kpi purple">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Prédiction IA</span><div class="kpi-icon-wrap">🤖</div></div>
-      <div class="kpi-val" id="kpi-prediction">{% if prediction >= 0 %}+{% endif %}{{ prediction|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Tendance semaine prochaine</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:50%"></div></div>
-    </div>
+
   </div>
 
   <!-- ═══════════════ GRAPHIQUES PRINCIPAUX ═══════════════ -->
   <div class="grid-2">
+
+    <!-- Tendance accès 30 jours (sans prédiction IA) -->
     <div class="card">
       <div class="card-head">
         <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">📈</div>
         <span class="card-title">Tendance des accès (30 jours)</span>
       </div>
-      <div class="chart-box"><canvas id="trend-chart"></canvas></div>
+      <div class="chart-box"><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>
     </div>
+
+    <!-- Occupation des salles -->
     <div class="card">
       <div class="card-head">
         <div class="card-head-icon" style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.2);">🏢</div>
         <span class="card-title">Occupation des salles</span>
       </div>
-      <div class="chart-box"><canvas id="occupation-chart"></canvas></div>
+      <div class="chart-box"><div class="chart-wrap"><canvas id="occupation-chart"></canvas></div></div>
     </div>
+
   </div>
 
-  <!-- ═══════════════ COMPARAISON ═══════════════ -->
-  <div class="card">
-    <div class="card-head">
-      <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📊</div>
-      <span class="card-title">Comparaison inter-périodes</span>
-    </div>
-    <div style="padding:20px;">
-      <div class="grid-3" style="margin-bottom:16px;">
-        <div class="comp-card">
-          <div class="comp-label">Période 1</div>
-          <div class="comp-val" style="color:var(--blue2);" id="period1Value">—</div>
-          <div class="comp-label" id="period1Label">-</div>
-        </div>
-        <div class="comp-card">
-          <div class="comp-label">Évolution</div>
-          <div class="comp-val" id="evolutionValue" style="color:var(--green);">—</div>
-          <div class="comp-label">vs période précédente</div>
-        </div>
-        <div class="comp-card">
-          <div class="comp-label">Période 2</div>
-          <div class="comp-val" style="color:var(--purple);" id="period2Value">—</div>
-          <div class="comp-label" id="period2Label">-</div>
-        </div>
-      </div>
-      <canvas id="comparison-chart" style="max-height:200px;"></canvas>
-    </div>
-  </div>
-
-  <!-- ═══════════════ TOP RESSOURCES + HEURES POINTE ═══════════════ -->
+  <!-- ═══════════════ TOP RESSOURCES + RÉSERVATIONS & ACCÈS ═══════════════ -->
   <div class="grid-2">
+
+    <!-- Top 5 ressources -->
     <div class="card">
       <div class="card-head">
         <div class="card-head-icon" style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.2);">🏆</div>
         <span class="card-title">Top 5 ressources</span>
       </div>
-      <div class="chart-box"><canvas id="top-ressources-chart"></canvas></div>
+      <div class="chart-box"><div class="chart-wrap"><canvas id="top-ressources-chart"></canvas></div></div>
     </div>
+
+    <!-- Réservations & Accès par jour (remplace Heures de pointe) -->
     <div class="card">
       <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">⏰</div>
-        <span class="card-title">Heures de pointe</span>
+        <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">📅</div>
+        <span class="card-title">Réservations &amp; Accès par jour</span>
       </div>
-      <div class="chart-box"><canvas id="hourly-chart"></canvas></div>
+      <div class="chart-box"><div class="chart-wrap"><canvas id="resa-acces-chart"></canvas></div></div>
     </div>
+
   </div>
 
-  <!-- ═══════════════ TOP EMPLOYÉS + IA ═══════════════ -->
+  <!-- ═══════════════ TOP EMPLOYÉS + RÉPARTITION ZONES ═══════════════ -->
   <div class="grid-2">
+
+    <!-- Top 5 employés actifs -->
     <div class="card">
       <div class="card-head">
         <div class="card-head-icon" style="background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.2);">👥</div>
@@ -245,37 +237,52 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       </div>
       <div class="tbl-wrap">
         <table class="tbl">
-          <thead><tr><th>Employé</th><th>Dépt</th><th>Accès</th><th>Taux</th><th>Perf.</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Employé</th>
+              <th>Dépt</th>
+              <th>Accès</th>
+              <th>Taux</th>
+              <th>Perf.</th>
+            </tr>
+          </thead>
           <tbody>
             {% for emp in top_employes %}
             <tr>
               <td style="font-weight:600;color:var(--text1);">{{ emp.nom }} {{ emp.prenom }}</td>
               <td>{{ emp.departement|default:"—" }}</td>
               <td style="text-align:center;">{{ emp.nb_acces }}</td>
-              <td><span class="badge {% if emp.taux_succes >= 85 %}badge-green{% elif emp.taux_succes >= 70 %}badge-amber{% else %}badge-red{% endif %}">{{ emp.taux_succes }}%</span></td>
-              <td><div class="progress-bar"><div class="progress-fill" style="width:{{ emp.taux_succes }}%;background:{% if emp.taux_succes >= 85 %}#10b981{% elif emp.taux_succes >= 70 %}#f59e0b{% else %}#ef4444{% endif %}"></div></div></td>
+              <td>
+                <span class="badge {% if emp.taux_succes >= 85 %}badge-green{% elif emp.taux_succes >= 70 %}badge-amber{% else %}badge-red{% endif %}">
+                  {{ emp.taux_succes }}%
+                </span>
+              </td>
+              <td>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width:{{ emp.taux_succes }}%;background:{% if emp.taux_succes >= 85 %}#10b981{% elif emp.taux_succes >= 70 %}#f59e0b{% else %}#ef4444{% endif %}"></div>
+                </div>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+
+    <!-- Répartition des zones (remplace Prédictions IA) -->
     <div class="card">
       <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">🤖</div>
-        <span class="card-title">Prédictions IA</span>
+        <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">🗺️</div>
+        <span class="card-title">Répartition des zones actives</span>
       </div>
-      <div style="padding:20px;" id="ia-insights">
-        <div style="padding:14px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:var(--radius-sm);margin-bottom:10px;">
-          <div style="font-weight:600;font-size:13px;color:var(--blue2);">📈 Prédiction semaine prochaine</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:4px;">+{{ prediction|default:12 }}% d'activité prévue — Renforcer les contrôles entre 14h-16h</div>
+      <div class="chart-box" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <div style="position:relative;width:220px;height:220px;flex-shrink:0;">
+          <canvas id="zones-donut-chart"></canvas>
         </div>
-        <div style="padding:14px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.15);border-radius:var(--radius-sm);">
-          <div style="font-weight:600;font-size:13px;color:var(--amber);">⚠️ Alerte prédictive</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:4px;">Zone {{ zone_active|default:"Production" }} : risque de saturation mercredi</div>
-        </div>
+        <div class="zone-legend" id="zone-legend" style="flex:1;padding:0;"></div>
       </div>
     </div>
+
   </div>
 
 </div><!-- /dash-wrap -->
@@ -283,92 +290,171 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 /* ─── Données serveur ─── */
-var chartLabels = {{ chart_labels|safe }};
-var chartAutorises = {{ chart_autorises|safe }};
-var chartRefuses = {{ chart_refuses|safe }};
-var chartPrediction = {{ chart_prediction|safe }};
-var topRessources = {{ top_ressources|safe }};
-var occupationLabels = {{ occupation_labels|safe }};
-var occupationValues = {{ occupation_values|safe }};
+var chartLabels       = {{ chart_labels|default:"[]"|safe }};
+var chartAutorises    = {{ chart_autorises|default:"[]"|safe }};
+var chartRefuses      = {{ chart_refuses|default:"[]"|safe }};
+var chartReservations = {{ chart_reservations|default:"[]"|safe }};
+var topRessources     = {{ top_ressources|default:"[]"|safe }};
+var occupationLabels  = {{ occupation_labels|default:"[]"|safe }};
+var occupationValues  = {{ occupation_values|default:"[]"|safe }};
+var zonesStats        = {{ zones_stats|default:"[]"|safe }};
+
+/* ─── Palette zones ─── */
+var zonePalette = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
 
 /* ─── Init charts ─── */
 function initCharts() {
   if (typeof Chart === 'undefined') { setTimeout(initCharts, 100); return; }
 
+  /* Tendance accès — SANS prédiction IA */
   var trendCtx = document.getElementById('trend-chart')?.getContext('2d');
   if (trendCtx && chartLabels?.length) {
     new Chart(trendCtx, {
-      type: 'line', data: {
+      type: 'line',
+      data: {
         labels: chartLabels,
         datasets: [
           { label: '✅ Autorisés', data: chartAutorises, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.08)', fill: true, tension: .3, pointRadius: 2 },
-          { label: '❌ Refusés', data: chartRefuses, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.08)', fill: true, tension: .3, pointRadius: 2 },
-          { label: '🤖 Prédiction', data: chartPrediction, borderColor: '#f59e0b', borderDash: [5,5], fill: false, tension: .3, pointRadius: 1 }
+          { label: '❌ Refusés',   data: chartRefuses,   borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.08)',  fill: true, tension: .3, pointRadius: 2 }
         ]
-      }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8fa3bc', font: { size: 11 }, padding: 16, usePointStyle: true } } }, scales: { x: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' } }, y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' }, beginAtZero: true } } }
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8fa3bc', font: { size: 11 }, padding: 16, usePointStyle: true } } },
+        scales: {
+          x: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' } },
+          y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' }, beginAtZero: true }
+        }
+      }
     });
   }
 
+  /* Occupation des salles */
   var occCtx = document.getElementById('occupation-chart')?.getContext('2d');
   if (occCtx && occupationLabels?.length) {
     new Chart(occCtx, {
-      type: 'bar', data: { labels: occupationLabels, datasets: [{ label: 'Occupation (%)', data: occupationValues, backgroundColor: '#3b82f6', borderRadius: 8 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8fa3bc', font: { size: 11 } } } }, scales: { x: { ticks: { color: '#56708a' }, grid: { display: false } }, y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' }, max: 100 } } }
+      type: 'bar',
+      data: { labels: occupationLabels, datasets: [{ label: 'Occupation (%)', data: occupationValues, backgroundColor: '#3b82f6', borderRadius: 8 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8fa3bc', font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { color: '#56708a' }, grid: { display: false } },
+          y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' }, max: 100, beginAtZero: true }
+        }
+      }
     });
   }
 
+  /* Top 5 ressources */
   var topCtx = document.getElementById('top-ressources-chart')?.getContext('2d');
   if (topCtx && topRessources?.length) {
     new Chart(topCtx, {
-      type: 'bar', data: { labels: topRessources.map(function(r){return r.nom;}), datasets: [{ label: 'Réservations', data: topRessources.map(function(r){return r.reservations;}), backgroundColor: '#f59e0b', borderRadius: 8 }] },
-      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' } }, y: { ticks: { color: '#8fa3bc', font: { size: 11 } }, grid: { display: false } } } }
+      type: 'bar',
+      data: {
+        labels: topRessources.map(function(r){ return r.nom; }),
+        datasets: [{ label: 'Réservations', data: topRessources.map(function(r){ return r.reservations; }), backgroundColor: '#f59e0b', borderRadius: 8 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' } },
+          y: { ticks: { color: '#8fa3bc', font: { size: 11 } }, grid: { display: false } }
+        }
+      }
     });
   }
 
-  var hourCtx = document.getElementById('hourly-chart')?.getContext('2d');
-  if (hourCtx) {
-    new Chart(hourCtx, {
-      type: 'line', data: { labels: ['8h','9h','10h','11h','12h','13h','14h','15h','16h','17h','18h'], datasets: [{ label: 'Accès', data: [12,45,67,89,56,34,78,92,84,56,23], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,.1)', fill: true, tension: .4 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#56708a' } }, y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' }, beginAtZero: true } } }
+  /* Réservations & Accès par jour (remplace Heures de pointe) */
+  var resaCtx = document.getElementById('resa-acces-chart')?.getContext('2d');
+  if (resaCtx && chartLabels?.length) {
+    new Chart(resaCtx, {
+      type: 'bar',
+      data: {
+        labels: chartLabels,
+        datasets: [
+          { label: '📅 Réservations', data: chartReservations, backgroundColor: 'rgba(139,92,246,.75)', borderRadius: 6, order: 1 },
+          { label: '🔑 Accès',        data: chartAutorises,    type: 'line', borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,.10)', fill: true, tension: .3, pointRadius: 2, order: 0 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#8fa3bc', font: { size: 11 }, padding: 14, usePointStyle: true } }
+        },
+        scales: {
+          x: { ticks: { color: '#56708a', maxTicksLimit: 10 }, grid: { display: false } },
+          y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' }, beginAtZero: true }
+        }
+      }
     });
   }
 
-  // Comparaison
-  var compCtx = document.getElementById('comparison-chart')?.getContext('2d');
-  if (compCtx) {
-    new Chart(compCtx, {
-      type: 'bar', data: { labels: ['Période 1', 'Période 2'], datasets: [{ label: 'Accès', data: [245, 278], backgroundColor: ['#3b82f6', '#8b5cf6'], borderRadius: 8 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#56708a' }, grid: { color: 'rgba(99,140,185,.08)' } }, x: { ticks: { color: '#8fa3bc' }, grid: { display: false } } } }
-    });
-  }
+  /* Donut — Répartition des zones actives */
+  var donutCtx = document.getElementById('zones-donut-chart')?.getContext('2d');
+  if (donutCtx && zonesStats?.length) {
+    var zLabels = zonesStats.map(function(z){ return z.nom; });
+    var zData   = zonesStats.map(function(z){ return z.count; });
+    var zColors = zonesStats.map(function(_, i){ return zonePalette[i % zonePalette.length]; });
 
-  // Valeurs comparaison
-  document.getElementById('period1Value').textContent = '245';
-  document.getElementById('period2Value').textContent = '278';
-  document.getElementById('evolutionValue').textContent = '+13.5%';
-  document.getElementById('period1Label').textContent = 'Mois précédent';
-  document.getElementById('period2Label').textContent = 'Mois en cours';
+    new Chart(donutCtx, {
+      type: 'doughnut',
+      data: { labels: zLabels, datasets: [{ data: zData, backgroundColor: zColors, borderWidth: 2, borderColor: '#111827', hoverOffset: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(c){ return ' ' + c.label + ' : ' + c.raw + ' accès'; } } } }
+      }
+    });
+
+    /* Légende manuelle */
+    var legend = document.getElementById('zone-legend');
+    if (legend) {
+      var total = zData.reduce(function(a, b){ return a + b; }, 0);
+      legend.innerHTML = '';
+      zLabels.forEach(function(name, i) {
+        var pct = total ? Math.round(zData[i] / total * 100) : 0;
+        legend.innerHTML += '<div class="zone-item">' +
+          '<div class="zone-dot" style="background:' + zColors[i] + '"></div>' +
+          '<span class="zone-name">' + name + '</span>' +
+          '<span class="zone-pct">' + pct + '%</span>' +
+        '</div>';
+      });
+    }
+  }
 }
 
 /* ─── Export menu ─── */
-function toggleExportMenu(e) { if(e)e.stopPropagation(); var m=document.getElementById('export-menu'); m.style.display=m.style.display==='none'?'block':'none'; }
-document.addEventListener('click',function(e){ var w=document.getElementById('exportDropdown'); if(w&&!w.contains(e.target)) document.getElementById('export-menu').style.display='none'; });
+function toggleExportMenu(e) {
+  if (e) e.stopPropagation();
+  var m = document.getElementById('export-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  var w = document.getElementById('exportDropdown');
+  if (w && !w.contains(e.target)) document.getElementById('export-menu').style.display = 'none';
+});
 
 /* ─── Export ─── */
 function exportStats(type) {
   var days = 30;
-  if (type === 'csv') window.location.href = '/dashboard/api/stats/export/csv/?days=' + days;
-  else if (type === 'pdf') window.location.href = '/dashboard/api/stats/export/pdf/?days=' + days;
+  if (type === 'csv')   window.location.href = '/dashboard/api/stats/export/csv/?days=' + days;
+  else if (type === 'pdf')   window.location.href = '/dashboard/api/stats/export/pdf/?days=' + days;
   else if (type === 'excel') window.location.href = '/dashboard/api/stats/export/excel/?days=' + days;
 }
 
-/* ─── KPI counter ─── */
+/* ─── KPI counter animation ─── */
 document.querySelectorAll('.kpi-val').forEach(function(el) {
-  var text = el.textContent.replace(/\s/g,' ');
-  var num = parseInt(text.replace(/[^0-9]/g,''),10);
-  if (isNaN(num)||num===0)return;
-  var duration=900, step=num/duration*16, current=0;
-  var timer=setInterval(function(){current=Math.min(current+step,num);el.textContent=Math.round(current)+(text.includes('%')?'%':'');if(current>=num)clearInterval(timer);},16);
+  var text = el.textContent.replace(/\s/g, ' ');
+  var num = parseInt(text.replace(/[^0-9]/g, ''), 10);
+  if (isNaN(num) || num === 0) return;
+  var duration = 900, step = num / duration * 16, current = 0;
+  var timer = setInterval(function() {
+    current = Math.min(current + step, num);
+    el.textContent = Math.round(current) + (text.includes('%') ? '%' : '');
+    if (current >= num) clearInterval(timer);
+  }, 16);
 });
 
 /* ─── Init ─── */

@@ -2,7 +2,7 @@ from django.urls import path
 from . import views
 from django.conf import settings
 from django.conf.urls.static import static
-
+from dashboard import ai_views_api as ai
 urlpatterns = [
 
     # ── Accueil & Authentification ───────────────────────────────────────────
@@ -141,7 +141,7 @@ path('terminate-session/<str:session_id>/',             views.terminate_session,
     path('dashboard/api/stats/export/pdf/',        views.api_stats_export_pdf,    name='api_stats_export_pdf'),
     path('dashboard/api/stats/departement/',       views.api_stats_departement,   name='api_stats_departement'),
     path('dashboard/api/stats/period-custom/',     views.api_stats_period_custom, name='api_stats_period_custom'),
-    path('dashboard/api/stats/trend-cache/',       views.api_stats_trend_cache,   name='api_stats_trend_cache'),
+    #path('dashboard/api/stats/trend-cache/',       views.api_stats_trend_cache,   name='api_stats_trend_cache'),
 
     # ── API Live & urgence ───────────────────────────────────────────────────
     path('api/live-feed/',        views.api_live_feed,        name='api_live_feed'),
@@ -194,7 +194,7 @@ path('terminate-session/<str:session_id>/',             views.terminate_session,
     # ── API Sessions ─────────────────────────────────────────────────────────
     path('api/connected-users/',                     views.api_connected_users,    name='api_connected_users'),
     path('api/session-stats/',                       views.api_session_stats,      name='api_session_stats'),
-    path('api/session-details/<int:session_id>/',    views.api_session_details,    name='api_session_details'),
+    #path('api/session-details/<int:session_id>/',    views.api_session_details,    name='api_session_details'),
 
     # ── API Admin ────────────────────────────────────────────────────────────
     path('api/admin/profile/update/', views.update_admin_profile,  name='update_admin_profile'),
@@ -253,5 +253,16 @@ path('terminate-session/<str:session_id>/',             views.terminate_session,
     path('employe/reservations/export/csv/', views.reservations_export_csv, name='reservations_export_csv'),
     path('employe/reservations/export/pdf/', views.reservations_export_pdf, name='reservations_export_pdf'),
     
-    ]
+    path("api/ia/train/",        ai.ia_train,       name="ia_train"),
+    path("api/ia/security/",      ai.ia_security,    name="ia_security"),
+    path("api/ia/noshow/",        ai.ia_noshow,      name="ia_noshow"),
+    path("api/ia/utilisation/",   ai.ia_utilisation, name="ia_utilisation"),
+    path("api/ia/comportement/",  ai.ia_comportement,name="ia_comportement"),
+    path("api/ia/status/",        ai.ia_status,      name="ia_status"),
+    
+    # ── Export Admin Réservations ────────────────────────────────────────────────
+    path('reservations/export/csv/', views.admin_reservations_export_csv, name='admin_reservations_export_csv'),
+    path('reservations/export/pdf/', views.admin_reservations_export_pdf, name='admin_reservations_export_pdf'),
+    path('api/materiel-disponibilite/<str:materiel_id>/', views.api_materiel_disponibilite, name='api_materiel_disponibilite'),
+    path('parametres/reservation/', views.parametres_reservation_save, name='parametres_reservation_save'),]
     

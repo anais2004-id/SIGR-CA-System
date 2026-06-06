@@ -949,14 +949,10 @@ body.light textarea {
     <a href="{% url 'employe_list' %}" class="nav-item {% block nav_employes %}{% endblock %}">
       <span class="nav-ico">👥</span><span>Employés</span>
     </a>
-    <a href="{% url 'historique' %}" class="nav-item {% block nav_historique %}{% endblock %}">
-      <span class="nav-ico">📋</span><span>Historique des accès</span>
-    </a>
+    
 
     <div class="nav-group">Gestion des Ressources</div>
-    <a href="{% url 'calendrier' %}" class="nav-item {% block nav_calendrier %}{% endblock %}">
-      <span class="nav-ico">📅</span><span>Calendrier d'accès</span>
-    </a>
+    
     <a href="{% url 'reservation_list' %}" class="nav-item {% block nav_reservations %}{% endblock %}">
       <span class="nav-ico">📆</span><span>Réservations</span>
     </a>
@@ -1146,9 +1142,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Badges de notification
   updateNotifBadge();
-  updateAdminNotifBadge();
   setInterval(updateNotifBadge, 30000);
-  setInterval(updateAdminNotifBadge, 30000);
 
   // Dropdown paramètres auto-ouvert
   var trigger = document.querySelector('.nav-dropdown-trigger');
@@ -1163,26 +1157,28 @@ document.addEventListener('DOMContentLoaded', function() {
 // NOTIFICATIONS
 // ═══════════════════════════════════════
 function updateNotifBadge() {
+  {% if request.session.is_staff %}
+  const badge = document.getElementById('admin-notif-badge');
+  const NOTIF_COUNT_URL = '/api/admin/notifications/unread-count/';
+  {% else %}
   const badge = document.getElementById('notif-badge');
+  const NOTIF_COUNT_URL = '/api/notifications/unread-count/';
+  {% endif %}
+
   if (!badge) return;
-  fetch('/api/notifications/unread-count/')
+
+  fetch(NOTIF_COUNT_URL, {
+    credentials: 'same-origin',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
     .then(r => r.json())
     .then(d => {
       badge.textContent = d.count;
       badge.style.display = d.count > 0 ? 'inline-block' : 'none';
-    }).catch(() => {});
+    })
+    .catch(() => {});
 }
 
-function updateAdminNotifBadge() {
-  const badge = document.getElementById('admin-notif-badge');
-  if (!badge) return;
-  fetch('/api/admin/notifications/unread-count/')
-    .then(r => r.json())
-    .then(d => {
-      badge.textContent = d.count;
-      badge.style.display = d.count > 0 ? 'inline-block' : 'none';
-    }).catch(() => {});
-}
 
 // ═══════════════════════════════════════
 // DROPDOWN PARAMÈTRES
@@ -1204,8 +1200,57 @@ document.addEventListener('click', function(e) {
     if (trigger) trigger.classList.remove('open');
   }
 });
+<!-- Auto-dismiss messages -->
+
+(function() {
+  function dismissMsg(el) {
+    el.style.transition = 'opacity .5s ease, transform .4s ease, max-height .5s ease, margin .5s ease, padding .5s ease';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-6px)';
+    el.style.maxHeight = '0';
+    el.style.margin = '0';
+    el.style.padding = '0';
+    el.style.overflow = 'hidden';
+    setTimeout(() => el.remove(), 500);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Sélectionne toutes les alertes Django (classes alert-success, alert-error, alert-info, alert-warning)
+    const msgs = document.querySelectorAll('.alert, .alert-success, .alert-error, .alert-info, .alert-warning, [class*="messages"] .alert');
+
+    msgs.forEach(function(msg) {
+      // Ajouter un bouton ✕ pour fermeture manuelle
+      const btn = document.createElement('button');
+      btn.innerHTML = '✕';
+      btn.style.cssText = 'margin-left:auto; background:none; border:none; cursor:pointer; opacity:.6; font-size:14px; color:inherit; padding:0 0 0 12px; flex-shrink:0;';
+      btn.onclick = function() { dismissMsg(msg); };
+      msg.style.display = 'flex';
+      msg.style.alignItems = 'center';
+      msg.appendChild(btn);
+
+      // Barre de progression
+      const bar = document.createElement('div');
+      bar.style.cssText = 'position:absolute; bottom:0; left:0; height:2px; background:currentColor; opacity:.3; border-radius:0 0 var(--radius,12px) var(--radius,12px); width:100%; animation: shrink 5s linear forwards;';
+      msg.style.position = 'relative';
+      msg.style.overflow = 'hidden';
+      msg.appendChild(bar);
+
+      // Auto-dismiss après 5s
+      setTimeout(function() { dismissMsg(msg); }, 5000);
+    });
+
+    // Injecter l'animation keyframe
+    if (!document.getElementById('msg-anim-style')) {
+      const style = document.createElement('style');
+      style.id = 'msg-anim-style';
+      style.textContent = '@keyframes shrink { from { width:100% } to { width:0% } }';
+      document.head.appendChild(style);
+    }
+  });
+})();
 
 {% block extra_js %}{% endblock %}
+
 </script>
 </body>
 </html>

@@ -393,11 +393,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 <!-- ══════════════════════════════════════════
      MODAL
 ══════════════════════════════════════════ -->
-<div class="modal-overlay" id="indispoModal" onclick="if(event.target===this)closeModal()">
+<div class="modal-overlay" id="indispoModal" onclick="if(event.target===this)fermerModalIndispo()">
   <div class="modal">
     <div class="modal-head">
       <span class="modal-title" id="modalTitle">➕ Nouvelle indisponibilité</span>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="fermerModalIndispo()">✕</button>
     </div>
     <div class="modal-body">
       <form id="indispoForm" onsubmit="return false;">
@@ -467,7 +467,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         </div>
 
         <div class="modal-footer" style="border:none;padding:0;margin-top:4px;">
-          <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+          <button type="button" class="btn btn-ghost" onclick="fermerModalIndispo()">Annuler</button>
           <button type="button" class="btn btn-primary" onclick="saveIndisponibilite()">💾 Enregistrer</button>
         </div>
       </form>
@@ -534,7 +534,8 @@ function openEditModal(id) {
   document.getElementById('indispoModal').style.display = 'flex';
 }
 
-function closeModal() {
+/* ─── CORRECTION : fonction renommée pour éviter le conflit avec base.html ─── */
+function fermerModalIndispo() {
   document.getElementById('indispoModal').style.display = 'none';
 }
 
@@ -573,7 +574,7 @@ function saveIndisponibilite() {
   .then(function(d) {
     if (d.status === 'success' || d.success) {
       showToast(d.message || (isEdit ? 'Indisponibilité modifiée' : 'Indisponibilité créée'), 'success');
-      closeModal();
+      fermerModalIndispo();
       setTimeout(function() { location.reload(); }, 900);
     } else {
       showToast(d.message || d.error || 'Erreur', 'error');

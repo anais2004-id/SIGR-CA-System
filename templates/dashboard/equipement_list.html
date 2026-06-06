@@ -355,7 +355,6 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
               <div style="display:flex; gap:4px;">
                 <a href="{% url 'equipement_detail' eq.id %}" class="btn btn-ghost btn-sm" title="Détails">👁️</a>
                 <a href="{% url 'equipement_modifier' eq.id %}" class="btn btn-ghost btn-sm" title="Modifier">✏️</a>
-                <button onclick="testerEquipement('{{ eq.id }}', this)" class="btn btn-ghost btn-sm" title="Tester connexion">📡</button>
                 <button onclick="showLogsModal('{{ eq.id }}', '{{ eq.nom }}')" class="btn btn-ghost btn-sm" title="Voir logs">📋</button>
               </div>
             </td>
@@ -493,23 +492,7 @@ function changeRowsPerPage() {
   setupPagination();
 }
 
-/* ─── Test équipement ─── */
-function testerEquipement(id, btn) {
-  btn.disabled = true;
-  btn.textContent = '⏳';
-  
-  fetch('/equipements/' + id + '/tester/')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.status === 'success') {
-        alert('✅ ' + data.message + '\nTemps de réponse: ' + (data.response_time || 'N/A') + 'ms');
-      } else {
-        alert('❌ ' + (data.message || 'Erreur'));
-      }
-    })
-    .catch(function() { alert('❌ Erreur de connexion'); })
-    .finally(function() { btn.disabled = false; btn.textContent = '📡'; });
-}
+
 
 /* ─── Modal Logs ─── */
 function showLogsModal(id, name) {

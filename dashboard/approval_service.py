@@ -20,7 +20,7 @@ class ApprovalService:
         cat   = reservation.get('categorie', '')
         nb    = reservation.get('nb_participants', 1)
 
-        rules = ApprovalRule.objects.filter(actif=True).order_by('priorite')
+        rules = [r for r in ApprovalRule.objects.all().order_by('priorite') if r.actif]
         for r in rules:
             if r.role_concerne and r.role_concerne != user_role:
                 continue

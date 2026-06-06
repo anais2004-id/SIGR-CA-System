@@ -1,545 +1,448 @@
 {% extends "base.html" %}
-
-{% block title %}{% if config.default_language == 'en' %}Settings{% else %}Paramètres{% endif %} · SIGR-CA{% endblock %}
+{% block title %}Paramètres · SIGR-CA{% endblock %}
 {% block nav_settings %}active{% endblock %}
-{% block page_title %}{% if config.default_language == 'en' %}System Configuration{% else %}Configuration système{% endif %}{% endblock %}
-{% block page_sub %}{% if config.default_language == 'en' %}Security, authentication & advanced settings{% else %}Sécurité, authentification & paramètres avancés{% endif %}{% endblock %}
+{% block page_title %}Configuration système{% endblock %}
+{% block page_sub %}Sécurité, profil administrateur et préférences{% endblock %}
 
 {% block topbar_actions %}
 <div style="display:flex; gap:10px; align-items:center;">
-  
-  <!-- Bouton Enregistrer -->
-  <button onclick="saveAllSettings(this)" 
-          style="height:38px; padding:0 18px; display:inline-flex; align-items:center; gap:7px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s; white-space:nowrap;"
+  <button onclick="saveAllSettings(this)"
+          style="height:38px; padding:0 20px; display:inline-flex; align-items:center; gap:8px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-family:var(--font); font-weight:600; font-size:13px; cursor:pointer; transition:all .15s;"
           onmouseover="this.style.background='var(--blue2)';this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 14px rgba(59,130,246,.35)'"
           onmouseout="this.style.background='var(--blue)';this.style.transform='none';this.style.boxShadow='none'">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-    {% if config.default_language == 'en' %}Save Changes{% else %}Enregistrer{% endif %}
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    Enregistrer
   </button>
-  
-  <!-- Bouton Reset -->
-  <button onclick="resetToDefaults()" 
-          style="height:38px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; background:transparent; color:var(--text2); border:1px solid var(--border2); border-radius:10px; font-family:var(--font); font-weight:600; font-size:12.5px; cursor:pointer; transition:all .15s; white-space:nowrap;"
-          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
-          onmouseout="this.style.background='transparent';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-    {% if config.default_language == 'en' %}Reset Defaults{% else %}Rétablir défauts{% endif %}
-  </button>
-  
-  <!-- Badge -->
-  <div class="live-pill" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple);">
-    <span class="live-dot" style="background:var(--purple);"></span>
-    <span style="font-family:var(--mono);font-size:11px;font-weight:700;">CONFIG</span>
-  </div>
-  
 </div>
 {% endblock %}
 
 {% block content %}
 <style>
-/* ═══════════════════════════════════════
-   FONTS & TOKENS
-═══════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-
 :root {
-  --font: 'Space Grotesk', sans-serif;
-  --mono: 'JetBrains Mono', monospace;
-  --bg0: #080d17; --bg1: #0d1320; --bg2: #111827; --bg3: #162032; --bg4: #1c2b40; --bg5: #243347;
-  --border: rgba(99,140,185,.12); --border2: rgba(99,140,185,.18); --border3: rgba(99,140,185,.28);
-  --text1: #e8edf5; --text2: #8fa3bc; --text3: #56708a;
-  --blue: #3b82f6; --blue2: #60a5fa; --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6;
-  --radius: 14px; --radius-sm: 8px;
+  --font:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
+  --bg0:#080d17; --bg1:#0d1320; --bg2:#111827; --bg3:#162032; --bg4:#1c2b40; --bg5:#243347;
+  --border:rgba(99,140,185,.12); --border2:rgba(99,140,185,.18); --border3:rgba(99,140,185,.28);
+  --text1:#e8edf5; --text2:#8fa3bc; --text3:#56708a;
+  --blue:#3b82f6; --blue2:#60a5fa; --cyan:#06b6d4; --green:#10b981; --amber:#f59e0b; --red:#ef4444; --purple:#8b5cf6;
+  --radius:14px; --radius-sm:8px;
 }
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:var(--font)!important;background:var(--bg0)!important;}
+.dash-wrap{display:flex;flex-direction:column;gap:20px;padding-bottom:40px;}
 
-*, *::before, *::after { box-sizing: border-box; }
-body { font-family: var(--font) !important; background: var(--bg0) !important; }
-.dash-wrap { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
+/* Layout 2 colonnes */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media(max-width:960px){.grid-2{grid-template-columns:1fr;}}
 
-/* ═══ CARD ═══ */
-.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.card-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
-.card-head-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-.card-title { font-weight: 700; font-size: 14px; color: var(--text1); flex: 1; }
+/* Card */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.card-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.card-head-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.card-title{font-weight:700;font-size:14px;color:var(--text1);flex:1;}
+.card-body{padding:20px;}
 
-/* ═══ TABS ═══ */
-.tabs { display: flex; gap: 4px; background: var(--bg3); padding: 5px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
-.tab-btn { flex: 1; min-width: 120px; padding: 12px 16px; border-radius: 9px; border: none; background: transparent; color: var(--text2); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s; font-family: var(--font); text-align: center; }
-.tab-btn.active { background: var(--bg2); color: var(--text1); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
-.tab-btn:hover:not(.active) { color: var(--text1); }
+/* Section interne */
+.section-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 
-/* ═══ TOGGLE ROW ═══ */
-.toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
-.toggle-row:last-child { border-bottom: none; }
-.toggle-info { flex: 1; padding-right: 16px; }
-.toggle-name { font-weight: 600; font-size: 13px; color: var(--text1); margin-bottom: 3px; }
-.toggle-desc { font-size: 10.5px; color: var(--text3); }
+/* Toggle row */
+.toggle-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);}
+.toggle-row:last-child{border-bottom:none;}
+.toggle-info{flex:1;padding-right:16px;}
+.toggle-name{font-weight:600;font-size:12.5px;color:var(--text1);margin-bottom:2px;}
+.toggle-desc{font-size:10px;color:var(--text3);}
 
-/* ═══ RISK BADGE ═══ */
-.risk-badge { font-size: 9px; padding: 2px 8px; border-radius: 20px; font-weight: 700; font-family: var(--mono); white-space: nowrap; }
-.risk-high { background: rgba(239,68,68,.12); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
-.risk-mid  { background: rgba(245,158,11,.12); color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
-.risk-low  { background: rgba(16,185,129,.12); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+/* Toggle switch */
+.sw{position:relative;display:inline-block;width:42px;height:23px;flex-shrink:0;}
+.sw input{opacity:0;width:0;height:0;}
+.sw-slider{position:absolute;cursor:pointer;inset:0;background:var(--bg4);border-radius:23px;transition:.25s;border:1px solid var(--border2);}
+.sw-slider::before{content:'';position:absolute;height:17px;width:17px;left:2px;bottom:2px;background:var(--text3);border-radius:50%;transition:.25s;}
+input:checked+.sw-slider{background:var(--blue);border-color:var(--blue);}
+input:checked+.sw-slider::before{transform:translateX(19px);background:#fff;}
 
-/* ═══ TOGGLE SWITCH ═══ */
-.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg4); border-radius: 24px; transition: .3s; border: 1px solid var(--border2); }
-.toggle-slider::before { content: ''; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px; background: var(--text3); border-radius: 50%; transition: .3s; }
-input:checked + .toggle-slider { background: var(--blue); border-color: var(--blue); }
-input:checked + .toggle-slider::before { transform: translateX(20px); background: #fff; }
+/* Form */
+.form-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text3);margin-bottom:5px;display:block;}
+.form-input,.form-select{width:100%;padding:9px 13px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:13px;color:var(--text1);font-family:var(--font);outline:none;transition:border .15s;}
+.form-input:focus,.form-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.1);}
+.form-input:disabled{opacity:.45;cursor:not-allowed;}
+.form-select{cursor:pointer;}
+.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:500px){.form-grid-2{grid-template-columns:1fr;}}
 
-/* ═══ FORM ═══ */
-.form-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text3); margin-bottom: 6px; display: block; }
-.form-input, .form-select {
-  width: 100%; padding: 10px 14px; background: var(--bg3); border: 1px solid var(--border2);
-  border-radius: var(--radius-sm); font-size: 13px; color: var(--text1); font-family: var(--font); outline: none; transition: all .15s;
-}
-.form-input:focus, .form-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
-.form-select { cursor: pointer; }
+/* Avatar */
+.avatar{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--cyan));display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;box-shadow:0 4px 20px rgba(59,130,246,.3);font-family:var(--mono);flex-shrink:0;}
 
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+/* Séparateur */
+.sep{height:1px;background:var(--border);margin:16px 0;}
 
-/* ═══ PROFILE ═══ */
-.profile-avatar {
-  width: 90px; height: 90px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--blue), var(--cyan));
-  display: flex; align-items: center; justify-content: center;
-  font-size: 32px; font-weight: 700; color: #fff;
-  box-shadow: 0 4px 20px rgba(59,130,246,.3);
-}
+/* Sys cards */
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;}
+.sys-card{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:14px;text-align:center;}
+.sys-label{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:6px;}
+.sys-val{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--text1);}
 
-/* ═══ SYS INFO ═══ */
-.sys-card { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+/* Toast */
+.toast{position:fixed;top:20px;right:20px;z-index:10000;padding:13px 20px;border-radius:10px;font-size:13px;font-weight:600;color:#fff;opacity:0;transform:translateY(-8px);transition:all .25s;pointer-events:none;max-width:360px;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.ok{background:var(--green);}
+.toast.err{background:var(--red);}
 
-/* ═══ TOAST ═══ */
-.toast {
-  position: fixed; top: 20px; right: 20px; z-index: 10000;
-  padding: 14px 22px; border-radius: 10px; font-size: 13px; font-weight: 600;
-  color: #fff; opacity: 0; transform: translateX(20px); transition: all .3s;
-  pointer-events: none; max-width: 380px;
-}
-.toast.show { opacity: 1; transform: translateX(0); }
-.toast.ok { background: var(--green); }
-.toast.err { background: var(--red); }
-.toast.info { background: var(--blue); }
-
-/* Scrollbar */
-* { scrollbar-width: thin; scrollbar-color: var(--bg5) transparent; }
+*{scrollbar-width:thin;scrollbar-color:var(--bg5) transparent;}
 </style>
 
 <div class="dash-wrap">
 
-  <!-- ═══════════════ TABS ═══════════════ -->
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('general')">⚙️ {% if config.default_language == 'en' %}General{% else %}Général{% endif %}</button>
-    <button class="tab-btn" onclick="switchTab('security')">🔐 {% if config.default_language == 'en' %}Security{% else %}Sécurité{% endif %}</button>
-    <button class="tab-btn" onclick="switchTab('backup')">💾 {% if config.default_language == 'en' %}Backup{% else %}Sauvegarde{% endif %}</button>
-    <button class="tab-btn" onclick="switchTab('api')">🌐 API</button>
-    <button class="tab-btn" onclick="switchTab('profile')">👤 {% if config.default_language == 'en' %}Profile{% else %}Profil{% endif %}</button>
-  </div>
+  <!-- ═══ LIGNE 1 : Profil + Sécurité ═══ -->
+  <div class="grid-2">
 
-  <!-- ═══════════════ TAB GÉNÉRAL ═══════════════ -->
-  <div class="settings-panel" id="tab-general">
+    <!-- ── Profil administrateur ── -->
     <div class="card">
       <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.2);">⚙️</div>
-        <span class="card-title">{% if config.default_language == 'en' %}General Settings{% else %}Paramètres généraux{% endif %}</span>
+        <div class="card-head-icon" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.2);">👤</div>
+        <span class="card-title">Profil administrateur</span>
       </div>
-      <div style="padding:16px 20px;">
-
-        <!-- Langue -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Application Language{% else %}Langue de l'application{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Choose the display language{% else %}Choisissez la langue d'affichage{% endif %}</div>
+      <div class="card-body">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+          <div class="avatar">{{ user.first_name|slice:":1"|upper|default:"A" }}{{ user.last_name|slice:":1"|upper|default:"" }}</div>
+          <div>
+            <div style="font-weight:700;font-size:15px;color:var(--text1);">{{ user.first_name }} {{ user.last_name }}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">{{ user.email }}</div>
+            <div style="font-size:10px;color:var(--purple);margin-top:4px;font-family:var(--mono);">{{ admin_profile.role|default:"Administrateur Système" }}</div>
           </div>
-          <select id="default_language" class="form-select" style="width:150px;">
-            <option value="fr" {% if config.default_language == 'fr' or not config.default_language %}selected{% endif %}>🇫🇷 Français</option>
-            <option value="en" {% if config.default_language == 'en' %}selected{% endif %}>🇬🇧 English</option>
-            <option value="ar" {% if config.default_language == 'ar' %}selected{% endif %}>🇩🇿 العربية</option>
-          </select>
         </div>
 
-        <!-- Mode sombre -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Dark Mode by default{% else %}Mode sombre par défaut{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Dark theme on login{% else %}Thème sombre à la connexion{% endif %}</div>
+        <div class="form-grid-2" style="margin-bottom:12px;">
+          <div>
+            <label class="form-label">Prénom</label>
+            <input class="form-input" id="profile_firstname" value="{{ user.first_name }}">
           </div>
-          <label class="toggle-switch"><input type="checkbox" id="dark_default" {% if config.dark_default %}checked{% endif %}><span class="toggle-slider"></span></label>
+          <div>
+            <label class="form-label">Nom</label>
+            <input class="form-input" id="profile_lastname" value="{{ user.last_name }}">
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="form-label">Email</label>
+          <input class="form-input" type="email" id="profile_email" value="{{ user.email }}">
+        </div>
+        <div class="form-grid-2" style="margin-bottom:12px;">
+          <div>
+            <label class="form-label">Téléphone</label>
+            <input class="form-input" id="profile_phone" value="{{ admin_profile.phone|default:'' }}" placeholder="+213 xxx xxx xxx">
+          </div>
+          <div>
+            <label class="form-label">Fonction</label>
+            <input class="form-input" id="profile_role" value="{{ admin_profile.role|default:'Administrateur' }}">
+          </div>
         </div>
 
-        <!-- Animations UI -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}UI Animations{% else %}Animations UI{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Enable transitions & animations{% else %}Activer les transitions et animations{% endif %}</div>
-          </div>
-          <label class="toggle-switch"><input type="checkbox" id="ui_animations" {% if config.ui_animations %}checked{% endif %}><span class="toggle-slider"></span></label>
-        </div>
+        <div class="sep"></div>
+        <div class="section-label">Changer le mot de passe</div>
 
-        <!-- Auto-refresh live -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Auto-refresh Live View{% else %}Auto-refresh Surveillance Live{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Refresh every 10 seconds{% else %}Actualisation toutes les 10 secondes{% endif %}</div>
-          </div>
-          <label class="toggle-switch"><input type="checkbox" id="s_refresh" {% if config.s_refresh %}checked{% endif %}><span class="toggle-slider"></span></label>
+        <div style="margin-bottom:10px;">
+          <label class="form-label">Mot de passe actuel</label>
+          <input class="form-input" type="password" id="current_password" placeholder="••••••••">
         </div>
-
-        <!-- Conserver historique -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Keep archived employee history{% else %}Conserver l'historique des archivés{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Logs kept after archiving{% else %}Logs conservés après archivage{% endif %}</div>
+        <div class="form-grid-2">
+          <div>
+            <label class="form-label">Nouveau</label>
+            <input class="form-input" type="password" id="new_password" placeholder="••••••••">
           </div>
-          <label class="toggle-switch"><input type="checkbox" id="s_keep" {% if config.s_keep %}checked{% endif %}><span class="toggle-slider"></span></label>
+          <div>
+            <label class="form-label">Confirmer</label>
+            <input class="form-input" type="password" id="confirm_password" placeholder="••••••••">
+          </div>
         </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:8px;">Laissez vide pour ne pas modifier le mot de passe.</div>
       </div>
     </div>
-  </div>
 
-  <!-- ═══════════════ TAB SÉCURITÉ ═══════════════ -->
-  <div class="settings-panel" id="tab-security" style="display:none;">
+    <!-- ── Sécurité ── -->
     <div class="card">
       <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.2);">🔐</div>
-        <span class="card-title">{% if config.default_language == 'en' %}Security & Authentication{% else %}Sécurité & Authentification{% endif %}</span>
+        <div class="card-head-icon" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.2);">🔐</div>
+        <span class="card-title">Sécurité & Sessions</span>
       </div>
-      <div style="padding:16px 20px;">
+      <div class="card-body">
 
-        <!-- 2FA Global -->
+        <div class="section-label">Authentification</div>
+
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Global 2FA (Two-Factor){% else %}2FA (Double authentification) globale{% endif %}</div>
-            <div class="toggle-desc">RFID + QR Code {% if config.default_language == 'en' %}for all critical zones{% else %}pour toutes les zones critiques{% endif %}</div>
+            <div class="toggle-name">Double authentification (2FA)</div>
+            <div class="toggle-desc">RFID + QR Code pour les zones critiques</div>
           </div>
-          <label class="toggle-switch"><input type="checkbox" id="s_2fa_global" {% if config.s_2fa_global %}checked{% endif %}><span class="toggle-slider"></span></label>
+          <label class="sw"><input type="checkbox" id="s_2fa_global" {% if config.s_2fa_global %}checked{% endif %}><span class="sw-slider"></span></label>
         </div>
 
-        <!-- Session timeout -->
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Session Timeout{% else %}Expiration des sessions{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Auto logout after inactivity{% else %}Déconnexion automatique après inactivité{% endif %}</div>
+            <div class="toggle-name">Blocage après échecs répétés</div>
+            <div class="toggle-desc">Badge suspendu 15 min après 5 tentatives</div>
           </div>
-          <select id="session_timeout" class="form-select" style="width:140px;">
-            <option value="15" {% if config.session_timeout == '15' %}selected{% endif %}>15 min</option>
-            <option value="30" {% if config.session_timeout == '30' or not config.session_timeout %}selected{% endif %}>30 min</option>
-            <option value="60" {% if config.session_timeout == '60' %}selected{% endif %}>1 {% if config.default_language == 'en' %}hour{% else %}heure{% endif %}</option>
-            <option value="120" {% if config.session_timeout == '120' %}selected{% endif %}>2 {% if config.default_language == 'en' %}hours{% else %}heures{% endif %}</option>
+          <label class="sw"><input type="checkbox" id="s_block5" {% if config.s_block5 %}checked{% endif %}><span class="sw-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Alerte après 3 échecs</div>
+            <div class="toggle-desc">Notification immédiate à l'administrateur</div>
+          </div>
+          <label class="sw"><input type="checkbox" id="s_alert3" {% if config.s_alert3 %}checked{% endif %}><span class="sw-slider"></span></label>
+        </div>
+
+        <div class="sep"></div>
+        <div class="section-label">Sessions utilisateurs</div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Expiration de session</div>
+            <div class="toggle-desc">Déconnexion automatique après inactivité</div>
+          </div>
+          <select id="session_timeout" class="form-select" style="width:130px;">
+            <option value="15"  {% if config.session_timeout == '15'  %}selected{% endif %}>15 min</option>
+            <option value="30"  {% if config.session_timeout == '30' or not config.session_timeout %}selected{% endif %}>30 min</option>
+            <option value="60"  {% if config.session_timeout == '60'  %}selected{% endif %}>1 heure</option>
+            <option value="120" {% if config.session_timeout == '120' %}selected{% endif %}>2 heures</option>
           </select>
         </div>
 
-        <!-- Max failures -->
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Max Login Failures{% else %}Tentatives avant blocage{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Temporary lock after failures{% else %}Blocage temporaire après échecs{% endif %}</div>
+            <div class="toggle-name">Tentatives avant blocage</div>
+            <div class="toggle-desc">Nombre d'échecs consécutifs autorisés</div>
           </div>
-          <select id="max_failures" class="form-select" style="width:100px;">
-            <option value="3" {% if config.max_failures == '3' %}selected{% endif %}>3</option>
-            <option value="5" {% if config.max_failures == '5' or not config.max_failures %}selected{% endif %}>5</option>
+          <select id="max_failures" class="form-select" style="width:90px;">
+            <option value="3"  {% if config.max_failures == '3'  %}selected{% endif %}>3</option>
+            <option value="5"  {% if config.max_failures == '5' or not config.max_failures %}selected{% endif %}>5</option>
             <option value="10" {% if config.max_failures == '10' %}selected{% endif %}>10</option>
           </select>
         </div>
 
-        <!-- Blocage auto -->
+        <div class="sep"></div>
+        <div class="section-label">Données & Historique</div>
+
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Auto-block after 5 failures{% else %}Blocage auto après 5 échecs{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Badge suspended 15 min{% else %}Badge suspendu 15 minutes{% endif %}</div>
+            <div class="toggle-name">Conserver l'historique des archivés</div>
+            <div class="toggle-desc">Logs maintenus après archivage des employés</div>
           </div>
-          <label class="toggle-switch"><input type="checkbox" id="s_block5" {% if config.s_block5 %}checked{% endif %}><span class="toggle-slider"></span></label>
+          <label class="sw"><input type="checkbox" id="s_keep" {% if config.s_keep %}checked{% endif %}><span class="sw-slider"></span></label>
         </div>
 
-        <!-- Alerte 3 échecs -->
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Alert after 3 failures{% else %}Alerte après 3 échecs{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Immediate admin notification{% else %}Notification immédiate à l'admin{% endif %}</div>
+            <div class="toggle-name">Conservation des logs</div>
+            <div class="toggle-desc">Suppression automatique après cette durée</div>
           </div>
-          <label class="toggle-switch"><input type="checkbox" id="s_alert3" {% if config.s_alert3 %}checked{% endif %}><span class="toggle-slider"></span></label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="log_retention" value="{{ config.log_retention|default:'365' }}"
+                   min="30" max="1095"
+                   style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text1);font-family:var(--mono);text-align:center;font-size:13px;">
+            <span style="font-size:10px;color:var(--text3);">jours</span>
+          </div>
         </div>
 
-        <!-- IP Whitelist -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">IP Whitelist</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Restrict access to specific IPs{% else %}Restreindre l'accès à certaines IP{% endif %}</div>
-          </div>
-          <label class="toggle-switch"><input type="checkbox" id="ip_whitelist" {% if config.ip_whitelist %}checked{% endif %} onchange="document.getElementById('ip-list').style.display=this.checked?'block':'none'"><span class="toggle-slider"></span></label>
-        </div>
-        <div id="ip-list" style="display:{% if config.ip_whitelist %}block{% else %}none{% endif %}; margin-top:12px;">
-          <label class="form-label">{% if config.default_language == 'en' %}Authorized IPs (one per line){% else %}IP autorisées (une par ligne){% endif %}</label>
-          <textarea class="form-input" id="ip_whitelist_list" rows="3" placeholder="192.168.1.0/24">{{ config.ip_whitelist_list|default:'' }}</textarea>
-        </div>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════ TAB SAUVEGARDE ═══════════════ -->
-  <div class="settings-panel" id="tab-backup" style="display:none;">
+  <!-- ═══ LIGNE 2 : Préférences + Système ═══ -->
+  <div class="grid-2">
+
+    <!-- ── Préférences interface ── -->
     <div class="card">
       <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.2);">💾</div>
-        <span class="card-title">{% if config.default_language == 'en' %}Backup & Retention{% else %}Sauvegarde & Rétention{% endif %}</span>
+        <div class="card-head-icon" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);">⚙️</div>
+        <span class="card-title">Préférences interface</span>
       </div>
-      <div style="padding:16px 20px;">
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Daily Auto Backup{% else %}Sauvegarde quotidienne auto{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}At 2:00 AM every night{% else %}À 02h00 chaque nuit{% endif %}</div>
-          </div>
-          <label class="toggle-switch"><input type="checkbox" id="backup_auto" {% if config.backup_auto %}checked{% endif %}><span class="toggle-slider"></span></label>
-        </div>
+      <div class="card-body">
+
+        <div class="section-label">Affichage</div>
 
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}Log Retention (days){% else %}Conservation logs (jours){% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Auto-delete after this period{% else %}Suppression auto après cette période{% endif %}</div>
+            <div class="toggle-name">Mode sombre par défaut</div>
+            <div class="toggle-desc">Thème sombre appliqué à la connexion</div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <input type="range" id="log_retention_slider" min="30" max="1095" step="30" value="{{ config.log_retention|default:'365' }}" style="width:120px;" oninput="document.getElementById('log_retention').value=this.value">
-            <input type="number" id="log_retention" value="{{ config.log_retention|default:'365' }}" min="30" max="1095" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text1);text-align:center;" onchange="document.getElementById('log_retention_slider').value=this.value">
-            <span style="font-size:11px;color:var(--text3);">{% if config.default_language == 'en' %}days{% else %}jours{% endif %}</span>
-          </div>
+          <label class="sw"><input type="checkbox" id="dark_default" {% if config.dark_default %}checked{% endif %}><span class="sw-slider"></span></label>
         </div>
 
-        <div style="margin-top:12px;">
-          <button class="btn btn-ghost" onclick="manualBackup()" style="width:100%;">📀 {% if config.default_language == 'en' %}Manual Backup Now{% else %}Sauvegarde manuelle maintenant{% endif %}</button>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Auto-refresh surveillance live</div>
+            <div class="toggle-desc">Actualisation des sessions toutes les 10 s</div>
+          </div>
+          <label class="sw"><input type="checkbox" id="s_refresh" {% if config.s_refresh %}checked{% endif %}><span class="sw-slider"></span></label>
         </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- ═══════════════ TAB API ═══════════════ -->
-  <div class="settings-panel" id="tab-api" style="display:none;">
+        <div class="sep"></div>
+        <div class="section-label">Langue</div>
+
+        
+
+    <!-- ── Informations système ── -->
     <div class="card">
       <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.2);">🌐</div>
-        <span class="card-title">API & Integrations</span>
+        <div class="card-head-icon" style="background:rgba(107,114,128,.12);border:1px solid rgba(107,114,128,.2);">ℹ️</div>
+        <span class="card-title">Informations système</span>
+        <button onclick="loadSysInfo()" title="Actualiser" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--text3);cursor:pointer;flex-shrink:0;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
       </div>
-      <div style="padding:16px 20px;">
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-name">{% if config.default_language == 'en' %}External REST API{% else %}API REST externe{% endif %}</div>
-            <div class="toggle-desc">{% if config.default_language == 'en' %}Allow third-party integrations{% else %}Permet l'intégration tierce{% endif %}</div>
+      <div class="card-body">
+        <div class="sys-grid" id="sys-grid">
+          <div class="sys-card">
+            <div class="sys-label">Version</div>
+            <div class="sys-val" style="color:var(--text1);">v2.1.0</div>
           </div>
-          <label class="toggle-switch"><input type="checkbox" id="api_external" {% if config.api_external %}checked{% endif %}><span class="toggle-slider"></span></label>
+          <div class="sys-card">
+            <div class="sys-label">Base de données</div>
+            <div class="sys-val" id="sys-db" style="color:var(--green);">—</div>
+          </div>
+          <div class="sys-card">
+            <div class="sys-label">Django</div>
+            <div class="sys-val" id="sys-django" style="color:var(--text1);">—</div>
+          </div>
+          <div class="sys-card">
+            <div class="sys-label">Python</div>
+            <div class="sys-val" id="sys-python" style="color:var(--cyan);">—</div>
+          </div>
         </div>
 
-        <div style="margin-top:14px;">
-          <label class="form-label">Clé API</label>
-          <div style="display:flex;gap:8px;">
-            <input class="form-input" id="api_key" value="{{ config.api_key|default:'sk_live_xxxxxxxxxxxx' }}" readonly style="font-family:var(--mono);background:var(--bg4);">
-            <button class="btn btn-ghost btn-sm" onclick="copyApiKey()">📋</button>
-            <button class="btn btn-ghost btn-sm" onclick="regenerateApiKey()">🔄</button>
-          </div>
+        <div class="sep"></div>
+        <div class="section-label">Dernière mise à jour config</div>
+        <div style="font-size:12px;color:var(--text2);font-family:var(--mono);">
+          {% if config.updated_at %}
+            {{ config.updated_at|date:"d/m/Y à H:i" }} — par {{ config.updated_by|default:"—" }}
+          {% else %}
+            Jamais modifiée
+          {% endif %}
         </div>
 
-        <div style="margin-top:14px;">
-          <label class="form-label">Webhook URL</label>
-          <input class="form-input" id="webhook_url" value="{{ config.webhook_url|default:'' }}" placeholder="https://hooks.slack.com/services/...">
-        </div>
+        {% if user.is_superuser %}
+        <div class="sep"></div>
+        <div class="section-label">Zone superadmin</div>
+        <button onclick="resetToDefaults()"
+                style="width:100%;padding:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:var(--radius-sm);color:var(--red);font-size:12px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all .15s;"
+                onmouseover="this.style.background='rgba(239,68,68,.14)'"
+                onmouseout="this.style.background='rgba(239,68,68,.08)'">
+          ↩ Rétablir les paramètres par défaut
+        </button>
+        {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════ TAB PROFIL ═══════════════ -->
-  <div class="settings-panel" id="tab-profile" style="display:none;">
-    <div class="card">
-      <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">👤</div>
-        <span class="card-title">{% if config.default_language == 'en' %}Admin Profile{% else %}Profil Administrateur{% endif %}</span>
-      </div>
-      <div style="padding:24px;">
-        <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">
-          <div style="text-align:center;flex-shrink:0;">
-            <div class="profile-avatar">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</div>
-          </div>
-          <div style="flex:1;min-width:250px;">
-            <div class="form-grid">
-              <div>
-                <label class="form-label">{% if config.default_language == 'en' %}Username{% else %}Nom d'utilisateur{% endif %}</label>
-                <input class="form-input" value="{{ user.username }}" disabled>
-              </div>
-              <div>
-                <label class="form-label">Email</label>
-                <input class="form-input" type="email" id="profile_email" value="{{ user.email }}">
-              </div>
-              <div>
-                <label class="form-label">{% if config.default_language == 'en' %}First Name{% else %}Prénom{% endif %}</label>
-                <input class="form-input" id="profile_firstname" value="{{ user.first_name }}">
-              </div>
-              <div>
-                <label class="form-label">{% if config.default_language == 'en' %}Last Name{% else %}Nom{% endif %}</label>
-                <input class="form-input" id="profile_lastname" value="{{ user.last_name }}">
-              </div>
-              <div>
-                <label class="form-label">{% if config.default_language == 'en' %}Phone{% else %}Téléphone{% endif %}</label>
-                <input class="form-input" id="profile_phone" value="{{ admin_profile.phone|default:'' }}">
-              </div>
-              <div>
-                <label class="form-label">{% if config.default_language == 'en' %}Role{% else %}Fonction{% endif %}</label>
-                <input class="form-input" id="profile_role" value="{{ admin_profile.role|default:'Administrateur' }}">
-              </div>
-            </div>
+</div>
 
-            <!-- Password section -->
-            <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:16px;margin-top:16px;border:1px solid var(--border2);">
-              <div style="font-weight:700;font-size:12px;color:var(--amber);margin-bottom:12px;">🔐 {% if config.default_language == 'en' %}Change Password{% else %}Changer le mot de passe{% endif %}</div>
-              <div class="form-grid">
-                <div>
-                  <label class="form-label">{% if config.default_language == 'en' %}Current Password{% else %}Mot de passe actuel{% endif %}</label>
-                  <input class="form-input" type="password" id="current_password" placeholder="••••••••">
-                </div>
-                <div>
-                  <label class="form-label">{% if config.default_language == 'en' %}New Password{% else %}Nouveau mot de passe{% endif %}</label>
-                  <input class="form-input" type="password" id="new_password" placeholder="••••••••">
-                </div>
-                <div>
-                  <label class="form-label">{% if config.default_language == 'en' %}Confirm Password{% else %}Confirmer{% endif %}</label>
-                  <input class="form-input" type="password" id="confirm_password" placeholder="••••••••">
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ SYSTÈME ═══════════════ -->
-  <div class="card">
-    <div class="card-head">
-      <div class="card-head-icon" style="background:rgba(107,114,128,.12); border:1px solid rgba(107,114,128,.2);">ℹ️</div>
-      <span class="card-title">{% if config.default_language == 'en' %}System Information{% else %}Informations système{% endif %}</span>
-    </div>
-    <div style="padding:16px 20px; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px;">
-      <div class="sys-card">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;">{% if config.default_language == 'en' %}Version{% else %}Version{% endif %}</div>
-        <div style="font-size:18px;font-family:var(--mono);font-weight:700;color:var(--text1);">v2.1.0</div>
-      </div>
-      <div class="sys-card">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;">{% if config.default_language == 'en' %}Database{% else %}Base de données{% endif %}</div>
-        <div style="font-size:18px;font-family:var(--mono);font-weight:700;color:var(--green);">MongoDB</div>
-      </div>
-      <div class="sys-card">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;">Framework</div>
-        <div style="font-size:18px;font-family:var(--mono);font-weight:700;color:var(--text1);">Django</div>
-      </div>
-      <div class="sys-card">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;">Python</div>
-        <div style="font-size:18px;font-family:var(--mono);font-weight:700;color:var(--cyan);">3.12</div>
-      </div>
-    </div>
-  </div>
-
-</div><!-- /dash-wrap -->
-
-<!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
-/* ─── Tabs ─── */
-function switchTab(name) {
-  document.querySelectorAll('.settings-panel').forEach(function(p) { p.style.display = 'none'; });
-  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-  var panel = document.getElementById('tab-' + name);
-  if (panel) panel.style.display = 'block';
-  var btn = document.querySelector('.tab-btn[onclick="switchTab(\'' + name + '\')"]');
-  if (btn) btn.classList.add('active');
+function getCsrf() {
+  var m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : '';
 }
 
-/* ─── CSRF ─── */
-function getCsrfToken() {
-  var name = 'csrftoken=';
-  var cookies = document.cookie.split(';');
-  for (var i = 0; i < cookies.length; i++) {
-    var c = cookies[i].trim();
-    if (c.indexOf(name) === 0) return c.substring(name.length);
-  }
-  return '';
-}
-
-/* ─── Toast ─── */
 function showToast(msg, type) {
   var t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = 'toast ' + type + ' show';
-  setTimeout(function() { t.classList.remove('show'); }, 3000);
+  t.className = 'toast ' + (type || 'ok') + ' show';
+  setTimeout(function() { t.classList.remove('show'); }, 3200);
 }
 
-/* ─── Save all ─── */
+function val(id) {
+  var el = document.getElementById(id);
+  if (!el) return null;
+  if (el.type === 'checkbox') return el.checked;
+  return el.value;
+}
+
 function saveAllSettings(btn) {
-  var data = {};
-  document.querySelectorAll('.settings-panel input[id], .settings-panel select[id], .settings-panel textarea[id]').forEach(function(el) {
-    if (el.type === 'checkbox') data[el.id] = el.checked;
-    else data[el.id] = el.value;
-  });
-  // Profile data
-  data.profile_update = {
-    email: document.getElementById('profile_email')?.value || '',
-    first_name: document.getElementById('profile_firstname')?.value || '',
-    last_name: document.getElementById('profile_lastname')?.value || '',
-    phone: document.getElementById('profile_phone')?.value || '',
-    role: document.getElementById('profile_role')?.value || '',
-    current_password: document.getElementById('current_password')?.value || '',
-    new_password: document.getElementById('new_password')?.value || '',
-    confirm_password: document.getElementById('confirm_password')?.value || ''
+  var data = {
+    default_language : val('default_language'),
+    dark_default     : val('dark_default'),
+    s_refresh        : val('s_refresh'),
+    s_2fa_global     : val('s_2fa_global'),
+    s_block5         : val('s_block5'),
+    s_alert3         : val('s_alert3'),
+    s_keep           : val('s_keep'),
+    session_timeout  : val('session_timeout'),
+    max_failures     : val('max_failures'),
+    log_retention    : val('log_retention'),
+
+    profile_update: {
+      first_name       : val('profile_firstname') || '',
+      last_name        : val('profile_lastname')  || '',
+      email            : val('profile_email')     || '',
+      phone            : val('profile_phone')     || '',
+      role             : val('profile_role')      || '',
+      current_password : val('current_password')  || '',
+      new_password     : val('new_password')      || '',
+      confirm_password : val('confirm_password')  || '',
+    }
   };
 
-  if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Saving...'; }
+  var origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin .8s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Enregistrement…';
 
   fetch("{% url 'api_parametres_save' %}", {
     method: 'POST',
-    headers: {'Content-Type':'application/json','X-CSRFToken':getCsrfToken()},
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
     body: JSON.stringify(data)
   })
   .then(function(r) { return r.json(); })
   .then(function(res) {
     if (res.status === 'success') {
       showToast('✅ ' + res.message, 'ok');
-      setTimeout(function() { location.reload(); }, 1500);
+      setTimeout(function() { location.reload(); }, 1400);
     } else {
       showToast('❌ ' + res.message, 'err');
     }
   })
-  .catch(function() { showToast('❌ Network error', 'err'); })
+  .catch(function() { showToast('❌ Erreur réseau', 'err'); })
   .finally(function() {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Save Changes'; }
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
   });
 }
 
-/* ─── Reset ─── */
 function resetToDefaults() {
-  if (!confirm('Reset ALL settings to defaults?')) return;
-  fetch("{% url 'api_parametres_reset' %}", { method:'POST', headers:{'X-CSRFToken':getCsrfToken()} })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      if (res.status === 'success') { showToast('✅ ' + res.message, 'ok'); setTimeout(function() { location.reload(); }, 1200); }
-      else showToast('❌ ' + res.message, 'err');
-    });
+  if (!confirm('Rétablir tous les paramètres aux valeurs par défaut ?')) return;
+  fetch("{% url 'api_parametres_reset' %}", {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCsrf() }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.status === 'success') { showToast('✅ ' + res.message, 'ok'); setTimeout(function() { location.reload(); }, 1200); }
+    else showToast('❌ ' + res.message, 'err');
+  });
 }
 
-/* ─── Utils ─── */
-function copyApiKey() { var i = document.getElementById('api_key'); i.select(); document.execCommand('copy'); showToast('✅ Copied', 'ok'); }
-function regenerateApiKey() { document.getElementById('api_key').value = 'sk_live_' + Math.random().toString(36).substring(2,15); showToast('New key generated', 'ok'); }
-function manualBackup() { showToast('💾 Backup started...', 'info'); setTimeout(function() { showToast('✅ Backup complete', 'ok'); }, 2000); }
+function loadSysInfo() {
+  fetch("{% url 'api_system_info' %}")
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.status !== 'success') return;
+      var db   = document.getElementById('sys-db');
+      var dj   = document.getElementById('sys-django');
+      var py   = document.getElementById('sys-python');
+      if (db)  { db.textContent  = d.db_status; db.style.color = d.db_status === 'Connecté' ? 'var(--green)' : 'var(--red)'; }
+      if (dj)  dj.textContent  = d.django;
+      if (py)  py.textContent  = d.python;
+    })
+    .catch(function() {});
+}
 
-/* ─── Spin animation ─── */
-var styleEl = document.createElement('style');
-styleEl.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
-document.head.appendChild(styleEl);
+/* Spin animation */
+var s = document.createElement('style');
+s.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(s);
 
-/* ─── Init ─── */
 document.addEventListener('DOMContentLoaded', function() {
-  switchTab('general');
-  var ipw = document.getElementById('ip_whitelist');
-  if (ipw && ipw.checked) document.getElementById('ip-list').style.display = 'block';
+  loadSysInfo();
 });
 </script>
 {% endblock %}

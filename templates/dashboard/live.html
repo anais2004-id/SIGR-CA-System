@@ -265,13 +265,14 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
       <div class="kpi-sub">Actifs</div>
       <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%"></div></div>
     </div>
-    <div class="kpi cyan">
-      <div class="kpi-accent"></div>
-      <div class="kpi-top"><span class="kpi-label">Taux succès</span><div class="kpi-icon-wrap">📈</div></div>
-      <div class="kpi-val" id="kpi-taux">{{ taux_succes|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
-      <div class="kpi-sub">Dernière heure</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ taux_succes|default:0 }}%"></div></div>
-    </div>
+<!-- Remplacer ce bloc KPI cyan complet -->
+<div class="kpi cyan">
+  <div class="kpi-accent"></div>
+  <div class="kpi-top"><span class="kpi-label">Taux succès</span><div class="kpi-icon-wrap">📈</div></div>
+  <div class="kpi-val" id="kpi-taux" data-value="{{ taux_succes|default:0 }}">{{ taux_succes|default:0 }}<span style="font-size:18px;color:var(--text3);">%</span></div>
+  <div class="kpi-sub">{% if total_acces_hour > 0 %}Dernière heure{% else %}Aujourd'hui{% endif %}</div>
+  <div class="kpi-bar"><div id="kpi-taux-bar" class="kpi-bar-fill" style="width:{{ taux_succes|default:0 }}%"></div></div>
+</div>
   </div>
 
   <!-- ══════════════════════════════════════════
@@ -486,18 +487,21 @@ function updateLiveFeed(logs) {
   }).join('');
   if (currentFeedFilter !== 'all') filterFeed(currentFeedFilter);
 }
-
 function updateKPIs(stats) {
-  var okEl = document.getElementById('kpi-ok');
-  var noEl = document.getElementById('kpi-no');
-  var tauxEl = document.getElementById('kpi-taux');
+  var okEl    = document.getElementById('kpi-ok');
+  var noEl    = document.getElementById('kpi-no');
+  var tauxEl  = document.getElementById('kpi-taux');
+  var barEl   = document.getElementById('kpi-taux-bar');
   var alertEl = document.getElementById('kpi-alertes');
-  if (okEl) okEl.textContent = stats.acces_ok || 0;
-  if (noEl) noEl.textContent = stats.acces_no || 0;
-  if (tauxEl) tauxEl.textContent = (stats.taux_succes || 0) + '%';
-  if (alertEl) alertEl.textContent = stats.alertes || 0;
+  if (okEl)    okEl.textContent    = stats.acces_ok || 0;
+  if (noEl)    noEl.textContent    = stats.acces_no || 0;
+  if (alertEl) alertEl.textContent = stats.alertes  || 0;
+  if (tauxEl) {
+    var t = stats.taux_succes || 0;
+    tauxEl.innerHTML = t + '<span style="font-size:18px;color:var(--text3);">%</span>';
+  }
+  if (barEl)   barEl.style.width = (stats.taux_succes || 0) + '%';
 }
-
 function updateZoneOccupation(bureaux) {
   bureaux.forEach(function(b) {
     var occEl = document.getElementById('occ-' + b.id);
