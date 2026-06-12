@@ -2962,7 +2962,27 @@ def _creer_alerte(message, zone='Système', niveau='MEDIUM'):
         })
     except Exception as e:
         logger.error(f"[ALERTE] Erreur création alerte: {e}")
-
+@require_http_methods(["GET"])
+def api_debug_time(request):
+    from datetime import datetime
+    from django.http import JsonResponse
+    
+    # Heure Django
+    local = datetime.now()
+    utc   = datetime.utcnow()
+    
+    # Heure stockée dans MongoDB (prend le dernier log)
+    dernier_log = db.acces_logs.find_one(
+        {}, sort=[('timestamp', -1)]
+    )
+    mongo_time = dernier_log.get('timestamp') if dernier_log else None
+    
+    return JsonResponse({
+        'django_local':     local.strftime('%Y-%m-%d %H:%M:%S'),
+        'django_utc':       utc.strftime('%Y-%m-%d %H:%M:%S'),
+        'mongodb_last_log': str(mongo_time),
+        'difference_minutes': round((local - utc).total_seconds() / 60, 1),
+    })
 import json
 import logging
 from datetime import datetime, timedelta
@@ -2998,6 +3018,7 @@ def _check_esp32_key(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_rfid_scan(request):
+    
     """
     Reçoit un scan RFID depuis l'ESP32 et enregistre l'accès.
 
@@ -3058,8 +3079,9 @@ def api_rfid_scan(request):
         'statut': 'actif'
     })
 
-    timestamp  = datetime.now()
-    maintenant = datetime.now()
+    from datetime import timezone as tz
+    maintenant    = datetime.now()
+    timestamp     = maintenant
 
     if employe:
         nom_complet = f"{employe.get('nom', '')} {employe.get('prenom', '')}".strip()
@@ -3067,12 +3089,16 @@ def api_rfid_scan(request):
         # ── Vérification réservation pour cette salle ──
         if bureau_id:
             employe_oid    = employe['_id']
-            fenetre_retard = timedelta(minutes=15)
+            from datetime import timedelta as td
+            fenetre_retard = td(minutes=15)
+            
 
             # Chercher les réservations d'aujourd'hui pour cette salle
+            # ✅ Après — utiliser datetime.now() comme MongoDB
+            maintenant    = datetime.now()
+            timestamp     = maintenant
             debut_journee = maintenant.replace(hour=0,  minute=0,  second=0,  microsecond=0)
             fin_journee   = maintenant.replace(hour=23, minute=59, second=59, microsecond=0)
-
             resa_aujourd_hui = db.reservations.find_one(
                 {
                     'employe_id': employe_oid,

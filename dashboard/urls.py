@@ -259,7 +259,7 @@ path('terminate-session/<str:session_id>/',             views.terminate_session,
     path("api/ia/utilisation/",   ai.ia_utilisation, name="ia_utilisation"),
     path("api/ia/comportement/",  ai.ia_comportement,name="ia_comportement"),
     path("api/ia/status/",        ai.ia_status,      name="ia_status"),
-    
+    path('api/debug-time/', views.api_debug_time, name='api_debug_time'),
     # ── Export Admin Réservations ────────────────────────────────────────────────
     path('reservations/export/csv/', views.admin_reservations_export_csv, name='admin_reservations_export_csv'),
     path('reservations/export/pdf/', views.admin_reservations_export_pdf, name='admin_reservations_export_pdf'),
