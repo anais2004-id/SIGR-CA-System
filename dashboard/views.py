@@ -10408,9 +10408,11 @@ def _ai_response(user, message, conversation):
     employe = None
     try:
         from bson import ObjectId
-        employe = db.employees.find_one({'django_user_id': user.id})
+        user_id = user.get('id') if isinstance(user, dict) else user.id
+        user_username = user.get('username') if isinstance(user, dict) else user.username
+        employe = db.employees.find_one({'django_user_id': user_id})
         if not employe:
-            employe = db.employees.find_one({'django_username': user.username})
+            employe = db.employees.find_one({'django_username': user_username})
         if employe:
             resa = list(
                 db.reservations
@@ -10432,7 +10434,7 @@ def _ai_response(user, message, conversation):
     except Exception:
         pass
 
-    prenom      = user.first_name or user.username
+    prenom      = (user.get('first_name') or user.get('username', '')) if isinstance(user, dict) else (user.first_name or user.username)
     today_iso   = datetime.now().strftime('%Y-%m-%d')
     today_label = datetime.now().strftime('%A %d %B %Y')
 
@@ -10618,7 +10620,7 @@ def _create_reservation_from_chat(user, employe, data):
             'qr_code':         None,
             'cree_par':        'chatbot',
             'created_at':      datetime.now(),
-            'created_by':      user.username,
+            'created_by': user.get('username', '') if isinstance(user, dict) else user.username,
         }
 
         result       = db.reservations.insert_one(reservation_data)
@@ -10695,7 +10697,7 @@ def _create_reservation_from_chat(user, employe, data):
 def _keyword_response(user, message, conversation):
     """Fallback mots-clés si Gemini est indisponible."""
     msg    = message.lower()
-    prenom = user.first_name or user.username
+    prenom = (user.get('first_name') or user.get('username', '')) if isinstance(user, dict) else (user.first_name or user.username)
 
     if any(k in msg for k in ['bonjour', 'salut', 'hello', 'coucou', 'hey']):
         return {
