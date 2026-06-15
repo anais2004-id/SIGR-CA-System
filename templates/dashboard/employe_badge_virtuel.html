@@ -596,49 +596,7 @@ body, .dashboard-body { font-family: var(--font) !important; }
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <div class="grid-2">
 
-  <!-- Horaires d'accès -->
-  <div class="card" style="animation-delay:.3s">
-    <div class="card-head">
-      <div class="card-head-icon" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.2);">🕐</div>
-      <span class="card-title">Horaires d'accès autorisés</span>
-      <span class="card-badge" style="background:rgba(245,158,11,.1);color:var(--amber);border-color:rgba(245,158,11,.2);">Semaine en cours</span>
-    </div>
-    <div class="card-body" style="padding:12px;">
-      <div class="horaire-list">
-        {% for jour, h in horaires_acces.items %}
-        <div class="horaire-row {% if jour == jour_actuel %}today{% endif %}">
-          <div class="horaire-dot {% if h.ouvert %}open{% else %}closed{% endif %}"></div>
-          <div class="horaire-day {% if jour == jour_actuel %}today{% endif %}">
-            {{ jour }}{% if jour == jour_actuel %}&nbsp;◀{% endif %}
-          </div>
-          <div class="horaire-hours">
-            {% if h.ouvert %}{{ h.debut }} – {{ h.fin }}{% else %}Fermé{% endif %}
-          </div>
-          <span class="horaire-pill {% if h.ouvert %}open{% else %}closed{% endif %}">
-            {% if h.ouvert %}OUVERT{% else %}FERMÉ{% endif %}
-          </span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-
-  <!-- NFC Simulateur -->
-  <div style="animation:fadeInUp .35s .35s ease both;">
-    <div class="sec-label">📡 Accès sans contact</div>
-    <div class="nfc-card" onclick="simulateNFC()">
-      <div class="nfc-rings">
-        <div class="nfc-icon">📱</div>
-      </div>
-      <div class="nfc-title">Simulation NFC</div>
-      <div class="nfc-desc">
-        Cliquez pour simuler un passage de badge.<br>
-        En environnement réel, approchez votre téléphone<br>
-        du lecteur pour accéder aux zones autorisées.
-      </div>
-      <div class="nfc-hint">⬆ Appuyer pour simuler l'accès</div>
-    </div>
-  </div>
+ 
 
 </div>
 
@@ -647,12 +605,12 @@ body, .dashboard-body { font-family: var(--font) !important; }
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- MODAL QR PLEIN ÉCRAN                                            -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="qrModal" onclick="if(event.target===this)closeModal()">
+<div class="modal-overlay" id="qrModal" onclick="if(event.target===this)closeQRModal()">
   <div class="modal-box">
     <div class="modal-bar"></div>
     <div class="modal-head">
       <span class="modal-title">📱 Mon QR Code d'accès</span>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="closeQRModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="qr-modal-wrap">
@@ -668,7 +626,7 @@ body, .dashboard-body { font-family: var(--font) !important; }
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn-sm btn-ghost-sm" onclick="closeModal()">Fermer</button>
+      <button class="btn-sm btn-ghost-sm" onclick="closeQRModal()">Fermer</button>
       <button class="btn-sm btn-ghost-sm" onclick="printQR()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="6 9 6 2 18 2 18 9"/>
@@ -726,7 +684,7 @@ function showFullQR() {
     qrModalDone = true;
   }
 }
-function closeModal() {
+function closeQRModal() {
   document.getElementById('qrModal').style.display = 'none';
 }
 
@@ -800,7 +758,7 @@ document.querySelectorAll('.kpi-num').forEach(function(el) {
 
 /* ── Fermer avec Échap ─────────────────────────────────────────── */
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') closeQRModal();
 });
 </script>
 {% endblock %}

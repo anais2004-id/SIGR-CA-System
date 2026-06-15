@@ -411,11 +411,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <span class="card-title">Mes réservations</span>
       <span class="card-badge status-pill status-ok">{{ reservations|length }} réservation(s)</span>
       <button class="btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
-      <div class="card-head">
-  <div class="card-head-icon" style="background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.2);">📋</div>
-  <span class="card-title">Mes réservations</span>
-  <span class="card-badge status-pill status-ok">{{ reservations|length }} réservation(s)</span>
-  <button class="btn-primary btn-sm" id="openResaBtn2" style="margin-left:8px;">+ Nouvelle</button>
+      
+  
 
   <!-- ⬇️ AJOUTEZ CES DEUX BOUTONS -->
   <a href="{% url 'reservations_export_csv' %}" class="btn-ghost btn-sm" style="margin-left:8px;">
