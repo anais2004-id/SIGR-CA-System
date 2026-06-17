@@ -15,7 +15,8 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 
 from django.conf import settings
-
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = os.path.join(settings.BASE_DIR, 'ai_models')

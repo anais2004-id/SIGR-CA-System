@@ -451,48 +451,87 @@ function renderDayStats() {
   }
   document.getElementById('day-stats').innerHTML = html;
 }
-
 // ═══════════════════════════════════════════
 // GRAPHIQUE
 // ═══════════════════════════════════════════
+
+// Stocker TOUTES les données en Y-m-d pour tri correct
+var allDailyStats = {};
+{% for a in acces %}
+  (function() {
+    var dk = '{{ a.timestamp|date:"Y-m-d" }}';
+    if (!allDailyStats[dk]) allDailyStats[dk] = { autorise:0, refuse:0 };
+    if ('{{ a.resultat|escapejs }}' === 'AUTORISE') allDailyStats[dk].autorise++;
+    else allDailyStats[dk].refuse++;
+  })();
+{% endfor %}
+
+function buildChartData(period) {
+  var now    = new Date();
+  var cutoff = new Date(0);  // par défaut : tout
+  if      (period === 'week')  { cutoff = new Date(now); cutoff.setDate(now.getDate() - 7); }
+  else if (period === 'month') { cutoff = new Date(now); cutoff.setDate(now.getDate() - 30); }
+  else if (period === 'year')  { cutoff = new Date(now); cutoff.setFullYear(now.getFullYear() - 1); }
+
+  var labels = [], autoriseData = [], refuseData = [];
+  Object.keys(allDailyStats).sort().forEach(function(key) {
+    var d = new Date(key + 'T00:00:00');
+    if (d >= cutoff) {
+      var parts = key.split('-');
+      // Pour l'année, afficher mm/aaaa si > 60 jours, sinon dd/mm
+      labels.push(parts[2] + '/' + parts[1]);
+      autoriseData.push(allDailyStats[key].autorise);
+      refuseData.push(allDailyStats[key].refuse);
+    }
+  });
+  return { labels: labels, autorises: autoriseData, refuses: refuseData };
+}
+
 function initChart() {
   var ctx = document.getElementById('activity-chart').getContext('2d');
-  var dailyStats = {};
-  {% for a in acces %}
-    var dateKey = '{{ a.timestamp|date:"d/m" }}';
-    if (!dailyStats[dateKey]) dailyStats[dateKey] = { autorise:0, refuse:0 };
-    if ('{{ a.resultat }}' === 'AUTORISE') dailyStats[dateKey].autorise++;
-    else dailyStats[dateKey].refuse++;
-  {% endfor %}
-  var labels = [], autoriseData = [], refuseData = [];
-  Object.keys(dailyStats).sort().forEach(function(key) {
-    labels.push(key);
-    autoriseData.push(dailyStats[key].autorise);
-    refuseData.push(dailyStats[key].refuse);
-  });
-  var isDark = (localStorage.getItem('sigr-theme') || 'dark') === 'dark';
-  var textColor = isDark ? '#56708a' : '#7a96b3';
-  var gridColor = isDark ? 'rgba(99,140,185,.12)' : 'rgba(59,100,160,.10)';
+  var isDark      = (localStorage.getItem('sigr-theme') || 'dark') === 'dark';
+  var textColor   = isDark ? '#56708a' : '#7a96b3';
+  var gridColor   = isDark ? 'rgba(99,140,185,.12)' : 'rgba(59,100,160,.10)';
   var legendColor = isDark ? '#8fa3bc' : '#3a5272';
+
+  var d = buildChartData(currentChartPeriod);
+
   if (activityChart) activityChart.destroy();
   activityChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: labels.length > 0 ? labels : ['Aucune donnée'],
+      labels: d.labels.length > 0 ? d.labels : ['Aucune donnée'],
       datasets: [
-        { label:'Autorisés', data:autoriseData.length>0?autoriseData:[0], borderColor:'#10b981', backgroundColor:'rgba(16,185,129,.08)', tension:.35, fill:true, borderWidth:2, pointRadius:3, pointBackgroundColor:'#10b981' },
-        { label:'Refusés',   data:refuseData.length>0?refuseData:[0],     borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.05)',  tension:.35, fill:true, borderWidth:2, pointRadius:3, pointBackgroundColor:'#ef4444' }
+        {
+          label: 'Autorisés',
+          data:  d.autorises.length > 0 ? d.autorises : [0],
+          borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.08)',
+          tension: .35, fill: true, borderWidth: 2,
+          pointRadius: 3, pointBackgroundColor: '#10b981'
+        },
+        {
+          label: 'Refusés',
+          data:  d.refuses.length > 0 ? d.refuses : [0],
+          borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.05)',
+          tension: .35, fill: true, borderWidth: 2,
+          pointRadius: 3, pointBackgroundColor: '#ef4444'
+        }
       ]
     },
     options: {
-      responsive:true, maintainAspectRatio:true,
-      interaction:{ intersect:false, mode:'index' },
+      responsive: true, maintainAspectRatio: true,
+      interaction: { intersect: false, mode: 'index' },
       plugins: {
-        legend: { position:'top', labels:{ color:legendColor, usePointStyle:true, padding:20, font:{ family:"'Space Grotesk', sans-serif", size:11 } } }
+        legend: {
+          position: 'top',
+          labels: { color: legendColor, usePointStyle: true, padding: 20,
+                    font: { family: "'Space Grotesk', sans-serif", size: 11 } }
+        }
       },
       scales: {
-        x: { grid:{ color:gridColor }, ticks:{ color:textColor, font:{ size:10 } } },
-        y: { beginAtZero:true, grid:{ color:gridColor }, ticks:{ color:textColor, font:{ size:10 }, stepSize:1 } }
+        x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45 } },
+        y: { beginAtZero: true, grid: { color: gridColor },
+             ticks: { color: textColor, font: { size: 10 }, stepSize: 1 } }
       }
     }
   });
@@ -500,19 +539,22 @@ function initChart() {
 
 function changeChartPeriod(period) {
   currentChartPeriod = period;
-  document.querySelectorAll('.period-btn').forEach(function(btn) { btn.classList.remove('active','btn-primary'); btn.classList.add('btn-ghost'); });
+  // Mettre à jour les boutons
+  document.querySelectorAll('.period-btn').forEach(function(btn) {
+    btn.classList.remove('active', 'btn-primary');
+    btn.classList.add('btn-ghost');
+  });
   var activeBtn = document.querySelector('.period-btn[onclick*="' + period + '"]');
-  if (activeBtn) { activeBtn.classList.add('active','btn-primary'); activeBtn.classList.remove('btn-ghost'); }
-  fetch('/api/employee/stats/?period=' + period)
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (activityChart && data.labels) {
-        activityChart.data.labels = data.labels;
-        activityChart.data.datasets[0].data = data.autorises || data.values || [];
-        activityChart.data.datasets[1].data = data.refuses || [];
-        activityChart.update();
-      }
-    }).catch(function() {});
+  if (activeBtn) { activeBtn.classList.add('active', 'btn-primary'); activeBtn.classList.remove('btn-ghost'); }
+
+  // Filtrer les données côté client — pas d'appel API
+  var d = buildChartData(period);
+  if (activityChart) {
+    activityChart.data.labels              = d.labels.length > 0 ? d.labels : ['Aucune donnée'];
+    activityChart.data.datasets[0].data   = d.autorises.length > 0 ? d.autorises : [0];
+    activityChart.data.datasets[1].data   = d.refuses.length > 0 ? d.refuses : [0];
+    activityChart.update();
+  }
 }
 
 // ═══════════════════════════════════════════

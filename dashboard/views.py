@@ -1448,6 +1448,375 @@ def reservations_export_pdf(request):
             f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
             content_type='text/plain', status=500)
 @session_required
+def logs_export_pdf(request):
+    """Export PDF — Historique des logs d'accès (admin)."""
+    import io, os, traceback
+    from datetime import datetime, timedelta
+    from django.http import HttpResponse
+    from django.contrib.staticfiles.finders import find as static_find
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        Image, HRFlowable, KeepTogether,
+    )
+    from reportlab.platypus.flowables import Flowable
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    try:
+        # ── Couleurs ──────────────────────────────────────────────
+        C_BLUE_DARK  = colors.HexColor('#0f172a')
+        C_BLUE_MAIN  = colors.HexColor('#1d4ed8')
+        C_BLUE_LIGHT = colors.HexColor('#dbeafe')
+        C_BLUE_MID   = colors.HexColor('#3b82f6')
+        C_PURPLE     = colors.HexColor('#7c3aed')
+        C_GREEN      = colors.HexColor('#059669')
+        C_RED        = colors.HexColor('#dc2626')
+        C_GREY_LIGHT = colors.HexColor('#f8fafc')
+        C_GREY_MID   = colors.HexColor('#e2e8f0')
+        C_GREY_TEXT  = colors.HexColor('#64748b')
+        C_WHITE      = colors.white
+        C_BLACK      = colors.HexColor('#0f172a')
+
+        # ── Numérotation des pages ────────────────────────────────
+        class NumberedCanvas(rl_canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._saved_page_states = []
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+            def save(self):
+                n = len(self._saved_page_states)
+                for i, state in enumerate(self._saved_page_states):
+                    self.__dict__.update(state)
+                    self._draw_footer(i + 1, n)
+                    rl_canvas.Canvas.showPage(self)
+                rl_canvas.Canvas.save(self)
+            def _draw_footer(self, page_num, total_pages):
+                w, _ = A4
+                self.setFillColor(colors.HexColor('#64748b'))
+                self.setFont('Helvetica', 8)
+                self.drawCentredString(w / 2, 1.2 * cm,
+                    f"Page {page_num} / {total_pages}  —  SIGR-CA — Document confidentiel")
+                self.setStrokeColor(colors.HexColor('#e2e8f0'))
+                self.setLineWidth(0.5)
+                self.line(2 * cm, 1.6 * cm, w - 2 * cm, 1.6 * cm)
+
+        # ── Bande colorée ─────────────────────────────────────────
+        class ColorBand(Flowable):
+            def __init__(self, text, width, height=0.9*cm,
+                         bg=None, fg=None, font_size=11):
+                super().__init__()
+                self.text        = text
+                self.band_width  = width
+                self.band_height = height
+                self.bg          = bg or colors.HexColor('#0f172a')
+                self.fg          = fg or colors.white
+                self.font_size   = font_size
+            def wrap(self, *args):
+                return self.band_width, self.band_height
+            def draw(self):
+                c = self.canv
+                c.setFillColor(self.bg)
+                c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+                c.setFillColor(self.fg)
+                c.setFont('Helvetica-Bold', self.font_size)
+                c.drawString(0.4 * cm, 0.25 * cm, self.text)
+
+        # ── hex_color helper ──────────────────────────────────────
+        def hex_color(c):
+            try:
+                return f'{int(c.red*255):02x}{int(c.green*255):02x}{int(c.blue*255):02x}'
+            except Exception:
+                return '0f172a'
+
+        # ── Identité de l'exporteur ───────────────────────────────
+        identite = request.session.get('username', 'Administrateur')
+
+        # ── Filtre période (?periode=7 par défaut) ────────────────
+        periode   = int(request.GET.get('periode', 7))
+        date_fin  = datetime.now()
+        date_deb  = date_fin - timedelta(days=periode)
+
+        # ── Récupération de TOUS les logs sur la période ──────────
+        TYPES_SYSTEME = {'SYSTEM', 'URGENCE', 'ADMIN', 'EMERGENCY', 'LOCK', 'UNLOCK'}
+
+        logs_raw = list(
+            db.acces_logs
+            .find({'timestamp': {'$gte': date_deb, '$lte': date_fin}})
+            .sort('timestamp', -1)
+            .limit(500)
+        )
+
+        # ── Enrichissement ────────────────────────────────────────
+        logs = []
+        for log in logs_raw:
+            type_acces = log.get('type_acces', 'RFID')
+            bureau     = db.bureaux.find_one({'_id': log.get('bureau_id')})
+            bureau_nom = bureau['nom'] if bureau else 'Inconnu'
+
+            if type_acces in TYPES_SYSTEME or log.get('utilisateur_id') is None:
+                nom_user = 'Système'
+                badge    = 'SYS'
+            else:
+                emp = db.employees.find_one({'_id': log.get('utilisateur_id')})
+                if emp:
+                    nom_user = f"{emp.get('nom', '')} {emp.get('prenom', '')}".strip() or 'Inconnu'
+                    badge    = emp.get('badge_id', '???')
+                else:
+                    nom_user = 'Inconnu'
+                    badge    = '???'
+
+            logs.append({
+                'timestamp':  log.get('timestamp'),
+                'bureau_nom': bureau_nom,
+                'nom_user':   nom_user,
+                'badge':      badge,
+                'type_acces': type_acces,
+                'resultat':   log.get('resultat', 'REFUSE'),
+            })
+
+        now_str       = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        date_file     = datetime.now().strftime('%Y%m%d_%H%M')
+        periode_label = f"{date_deb.strftime('%d/%m/%Y')} → {date_fin.strftime('%d/%m/%Y')}"
+
+        # ── Document ──────────────────────────────────────────────
+        buffer    = io.BytesIO()
+        PAGE_W, _ = A4
+        CONTENT_W = PAGE_W - 4 * cm   # 17 cm
+
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title=f"Historique Logs — {periode_label}",
+            author="SIGR-CA Système",
+        )
+
+        # ── Styles ────────────────────────────────────────────────
+        _sty = {}
+        def ps(name, **kw):
+            base   = kw.pop('parent', 'Normal')
+            sheet  = getSampleStyleSheet()
+            parent = _sty.get(base) or sheet.get(base, sheet['Normal'])
+            p      = ParagraphStyle(name, parent=parent, **kw)
+            _sty[name] = p
+            return p
+
+        th      = ps('TH',  fontName='Helvetica-Bold', fontSize=8,
+                     textColor=C_WHITE, alignment=TA_CENTER, leading=11)
+        th_left = ps('THL', parent='TH', alignment=TA_LEFT)
+        td      = ps('TD',  fontSize=8, alignment=TA_CENTER, leading=11, textColor=C_BLACK)
+        td_left = ps('TDL', parent='TD', alignment=TA_LEFT)
+        td_mono = ps('TDM', parent='TD', fontSize=7.5, fontName='Courier')
+        sec_sty = ps('SEC', fontName='Helvetica-Bold', fontSize=12,
+                     textColor=C_PURPLE, spaceBefore=20, spaceAfter=8, leading=16)
+        foot_sty = ps('FOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                      alignment=TA_CENTER, leading=11)
+
+        _NO_PAD = TableStyle([
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 1),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 1),
+        ])
+
+        elements = []
+
+        # ════════════════════════════════════════════
+        #  EN-TÊTE
+        # ════════════════════════════════════════════
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_tbl = Table([
+            [Paragraph('<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                       ps('LT', fontSize=22, leading=26, alignment=TA_LEFT))],
+            [Paragraph("Système Intégré de Gestion des Ressources<br/>"
+                       "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                       ps('LS', fontSize=9, leading=13,
+                          textColor=C_GREY_TEXT, alignment=TA_LEFT))],
+        ], colWidths=[11*cm])
+        title_tbl.setStyle(_NO_PAD)
+
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=2.6*cm)
+        else:
+            logo_cell = Paragraph('<font color="#1d4ed8"><b>SIGR</b></font>',
+                                  ps('FL', fontSize=18, alignment=TA_RIGHT))
+
+        meta_tbl = Table([
+            [Paragraph(f"<b>Exporté par :</b> {identite}",
+                       ps('M0', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Période :</b> {periode_label}",
+                       ps('M1', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Entrées :</b> {len(logs)}",
+                       ps('M2', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Généré le :</b> {now_str}",
+                       ps('M3', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M4', fontSize=8, textColor=C_RED, alignment=TA_RIGHT))],
+        ], colWidths=[4.5*cm])
+        meta_tbl.setStyle(_NO_PAD)
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0),(-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 2),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 2),
+        ]))
+
+        header_tbl = Table([[title_tbl, right_col]], colWidths=[12.5*cm, 4.5*cm])
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0),(-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 0),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2,
+                                   color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+        elements.append(ColorBand(
+            f"  HISTORIQUE DES LOGS D'ACCÈS  —  {periode_label}",
+            CONTENT_W, height=1.1*cm,
+            bg=C_BLUE_DARK, fg=C_WHITE, font_size=12,
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  TABLEAU PRINCIPAL
+        # ════════════════════════════════════════════
+        elements.append(KeepTogether([Paragraph("Journal des accès", sec_sty)]))
+
+        # colWidths : 3.0+4.2+3.2+1.8+1.8+3.0 = 17 cm ✓
+        col_widths = [3.0*cm, 4.2*cm, 3.2*cm, 1.8*cm, 1.8*cm, 3.0*cm]
+        data = [[
+            Paragraph('Horodatage', th_left),
+            Paragraph('Employé',    th_left),
+            Paragraph('Salle/Zone', th),
+            Paragraph('Badge',      th),
+            Paragraph('Type',       th),
+            Paragraph('Résultat',   th),
+        ]]
+
+        for log in logs:
+            ts     = log['timestamp']
+            ts_str = ts.strftime('%d/%m/%y %H:%M:%S') if hasattr(ts, 'strftime') else '—'
+            if log['resultat'] == 'AUTORISE':
+                res_color, res_label = '#059669', '✔ AUTORISÉ'
+            else:
+                res_color, res_label = '#dc2626', '✖ REFUSÉ'
+
+            data.append([
+                Paragraph(ts_str, td_mono),
+                Paragraph(f"<b>{log['nom_user']}</b>", td_left),
+                Paragraph(log['bureau_nom'], td),
+                Paragraph(log['badge'], td_mono),
+                Paragraph(log['type_acces'], td),
+                Paragraph(f'<font color="{res_color}"><b>{res_label}</b></font>', td),
+            ])
+
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0,0), (-1,0),  C_BLUE_MAIN),
+            ('TEXTCOLOR',      (0,0), (-1,0),  C_WHITE),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [C_WHITE, C_BLUE_LIGHT]),
+            ('GRID',           (0,0), (-1,-1), 0.4, C_GREY_MID),
+            ('LINEBELOW',      (0,0), (-1,0),  1.5, C_BLUE_MAIN),
+            ('TOPPADDING',     (0,0), (-1,0),  9),
+            ('BOTTOMPADDING',  (0,0), (-1,0),  9),
+            ('TOPPADDING',     (0,1), (-1,-1), 6),
+            ('BOTTOMPADDING',  (0,1), (-1,-1), 6),
+            ('LEFTPADDING',    (0,0), (-1,-1), 6),
+            ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+            ('BOX',            (0,0), (-1,-1), 1, C_BLUE_MID),
+        ]))
+        elements.append(tbl)
+
+        # ════════════════════════════════════════════
+        #  RÉSUMÉ STATISTIQUE
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1*cm))
+        elements.append(Paragraph('Résumé statistique', sec_sty))
+
+        total     = len(logs)
+        autorises = sum(1 for l in logs if l['resultat'] == 'AUTORISE')
+        refuses   = total - autorises
+        taux      = round(autorises / total * 100, 1) if total > 0 else 0
+
+        types_count = {}
+        for l in logs:
+            t = l['type_acces']
+            types_count[t] = types_count.get(t, 0) + 1
+
+        def stat_row(label, value, value_color=C_BLACK):
+            hv = hex_color(value_color)
+            return [
+                Paragraph(label, ps(f'SL{label[:6]}', fontSize=9,
+                                    textColor=C_GREY_TEXT, alignment=TA_LEFT)),
+                Paragraph(f'<font color="#{hv}"><b>{value}</b></font>',
+                          ps(f'SV{label[:6]}', fontSize=10,
+                             alignment=TA_RIGHT, fontName='Helvetica-Bold')),
+            ]
+
+        # colWidths : 10 + 7 = 17 cm ✓
+        stats_data = [
+            stat_row('Total des événements', str(total)),
+            stat_row('Accès autorisés',      str(autorises), C_GREEN),
+            stat_row('Accès refusés',        str(refuses),   C_RED),
+            stat_row('Taux de succès',       f"{taux} %",    C_BLUE_MID),
+        ]
+        for type_name, count in sorted(types_count.items(), key=lambda x: -x[1]):
+            stats_data.append(stat_row(f'Type : {type_name}', str(count)))
+
+        stats_tbl = Table(stats_data, colWidths=[10*cm, 7*cm])
+        stats_tbl.setStyle(TableStyle([
+            ('ROWBACKGROUNDS', (0,0),(-1,-1), [C_WHITE, C_GREY_LIGHT]),
+            ('GRID',           (0,0),(-1,-1), 0.4, C_GREY_MID),
+            ('TOPPADDING',     (0,0),(-1,-1), 7),
+            ('BOTTOMPADDING',  (0,0),(-1,-1), 7),
+            ('LEFTPADDING',    (0,0),(-1,-1), 10),
+            ('RIGHTPADDING',   (0,0),(-1,-1), 10),
+            ('VALIGN',         (0,0),(-1,-1), 'MIDDLE'),
+            ('BOX',            (0,0),(-1,-1), 1, C_GREY_MID),
+        ]))
+        elements.append(stats_tbl)
+
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE DOCUMENT
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1.2*cm))
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=C_GREY_MID, spaceAfter=6))
+        elements.append(Paragraph(
+            f"Document généré automatiquement le <b>{now_str}</b> par le système SIGR-CA.",
+            foot_sty))
+        elements.append(Paragraph(
+            "Ce document est <b>confidentiel</b> et destiné à un usage interne uniquement.",
+            ps('CF2', fontSize=7, textColor=C_GREY_TEXT,
+               alignment=TA_CENTER, leading=10)))
+
+        doc.build(elements, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="Logs_Acces_{date_file}.pdf"')
+        return response
+
+    except Exception as e:
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain', status=500)         
+@session_required
 def employe_mon_historique(request):
     if request.session.get('is_staff', False):
         return redirect('dashboard')
@@ -5020,21 +5389,21 @@ def api_bureaux(request):
     return JsonResponse({'bureaux': result})
 
 
-# ====================== STATISTIQUES ======================
-@session_required
+# =@session_required
 def statistiques(request):
     from datetime import datetime, timedelta
     import json
-    
-    now = datetime.now()
+
+    now         = datetime.now()
     start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
+
     # ===== KPIs de base =====
     total_mois = db.acces_logs.count_documents({'timestamp': {'$gte': start_month}})
-    total_all = db.acces_logs.count_documents({})
-    autorises = db.acces_logs.count_documents({'resultat': 'AUTORISE'})
+    total_all  = db.acces_logs.count_documents({})
+    autorises  = db.acces_logs.count_documents({'resultat': 'AUTORISE'})
+    refus_mois = db.acces_logs.count_documents({'timestamp': {'$gte': start_month}, 'resultat': 'REFUSE'})
     taux_succes = round(autorises / total_all * 100) if total_all else 0
-    
+
     # ===== Top employés =====
     top_employes = []
     for t in db.acces_logs.aggregate([
@@ -5047,14 +5416,13 @@ def statistiques(request):
         if emp:
             auto_emp = db.acces_logs.count_documents({'utilisateur_id': t['_id'], 'resultat': 'AUTORISE'})
             top_employes.append({
-                'nom': emp.get('nom', ''),
-                'prenom': emp.get('prenom', ''),
+                'nom':         emp.get('nom', ''),
+                'prenom':      emp.get('prenom', ''),
                 'departement': emp.get('departement', ''),
-                'nb_acces': t['count'],
+                'nb_acces':    t['count'],
                 'taux_succes': round(auto_emp / t['count'] * 100) if t['count'] else 0,
-                'dernier_acces': None,
             })
-    
+
     # ===== Zones stats =====
     zones_stats = []
     for z in db.acces_logs.aggregate([
@@ -5065,122 +5433,128 @@ def statistiques(request):
     ]):
         b = db.bureaux.find_one({'_id': z['_id']})
         if b:
-            zones_stats.append({
-                'nom': b.get('nom', 'Inconnu'), 
-                'count': z['count']
-            })
-    
-    # Calculer les pourcentages
+            zones_stats.append({'nom': b.get('nom', 'Inconnu'), 'count': z['count']})
+
     total_zones = sum(z['count'] for z in zones_stats)
     for z in zones_stats:
         z['pct'] = round(z['count'] / total_zones * 100) if total_zones else 0
-    
-    # ===== Données pour le graphique (30 jours) =====
-    labels = []
-    autorises_list = []
-    refuses_list = []
-    
+
+    # ===== Données graphiques — 30 jours =====
+    labels             = []
+    autorises_list     = []
+    refuses_list       = []
+    reservations_list  = []
+
     for i in range(29, -1, -1):
         day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-        a = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
-        r = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
+        day_end   = day_start + timedelta(days=1)
+
+        a = db.acces_logs.count_documents({
+            'timestamp': {'$gte': day_start, '$lt': day_end},
+            'resultat': 'AUTORISE'
+        })
+        r = db.acces_logs.count_documents({
+            'timestamp': {'$gte': day_start, '$lt': day_end},
+            'resultat': 'REFUSE'
+        })
+        res = db.reservations.count_documents({
+            'date_debut': {'$gte': day_start, '$lt': day_end},
+            'statut': {'$in': ['confirmee', 'en_attente']}
+        })
+
         labels.append(day_start.strftime('%d/%m'))
         autorises_list.append(a)
         refuses_list.append(r)
-    
-    # Prédictions
+        reservations_list.append(res)
+
+    # ===== Prédiction (moyenne mobile +5%) =====
     prediction_list = []
     for i in range(len(autorises_list)):
-        window = autorises_list[max(0, i-6):i+1]
-        avg = sum(window) / len(window) if window else 0
+        window = autorises_list[max(0, i - 6):i + 1]
+        avg    = sum(window) / len(window) if window else 0
         prediction_list.append(round(avg * 1.05, 1))
-    
-    # Calcul de la prédiction globale
-    last_7 = sum(autorises_list[-7:]) if len(autorises_list) >= 7 else sum(autorises_list)
-    prev_7 = sum(autorises_list[-14:-7]) if len(autorises_list) >= 14 else last_7
+
+    last_7       = sum(autorises_list[-7:])  if len(autorises_list) >= 7  else sum(autorises_list)
+    prev_7       = sum(autorises_list[-14:-7]) if len(autorises_list) >= 14 else last_7
     prediction_pct = round(((last_7 - prev_7) / prev_7 * 100) if prev_7 else 0, 1)
-    
-    # ===== Données occupation salles =====
-    total_salles = db.bureaux.count_documents({})
-    reservations_mois = db.reservations.count_documents({
+
+    # ===== Occupation salles =====
+    total_salles       = db.bureaux.count_documents({})
+    reservations_mois  = db.reservations.count_documents({
         'date_debut': {'$gte': start_month},
         'statut': 'confirmee'
     })
     heures_possibles = total_salles * 240 if total_salles > 0 else 1
-    heures_occupees = reservations_mois * 2
-    occupation_moy = min(100, round((heures_occupees / heures_possibles) * 100, 1)) if heures_possibles > 0 else 0
-    
-    total_reservations = reservations_mois
-    
-    # Salles disponibles maintenant
-    salles_reservees = db.reservations.distinct('bureau_id', {
+    heures_occupees  = reservations_mois * 2
+    occupation_moy   = min(100, round((heures_occupees / heures_possibles) * 100, 1)) if heures_possibles > 0 else 0
+
+    salles_reservees  = db.reservations.distinct('bureau_id', {
         'date_debut': {'$lte': now},
-        'date_fin': {'$gte': now},
+        'date_fin':   {'$gte': now},
         'statut': 'confirmee'
     })
     salles_disponibles = total_salles - len(salles_reservees)
-    
-    # Graphique occupation des salles
+
+    # ===== Graphique occupation par salle =====
     occupation_labels = []
     occupation_values = []
     for bureau in db.bureaux.find().limit(8):
         res_count = db.reservations.count_documents({
-            'bureau_id': bureau['_id'],
+            'bureau_id':  bureau['_id'],
             'date_debut': {'$gte': start_month},
             'statut': 'confirmee'
         })
         taux = min(100, round((res_count * 2 / 240) * 100, 1)) if res_count > 0 else 0
         occupation_labels.append(bureau.get('nom', 'Salle')[:15])
         occupation_values.append(taux)
-    
-    # Top ressources
+
+    # ===== Top 5 ressources =====
     top_ressources_list = []
-    pipeline = [
+    results = list(db.reservations.aggregate([
         {'$match': {'date_debut': {'$gte': start_month}, 'statut': 'confirmee'}},
         {'$group': {'_id': '$bureau_id', 'count': {'$sum': 1}}},
         {'$sort': {'count': -1}},
         {'$limit': 5}
-    ]
-    results = list(db.reservations.aggregate(pipeline))
+    ]))
     total_res = sum(r['count'] for r in results) if results else 1
     for r in results:
         bureau = db.bureaux.find_one({'_id': r['_id']})
         if bureau:
             top_ressources_list.append({
-                'nom': bureau.get('nom', 'Salle')[:20],
+                'nom':          bureau.get('nom', 'Salle')[:20],
                 'reservations': r['count'],
-                'taux': round(r['count'] / total_res * 100, 1)
+                'taux':         round(r['count'] / total_res * 100, 1)
             })
-    
-    # ===== Construction du contexte =====
+
+    # ===== Contexte =====
     context = {
         # KPIs
-        'total_mois': total_mois,
-        'taux_succes': taux_succes,
-        'taux_refus': 100 - taux_succes,
-        'pic_heure': '08h30',
-        'zone_active': zones_stats[0]['nom'] if zones_stats else 'N/A',
-        'top_employes': top_employes,
-        'prediction': prediction_pct,
-        
+        'total_mois':         total_mois,
+        'refus_mois':         refus_mois,
+        'taux_succes':        taux_succes,
+        'taux_refus':         100 - taux_succes,
+        'prediction':         prediction_pct,
+        'zone_active':        zones_stats[0]['nom'] if zones_stats else 'N/A',
+        'top_employes':       top_employes,
+
         # KPIs ressources
-        'occupation_moy': occupation_moy,
-        'total_reservations': total_reservations,
+        'occupation_moy':     occupation_moy,
+        'total_reservations': reservations_mois,
         'salles_disponibles': salles_disponibles,
-        'total_salles': total_salles,
-        
-        # Données JSON (stringifiées correctement)
-        'chart_labels': json.dumps(labels),
-        'chart_autorises': json.dumps(autorises_list),
-        'chart_refuses': json.dumps(refuses_list),
-        'chart_prediction': json.dumps(prediction_list),
-        'zones_stats': json.dumps(zones_stats),
-        'top_ressources': json.dumps(top_ressources_list),
-        'occupation_labels': json.dumps(occupation_labels),
-        'occupation_values': json.dumps(occupation_values),
+        'total_salles':       total_salles,
+
+        # Données JSON pour les graphiques
+        'chart_labels':        json.dumps(labels),
+        'chart_autorises':     json.dumps(autorises_list),
+        'chart_refuses':       json.dumps(refuses_list),
+        'chart_reservations':  json.dumps(reservations_list),   # ← correction
+        'chart_prediction':    json.dumps(prediction_list),
+        'zones_stats':         json.dumps(zones_stats),
+        'top_ressources':      json.dumps(top_ressources_list),
+        'occupation_labels':   json.dumps(occupation_labels),
+        'occupation_values':   json.dumps(occupation_values),
     }
-    
+
     return render(request, 'dashboard/statistiques.html', context)
     # ====================== STATISTIQUES AVANCÉES ======================
 
@@ -5227,123 +5601,480 @@ def api_stats_export_csv(request):
     
     return response
 
-
 @session_required
 def api_stats_export_pdf(request):
-    """Export des statistiques en PDF"""
-    if not request.session.get('is_staff', False):
-        return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+    """Export PDF statistiques — style professionnel identique à reservations_export_pdf."""
+    import io, os, traceback
     from datetime import datetime, timedelta
     from django.http import HttpResponse
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from django.contrib.staticfiles.finders import find as static_find
+    from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
-    import io
-    
-    # Récupérer la période
-    days = int(request.GET.get('days', 30))
-    start_date = datetime.now() - timedelta(days=days)
-    
-    # Récupérer les données
-    stats = []
-    for i in range(days, -1, -1):
-        day_start = (datetime.now() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-        
-        a = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
-        r = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
-        
-        stats.append([day_start.strftime('%d/%m/%Y'), str(a), str(r), str(a + r), f"{round(a / (a + r) * 100, 1) if (a + r) > 0 else 0}%"])
-    
-    # Créer le PDF
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
-    elements = []
-    
-    # Style
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, alignment=1)
-    
-    # Titre
-    elements.append(Paragraph(f"Rapport des statistiques d'accès - {datetime.now().strftime('%d/%m/%Y')}", title_style))
-    elements.append(Spacer(1, 0.5 * cm))
-    
-    # Tableau
-    data = [['Date', 'Autorisés', 'Refusés', 'Total', 'Taux succès']] + stats
-    table = Table(data, repeatRows=1)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-    ]))
-    
-    elements.append(table)
-    doc.build(elements)
-    buffer.seek(0)
-    
-    response = HttpResponse(buffer, content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="statistiques_acces_{datetime.now().strftime("%Y%m%d")}.pdf"'
-    return response
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        Image, HRFlowable, KeepTogether,
+    )
+    from reportlab.platypus.flowables import Flowable
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    try:
+        # ── Couleurs ──────────────────────────────────────────────
+        C_BLUE_DARK  = colors.HexColor('#0f172a')
+        C_BLUE_MAIN  = colors.HexColor('#1d4ed8')
+        C_BLUE_LIGHT = colors.HexColor('#dbeafe')
+        C_BLUE_MID   = colors.HexColor('#3b82f6')
+        C_PURPLE     = colors.HexColor('#7c3aed')
+        C_GREEN      = colors.HexColor('#059669')
+        C_AMBER      = colors.HexColor('#d97706')
+        C_RED        = colors.HexColor('#dc2626')
+        C_GREY_LIGHT = colors.HexColor('#f8fafc')
+        C_GREY_MID   = colors.HexColor('#e2e8f0')
+        C_GREY_TEXT  = colors.HexColor('#64748b')
+        C_WHITE      = colors.white
+        C_BLACK      = colors.HexColor('#0f172a')
+
+        # ── Numérotation des pages ────────────────────────────────
+        class NumberedCanvas(rl_canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._saved_page_states = []
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+            def save(self):
+                n = len(self._saved_page_states)
+                for i, state in enumerate(self._saved_page_states):
+                    self.__dict__.update(state)
+                    self._draw_footer(i + 1, n)
+                    rl_canvas.Canvas.showPage(self)
+                rl_canvas.Canvas.save(self)
+            def _draw_footer(self, page_num, total_pages):
+                w, _ = A4
+                self.setFillColor(colors.HexColor('#64748b'))
+                self.setFont('Helvetica', 8)
+                self.drawCentredString(w / 2, 1.2 * cm,
+                    f"Page {page_num} / {total_pages}  —  SIGR-CA — Document confidentiel")
+                self.setStrokeColor(colors.HexColor('#e2e8f0'))
+                self.setLineWidth(0.5)
+                self.line(2 * cm, 1.6 * cm, w - 2 * cm, 1.6 * cm)
+
+        # ── Bande colorée ─────────────────────────────────────────
+        class ColorBand(Flowable):
+            def __init__(self, text, width, height=0.9*cm,
+                         bg=None, fg=None, font_size=11):
+                super().__init__()
+                self.text        = text
+                self.band_width  = width
+                self.band_height = height
+                self.bg          = bg or colors.HexColor('#0f172a')
+                self.fg          = fg or colors.white
+                self.font_size   = font_size
+            def wrap(self, *args):
+                return self.band_width, self.band_height
+            def draw(self):
+                c = self.canv
+                c.setFillColor(self.bg)
+                c.rect(0, 0, self.band_width, self.band_height, fill=1, stroke=0)
+                c.setFillColor(self.fg)
+                c.setFont('Helvetica-Bold', self.font_size)
+                c.drawString(0.4 * cm, 0.25 * cm, self.text)
+
+        # ── Utilitaire couleur hex ────────────────────────────────
+        def hex_color(c):
+            try:
+                return f'{int(c.red*255):02x}{int(c.green*255):02x}{int(c.blue*255):02x}'
+            except Exception:
+                return '0f172a'
+
+        # ── Paramètres ────────────────────────────────────────────
+        days        = int(request.GET.get('days', 30))
+        now         = datetime.now()
+        start_date  = now - timedelta(days=days)
+        start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        now_str     = now.strftime('%d/%m/%Y à %H:%M')
+        date_file   = now.strftime('%Y%m%d_%H%M')
+        periode_label = f"{start_date.strftime('%d/%m/%Y')} → {now.strftime('%d/%m/%Y')}"
+
+        # ── KPIs globaux ──────────────────────────────────────────
+        total_all   = db.acces_logs.count_documents({'timestamp': {'$gte': start_date}})
+        autorises_t = db.acces_logs.count_documents({'timestamp': {'$gte': start_date}, 'resultat': 'AUTORISE'})
+        refuses_t   = total_all - autorises_t
+        taux_succes = round(autorises_t / total_all * 100, 1) if total_all else 0
+
+        total_resa = db.reservations.count_documents({'date_debut': {'$gte': start_date}})
+        confirmees = db.reservations.count_documents({'date_debut': {'$gte': start_date}, 'statut': 'confirmee'})
+        annulees   = db.reservations.count_documents({'date_debut': {'$gte': start_date}, 'statut': 'annulee'})
+        en_attente = db.reservations.count_documents({'date_debut': {'$gte': start_date}, 'statut': 'en_attente'})
+
+        # ── Données par jour ──────────────────────────────────────
+        daily_rows = []
+        for i in range(days - 1, -1, -1):
+            day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end   = day_start + timedelta(days=1)
+            a   = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'AUTORISE'})
+            r   = db.acces_logs.count_documents({'timestamp': {'$gte': day_start, '$lt': day_end}, 'resultat': 'REFUSE'})
+            res = db.reservations.count_documents({'date_debut': {'$gte': day_start, '$lt': day_end}, 'statut': {'$in': ['confirmee', 'en_attente']}})
+            tot      = a + r
+            taux_day = round(a / tot * 100, 1) if tot > 0 else 0
+            daily_rows.append((day_start.strftime('%d/%m/%Y'), a, r, tot, taux_day, res))
+
+        # ── Top 5 zones ───────────────────────────────────────────
+        zones_stats = []
+        for z in db.acces_logs.aggregate([
+            {'$match': {'timestamp': {'$gte': start_date}}},
+            {'$group': {'_id': '$bureau_id', 'count': {'$sum': 1}}},
+            {'$sort': {'count': -1}},
+            {'$limit': 5}
+        ]):
+            b = db.bureaux.find_one({'_id': z['_id']})
+            if b:
+                zones_stats.append({'nom': b.get('nom', 'Inconnu'), 'count': z['count']})
+
+        # ── Top 5 employés ────────────────────────────────────────
+        top_employes = []
+        for t in db.acces_logs.aggregate([
+            {'$match': {'timestamp': {'$gte': start_date}}},
+            {'$group': {'_id': '$utilisateur_id', 'count': {'$sum': 1}}},
+            {'$sort': {'count': -1}},
+            {'$limit': 5}
+        ]):
+            emp = db.employees.find_one({'_id': t['_id']})
+            if emp:
+                auto_emp = db.acces_logs.count_documents({
+                    'utilisateur_id': t['_id'],
+                    'resultat': 'AUTORISE',
+                    'timestamp': {'$gte': start_date}
+                })
+                taux_emp = round(auto_emp / t['count'] * 100, 1) if t['count'] else 0
+                top_employes.append({
+                    'nom':  f"{emp.get('prenom', '')} {emp.get('nom', '')}".strip(),
+                    'dept': emp.get('departement', '—'),
+                    'acces': t['count'],
+                    'taux': taux_emp,
+                })
+
+        # ── Document ──────────────────────────────────────────────
+        buffer    = io.BytesIO()
+        PAGE_W, _ = A4
+        CONTENT_W = PAGE_W - 4 * cm   # 17 cm
+
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title=f"Rapport Statistiques — {periode_label}",
+            author="SIGR-CA Système",
+        )
+
+        # ── Styles ────────────────────────────────────────────────
+        _sty = {}
+        def ps(name, **kw):
+            base   = kw.pop('parent', 'Normal')
+            sheet  = getSampleStyleSheet()
+            parent = _sty.get(base) or sheet.get(base, sheet['Normal'])
+            p      = ParagraphStyle(name, parent=parent, **kw)
+            _sty[name] = p
+            return p
+
+        th      = ps('TH',  fontName='Helvetica-Bold', fontSize=8,
+                     textColor=C_WHITE, alignment=TA_CENTER, leading=11)
+        th_left = ps('THL', parent='TH', alignment=TA_LEFT)
+        td      = ps('TD',  fontSize=8, alignment=TA_CENTER, leading=11, textColor=C_BLACK)
+        td_left = ps('TDL', parent='TD', alignment=TA_LEFT)
+        td_mono = ps('TDM', parent='TD', fontSize=7.5, fontName='Courier')
+        sec_sty = ps('SEC', fontName='Helvetica-Bold', fontSize=12,
+                     textColor=C_PURPLE, spaceBefore=20, spaceAfter=8, leading=16)
+        foot_sty = ps('FOT', fontSize=7.5, textColor=C_GREY_TEXT,
+                      alignment=TA_CENTER, leading=11)
+
+        _NO_PAD = TableStyle([
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 1),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 1),
+        ])
+
+        elements = []
+
+        # ════════════════════════════════════════════
+        #  EN-TÊTE
+        # ════════════════════════════════════════════
+        LOGO_PATH = static_find('img/logo.png')
+
+        title_tbl = Table([
+            [Paragraph('<font color="#1d4ed8"><b>SIGR-CA</b></font>',
+                       ps('LT', fontSize=22, leading=26, alignment=TA_LEFT))],
+            [Paragraph(
+                "Système Intégré de Gestion des Ressources<br/>"
+                "<font color='#64748b'>et de Contrôle d'Accès</font>",
+                ps('LS', fontSize=9, leading=13, textColor=C_GREY_TEXT, alignment=TA_LEFT))],
+        ], colWidths=[11*cm])
+        title_tbl.setStyle(_NO_PAD)
+
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            logo_cell = Image(LOGO_PATH, width=4*cm, height=2.6*cm)
+        else:
+            logo_cell = Paragraph('<font color="#1d4ed8"><b>SIGR</b></font>',
+                                  ps('FL', fontSize=18, alignment=TA_RIGHT))
+
+        meta_tbl = Table([
+            [Paragraph(f"<b>Période :</b> {periode_label}",
+                       ps('M0', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Durée :</b> {days} jours",
+                       ps('M1', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Total accès :</b> {total_all}",
+                       ps('M2', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph(f"<b>Généré le :</b> {now_str}",
+                       ps('M3', fontSize=8, textColor=C_GREY_TEXT, alignment=TA_RIGHT))],
+            [Paragraph("<b>Confidentiel</b>",
+                       ps('M4', fontSize=8, textColor=C_RED, alignment=TA_RIGHT))],
+        ], colWidths=[4.5*cm])
+        meta_tbl.setStyle(_NO_PAD)
+
+        right_col = Table([[logo_cell], [meta_tbl]], colWidths=[4.5*cm])
+        right_col.setStyle(TableStyle([
+            ('ALIGN',         (0,0),(-1,-1), 'RIGHT'),
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 2),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 2),
+        ]))
+
+        header_tbl = Table([[title_tbl, right_col]], colWidths=[12.5*cm, 4.5*cm])
+        header_tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0),(-1,-1), 'TOP'),
+            ('LEFTPADDING',   (0,0),(-1,-1), 0),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 0),
+            ('TOPPADDING',    (0,0),(-1,-1), 0),
+            ('BOTTOMPADDING', (0,0),(-1,-1), 6),
+        ]))
+
+        elements.append(header_tbl)
+        elements.append(HRFlowable(width='100%', thickness=2, color=C_BLUE_MAIN, spaceAfter=4))
+        elements.append(Spacer(1, 0.3*cm))
+        elements.append(ColorBand(
+            f"  RAPPORT STATISTIQUES ANALYTIQUES  —  {periode_label}",
+            CONTENT_W, height=1.1*cm, bg=C_BLUE_DARK, fg=C_WHITE, font_size=12,
+        ))
+        elements.append(Spacer(1, 0.6*cm))
+
+        # ════════════════════════════════════════════
+        #  SECTION 1 — SYNTHÈSE KPIs
+        # ════════════════════════════════════════════
+        elements.append(KeepTogether([Paragraph('Synthèse de la période', sec_sty)]))
+
+        def stat_row(label, value, value_color=C_BLACK):
+            hv = hex_color(value_color)
+            return [
+                Paragraph(label, ps(f'SL{label[:8]}', fontSize=9,
+                                    textColor=C_GREY_TEXT, alignment=TA_LEFT)),
+                Paragraph(f'<font color="#{hv}"><b>{value}</b></font>',
+                          ps(f'SV{label[:8]}', fontSize=10,
+                             alignment=TA_RIGHT, fontName='Helvetica-Bold')),
+            ]
+
+        kpi_data = [
+            stat_row('Total accès (période)',        str(total_all)),
+            stat_row('Accès autorisés',              str(autorises_t),  C_GREEN),
+            stat_row('Accès refusés',                str(refuses_t),    C_RED),
+            stat_row('Taux de succès',               f"{taux_succes} %", C_BLUE_MID),
+            stat_row('Total réservations (période)', str(total_resa)),
+            stat_row('Réservations confirmées',      str(confirmees),   C_GREEN),
+            stat_row('Réservations annulées',        str(annulees),     C_RED),
+            stat_row('En attente de confirmation',   str(en_attente),   C_AMBER),
+        ]
+
+        kpi_tbl = Table(kpi_data, colWidths=[10*cm, 7*cm])
+        kpi_tbl.setStyle(TableStyle([
+            ('ROWBACKGROUNDS', (0,0),(-1,-1), [C_WHITE, C_GREY_LIGHT]),
+            ('GRID',           (0,0),(-1,-1), 0.4, C_GREY_MID),
+            ('TOPPADDING',     (0,0),(-1,-1), 7),
+            ('BOTTOMPADDING',  (0,0),(-1,-1), 7),
+            ('LEFTPADDING',    (0,0),(-1,-1), 10),
+            ('RIGHTPADDING',   (0,0),(-1,-1), 10),
+            ('VALIGN',         (0,0),(-1,-1), 'MIDDLE'),
+            ('BOX',            (0,0),(-1,-1), 1, C_GREY_MID),
+        ]))
+        elements.append(kpi_tbl)
+
+        # ════════════════════════════════════════════
+        #  SECTION 2 — TABLEAU JOURNALIER
+        # ════════════════════════════════════════════
+        elements.append(KeepTogether([Paragraph('Détail journalier des accès et réservations', sec_sty)]))
+
+        col_widths = [3.4*cm, 2.6*cm, 2.6*cm, 2.6*cm, 2.6*cm, 3.2*cm]
+        tbl_data = [[
+            Paragraph('Date',          th_left),
+            Paragraph('Autorisés',     th),
+            Paragraph('Refusés',       th),
+            Paragraph('Total accès',   th),
+            Paragraph('Taux %',        th),
+            Paragraph('Réservations',  th),
+        ]]
+
+        for date_str, a, r, tot, taux, res in daily_rows:
+            taux_color = '#059669' if taux >= 80 else ('#d97706' if taux >= 50 else '#dc2626')
+            tbl_data.append([
+                Paragraph(date_str, td_mono),
+                Paragraph(f'<font color="#059669"><b>{a}</b></font>', td),
+                Paragraph(f'<font color="#dc2626"><b>{r}</b></font>', td),
+                Paragraph(str(tot), td),
+                Paragraph(f'<font color="{taux_color}"><b>{taux}%</b></font>', td),
+                Paragraph(str(res), td),
+            ])
+
+        main_tbl = Table(tbl_data, colWidths=col_widths, repeatRows=1)
+        main_tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0,0), (-1,0),  C_BLUE_MAIN),
+            ('TEXTCOLOR',      (0,0), (-1,0),  C_WHITE),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [C_WHITE, C_BLUE_LIGHT]),
+            ('GRID',           (0,0), (-1,-1), 0.4, C_GREY_MID),
+            ('LINEBELOW',      (0,0), (-1,0),  1.5, C_BLUE_MAIN),
+            ('TOPPADDING',     (0,0), (-1,0),  9),
+            ('BOTTOMPADDING',  (0,0), (-1,0),  9),
+            ('TOPPADDING',     (0,1), (-1,-1), 6),
+            ('BOTTOMPADDING',  (0,1), (-1,-1), 6),
+            ('LEFTPADDING',    (0,0), (-1,-1), 6),
+            ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+            ('BOX',            (0,0), (-1,-1), 1, C_BLUE_MID),
+        ]))
+        elements.append(main_tbl)
+
+        # ════════════════════════════════════════════
+        #  SECTION 3 — TOP 5 ZONES
+        # ════════════════════════════════════════════
+        if zones_stats:
+            elements.append(KeepTogether([Paragraph('Top 5 zones les plus actives', sec_sty)]))
+            total_z   = sum(z['count'] for z in zones_stats) or 1
+            zones_data = [[
+                Paragraph('Zone / Salle', th_left),
+                Paragraph('Accès',        th),
+                Paragraph('Part %',       th),
+            ]]
+            for z in zones_stats:
+                pct = round(z['count'] / total_z * 100, 1)
+                zones_data.append([
+                    Paragraph(f"<b>{z['nom']}</b>", td_left),
+                    Paragraph(str(z['count']), td),
+                    Paragraph(f'<font color="#3b82f6"><b>{pct}%</b></font>', td),
+                ])
+            z_tbl = Table(zones_data, colWidths=[9.5*cm, 3.75*cm, 3.75*cm])
+            z_tbl.setStyle(TableStyle([
+                ('BACKGROUND',     (0,0), (-1,0),  C_PURPLE),
+                ('TEXTCOLOR',      (0,0), (-1,0),  C_WHITE),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [C_WHITE, C_GREY_LIGHT]),
+                ('GRID',           (0,0), (-1,-1), 0.4, C_GREY_MID),
+                ('LINEBELOW',      (0,0), (-1,0),  1.5, C_PURPLE),
+                ('TOPPADDING',     (0,0), (-1,-1), 7),
+                ('BOTTOMPADDING',  (0,0), (-1,-1), 7),
+                ('LEFTPADDING',    (0,0), (-1,-1), 8),
+                ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+                ('BOX',            (0,0), (-1,-1), 1, C_PURPLE),
+            ]))
+            elements.append(z_tbl)
+
+        # ════════════════════════════════════════════
+        #  SECTION 4 — TOP 5 EMPLOYÉS
+        # ════════════════════════════════════════════
+        if top_employes:
+            elements.append(KeepTogether([Paragraph('Top 5 employés actifs', sec_sty)]))
+            emp_data = [[
+                Paragraph('Employé',      th_left),
+                Paragraph('Département',  th),
+                Paragraph('Accès',        th),
+                Paragraph('Taux succès',  th),
+            ]]
+            for emp in top_employes:
+                taux_color = '#059669' if emp['taux'] >= 85 else ('#d97706' if emp['taux'] >= 70 else '#dc2626')
+                emp_data.append([
+                    Paragraph(f"<b>{emp['nom']}</b>", td_left),
+                    Paragraph(emp['dept'], td),
+                    Paragraph(str(emp['acces']), td),
+                    Paragraph(f'<font color="{taux_color}"><b>{emp["taux"]}%</b></font>', td),
+                ])
+            emp_tbl = Table(emp_data, colWidths=[7*cm, 4*cm, 3*cm, 3*cm])
+            emp_tbl.setStyle(TableStyle([
+                ('BACKGROUND',     (0,0), (-1,0),  C_RED),
+                ('TEXTCOLOR',      (0,0), (-1,0),  C_WHITE),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [C_WHITE, C_GREY_LIGHT]),
+                ('GRID',           (0,0), (-1,-1), 0.4, C_GREY_MID),
+                ('LINEBELOW',      (0,0), (-1,0),  1.5, C_RED),
+                ('TOPPADDING',     (0,0), (-1,-1), 7),
+                ('BOTTOMPADDING',  (0,0), (-1,-1), 7),
+                ('LEFTPADDING',    (0,0), (-1,-1), 8),
+                ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+                ('BOX',            (0,0), (-1,-1), 1, C_RED),
+            ]))
+            elements.append(emp_tbl)
+
+        # ════════════════════════════════════════════
+        #  PIED DE PAGE DOCUMENT
+        # ════════════════════════════════════════════
+        elements.append(Spacer(1, 1.2*cm))
+        elements.append(HRFlowable(width='100%', thickness=1, color=C_GREY_MID, spaceAfter=6))
+        elements.append(Paragraph(
+            f"Document généré automatiquement le <b>{now_str}</b> par le système SIGR-CA.",
+            foot_sty))
+        elements.append(Paragraph(
+            "Ce document est <b>confidentiel</b> et destiné à un usage interne uniquement.",
+            ps('CF2', fontSize=7, textColor=C_GREY_TEXT, alignment=TA_CENTER, leading=10)))
+
+        doc.build(elements, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="Statistiques_SIGR_{date_file}.pdf"')
+        return response
+
+    except Exception as e:
+        return HttpResponse(
+            f"Erreur PDF : {str(e)}\n\n{traceback.format_exc()}",
+            content_type='text/plain', status=500)
 
 
 @session_required
 def api_stats_departement(request):
-    """Statistiques par département"""
+    """Statistiques d'accès par département."""
     if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-    
+
     from datetime import datetime, timedelta
-    
-    days = int(request.GET.get('days', 30))
+
+    days       = int(request.GET.get('days', 30))
     start_date = datetime.now() - timedelta(days=days)
-    
-    # Récupérer tous les employés par département
-    pipeline = [
+
+    dept_counts = list(db.employees.aggregate([
         {'$match': {'statut': 'actif'}},
         {'$group': {'_id': '$departement', 'count': {'$sum': 1}}}
-    ]
-    dept_counts = list(db.employees.aggregate(pipeline))
-    
-    # Statistiques par département
+    ]))
+
     dept_stats = []
     for dept in dept_counts:
-        dept_name = dept['_id'] or 'Non défini'
-        
-        # Récupérer les employés de ce département
-        employees = list(db.employees.find({'departement': dept_name}))
-        employee_ids = [e['_id'] for e in employees]
-        
-        # Compter les accès
+        dept_name    = dept['_id'] or 'Non défini'
+        employee_ids = [e['_id'] for e in db.employees.find({'departement': dept_name})]
+
         total_acces = db.acces_logs.count_documents({
             'utilisateur_id': {'$in': employee_ids},
-            'timestamp': {'$gte': start_date}
+            'timestamp':      {'$gte': start_date}
         })
-        
         autorises = db.acces_logs.count_documents({
             'utilisateur_id': {'$in': employee_ids},
-            'timestamp': {'$gte': start_date},
+            'timestamp':      {'$gte': start_date},
             'resultat': 'AUTORISE'
         })
-        
+
         dept_stats.append({
-            'nom': dept_name,
-            'employes': dept['count'],
-            'acces': total_acces,
+            'nom':         dept_name,
+            'employes':    dept['count'],
+            'acces':       total_acces,
             'taux_succes': round(autorises / total_acces * 100, 1) if total_acces > 0 else 0
         })
-    
+
     return JsonResponse({'departements': dept_stats})
-
-
 @session_required
 def api_stats_period_custom(request):
     """Statistiques pour une période personnalisée"""
@@ -6124,6 +6855,7 @@ def api_equipement_commande(request, equipement_id):
 # ====================== RÉSERVATIONS ADMIN ======================
 @session_required
 def reservation_list(request):
+    envoyer_rappels_dus()
     """Liste des réservations avec vue calendrier et tableau"""
     if not request.session.get('is_staff', False):
         return redirect('employe_espace')
@@ -8616,6 +9348,7 @@ def api_employee_stats(request):
 
 @session_required
 def reservation_list(request):
+    envoyer_rappels_dus()
     """Liste des réservations avec vue calendrier et tableau"""
     if not request.session.get('is_staff', False):
         return redirect('employe_espace')
@@ -8742,23 +9475,23 @@ def reservation_confirmer(request, reservation_id):
     """Confirmer une réservation et générer un QR code"""
     if not request.session.get('is_staff', False):
         return JsonResponse({'error': 'Non autorisé'}, status=403)
-
+ 
     try:
         from bson import ObjectId
         from datetime import datetime, timedelta
         import qrcode
         from io import BytesIO
         import base64
-
+ 
         reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
         if not reservation:
             messages.error(request, "Réservation non trouvée")
             return redirect('reservation_list')
-
+ 
         if reservation.get('statut') == 'confirmee':
             messages.warning(request, "Cette réservation est déjà confirmée")
             return redirect('reservation_detail', reservation_id=reservation_id)
-
+ 
         if request.method == 'POST':
             # ── QR code ─────────────────────────────────────────────
             qr_data = (
@@ -8778,7 +9511,7 @@ def reservation_confirmer(request, reservation_id):
             buffer = BytesIO()
             img.save(buffer, format='PNG')
             qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-
+ 
             # ── Mettre à jour la réservation ─────────────────────────
             db.reservations.update_one(
                 {'_id': ObjectId(reservation_id)},
@@ -8789,7 +9522,7 @@ def reservation_confirmer(request, reservation_id):
                     'confirmed_by': request.session.get('username', ''),
                 }}
             )
-
+ 
             # ── Récupérer l'employé ──────────────────────────────────
             employe_id = reservation.get('employe_id')
             employe    = None
@@ -8800,7 +9533,7 @@ def reservation_confirmer(request, reservation_id):
                     employe = db.employees.find_one({'django_user_id': employe_id})
             except Exception:
                 pass
-
+ 
             # ── Récupérer la salle / matériel ────────────────────────
             bureau    = None
             bureau_id = reservation.get('bureau_id')
@@ -8810,7 +9543,7 @@ def reservation_confirmer(request, reservation_id):
                 except Exception:
                     pass
             bureau_nom = bureau['nom'] if bureau else reservation.get('materiel_nom') or 'Ressource'
-
+ 
             # ── Notification MongoDB (une seule fois) ────────────────
             if employe:
                 existing_notif = db.notifications.find_one({
@@ -8818,7 +9551,7 @@ def reservation_confirmer(request, reservation_id):
                     'reservation_id': str(reservation['_id']),
                     'categorie':      'confirmation',
                 })
-
+ 
                 if not existing_notif:
                     db.notifications.insert_one({
                         'employe_id':     str(employe['_id']),
@@ -8836,10 +9569,10 @@ def reservation_confirmer(request, reservation_id):
                         'reservation_id': str(reservation['_id']),
                         'created_at':     datetime.now(),
                     })
-
-                    # ── Email (résolution email avec fallback utilisateurs) ──
+ 
+                    # ── Résolution de l'email avec fallback utilisateurs ──
                     email_dest = (employe.get('email') or '').strip()
-
+ 
                     if not email_dest:
                         uid   = employe.get('django_user_id') or employe.get('user_id', '')
                         uname = employe.get('django_username') or employe.get('username', '')
@@ -8856,36 +9589,18 @@ def reservation_confirmer(request, reservation_id):
                             u_doc = db['utilisateurs'].find_one({'$or': or_q}, {'email': 1})
                             if u_doc:
                                 email_dest = (u_doc.get('email') or '').strip()
-
+ 
+                    # ── Email confirmation via utils_email (Python 3.12 compatible) ──
                     if email_dest:
                         try:
-                            from django.core.mail import send_mail
-                            prenom     = employe.get('prenom', employe.get('first_name', ''))
-                            nom_emp    = employe.get('nom',    employe.get('last_name',  ''))
-                            date_str   = reservation['date_debut'].strftime('%d/%m/%Y à %H:%M')
-                            heure_fin  = reservation['date_fin'].strftime('%H:%M') if reservation.get('date_fin') else '—'
-                            titre_resa = reservation.get('titre', 'Sans titre')
-                            corps = (
-                                f"Bonjour {prenom} {nom_emp},\n\n"
-                                f"Votre réservation a été CONFIRMÉE.\n\n"
-                                f"Réservation : {titre_resa}\n"
-                                f"Ressource   : {bureau_nom}\n"
-                                f"Date        : {date_str} → {heure_fin}\n\n"
-                                f"QR code disponible dans votre espace :\n"
-                                f"→ /employe/reservations/\n\n"
-                                f"Cordialement,\nL'équipe SIGR-CA"
-                            )
-                            send_mail(
-                                subject=f"✅ Réservation confirmée — {titre_resa}",
-                                message=corps,
-                                from_email=settings.DEFAULT_FROM_EMAIL,
-                                recipient_list=[email_dest],
-                                fail_silently=False,
-                            )
+                            from dashboard.utils_email import email_reservation_confirmee
+                            if not employe.get('email'):
+                                employe['email'] = email_dest
+                            email_reservation_confirmee(employe, reservation, bureau_nom)
                             logger.info(f"Email confirmation envoyé → {email_dest}")
                         except Exception as email_err:
                             logger.error(f"Échec email confirmation → {email_dest} : {email_err}")
-
+ 
             # ── Rappel J-1 (matériel uniquement) ─────────────────────
             resource_type = reservation.get('resource_type', 'salle')
             if resource_type != 'salle' and employe:
@@ -8907,13 +9622,13 @@ def reservation_confirmer(request, reservation_id):
                         'envoye':         False,
                         'created_at':     datetime.now(),
                     })
-
+ 
             messages.success(request, f"Réservation '{reservation.get('titre')}' confirmée avec QR code généré.")
-
+ 
             if request.POST.get('redirect_to') == 'list':
                 return redirect('reservation_list')
             return redirect('reservation_detail', reservation_id=reservation_id)
-
+ 
         # ── GET : affichage ──────────────────────────────────────────
         employe    = None
         employe_id = reservation.get('employe_id')
@@ -8925,7 +9640,7 @@ def reservation_confirmer(request, reservation_id):
                     employe = db.employees.find_one({'django_user_id': employe_id})
             except Exception:
                 pass
-
+ 
         bureau    = None
         bureau_id = reservation.get('bureau_id')
         if bureau_id:
@@ -8933,31 +9648,30 @@ def reservation_confirmer(request, reservation_id):
                 bureau = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
             except Exception:
                 pass
-
+ 
         return render(request, 'dashboard/reservation_confirmer.html', {
             'reservation': reservation,
             'employe':     employe,
             'bureau':      bureau,
         })
-
+ 
     except Exception as e:
         messages.error(request, f"Erreur: {str(e)}")
         return redirect('reservation_list')
-
 
 @session_required
 def reservation_refuser(request, reservation_id):
     """Refuser une réservation (admin)"""
     from bson import ObjectId
     from datetime import datetime
-
+ 
     if request.method == 'POST':
         try:
             reservation = db.reservations.find_one({'_id': ObjectId(reservation_id)})
             if not reservation:
                 messages.error(request, "Réservation non trouvée")
                 return redirect('reservation_list')
-
+ 
             db.reservations.update_one(
                 {'_id': ObjectId(reservation_id)},
                 {'$set': {
@@ -8966,7 +9680,7 @@ def reservation_refuser(request, reservation_id):
                     'cancelled_by': request.session.get('username', ''),
                 }}
             )
-
+ 
             # ── Notification MongoDB à l'employé ─────────────────────
             employe_id = reservation.get('employe_id')
             employe    = None
@@ -8977,7 +9691,7 @@ def reservation_refuser(request, reservation_id):
                     employe = db.employees.find_one({'django_user_id': employe_id})
             except Exception:
                 pass
-
+ 
             if employe:
                 existing_notif = db.notifications.find_one({
                     'employe_id':     str(employe['_id']),
@@ -8999,12 +9713,22 @@ def reservation_refuser(request, reservation_id):
                         'reservation_id': str(reservation['_id']),
                         'created_at':     datetime.now(),
                     })
-
+ 
+                    # ── Email refus via utils_email (Python 3.12 compatible) ──
+                    if employe.get('email'):
+                        try:
+                            from dashboard.utils_email import email_reservation_refusee
+                            motif = request.POST.get('motif', "Décision de l'administrateur")
+                            email_reservation_refusee(employe, reservation, motif)
+                            logger.info(f"Email refus envoyé → {employe.get('email')}")
+                        except Exception as email_err:
+                            logger.error(f"Échec email refus → {employe.get('email')} : {email_err}")
+ 
             messages.success(request, "Réservation annulée.")
-
+ 
         except Exception as e:
             messages.error(request, f"Erreur: {str(e)}")
-
+ 
     return redirect('reservation_list')
 
 @session_required
@@ -10195,17 +10919,122 @@ def api_bureau_schedule(request, bureau_id):
         return JsonResponse({'creneaux': [], 'error': str(e)})
 
 
-@session_required
 def api_bureau_suggestions(request, bureau_id):
-    """API pour suggérer des créneaux disponibles"""
-    suggestions = [
-        {'date': 'Aujourd\'hui', 'debut': '14:00', 'fin': '15:00', 'taux': 25, 'disponibilite': 'Libre'},
-        {'date': 'Aujourd\'hui', 'debut': '15:00', 'fin': '16:00', 'taux': 30, 'disponibilite': 'Libre'},
-        {'date': 'Demain', 'debut': '09:00', 'fin': '10:00', 'taux': 15, 'disponibilite': 'Très disponible'},
-        {'date': 'Demain', 'debut': '10:00', 'fin': '11:00', 'taux': 20, 'disponibilite': 'Disponible'},
-        {'date': 'Jeudi', 'debut': '14:00', 'fin': '15:00', 'taux': 10, 'disponibilite': 'Peu fréquenté'},
-    ]
-    return JsonResponse({'suggestions': suggestions})
+    """
+    API suggestions créneaux pour une salle (côté admin).
+    Utilise OccupationPredictor + SmartSuggestionEngine — même logique que api_suggestions_creneaux.
+    GET params : date (YYYY-MM-DD), duree (min, défaut 60), nb_participants
+    """
+    from dashboard.ai_engine import OccupationPredictor
+    from dashboard.ai_suggestions import get_suggestion_engine
+
+    date_str  = request.GET.get('date') or datetime.now().strftime('%Y-%m-%d')
+    duree_min = int(request.GET.get('duree', 60))
+    nb_part   = int(request.GET.get('nb_participants', 1))
+
+    try:
+        jour = datetime.fromisoformat(date_str + 'T00:00:00')
+    except Exception:
+        return JsonResponse({'suggestions': [], 'error': 'Date invalide'})
+
+    # ── Vérification capacité ──────────────────────────────────────────────
+    try:
+        salle = db.bureaux.find_one({'_id': ObjectId(bureau_id)})
+        if salle and salle.get('capacite_max') and nb_part > salle['capacite_max']:
+            return JsonResponse({
+                'suggestions': [],
+                'warning': f"Capacité insuffisante ({salle['capacite_max']} places max)",
+            })
+    except Exception:
+        pass
+
+    # ── Chargement modèle IA ───────────────────────────────────────────────
+    predictor = OccupationPredictor()
+    ia_active = predictor.load()
+
+    smart_engine  = get_suggestion_engine(db)
+    room_patterns = []
+    try:
+        room_patterns = smart_engine.get_room_availability_pattern(bureau_id, days=30)
+    except Exception:
+        pass
+
+    # ── Génération créneaux 8h–19h, pas 30 min ────────────────────────────
+    suggestions = []
+    duree   = timedelta(minutes=duree_min)
+    current = jour.replace(hour=8,  minute=0, second=0, microsecond=0)
+    limite  = jour.replace(hour=19, minute=0, second=0, microsecond=0)
+
+    while current + duree <= limite:
+        creneau_debut = current
+        creneau_fin   = current + duree
+
+        check = check_ressource_disponibilite(
+            bureau_id, 'salle', creneau_debut, creneau_fin
+        )
+
+        if check['disponible']:
+
+            # Score IA occupation
+            if ia_active:
+                taux  = predictor.predict(
+                    jour_semaine=creneau_debut.weekday(),
+                    heure=creneau_debut.hour,
+                    mois=creneau_debut.month,
+                    nb_reservations_prev=1
+                ) or 0
+                score = int((1 - taux / 100) * 100)
+            else:
+                score = 100
+                if current.minute == 0:      score += 20
+                if 9 <= current.hour <= 11:  score += 15
+                if current.hour == 14:       score += 10
+
+            # Enrichissement pattern salle
+            try:
+                bonus = smart_engine._calculate_suggestion_score(
+                    creneau_debut, creneau_fin, {}, None, room_patterns
+                )
+                score = int(score * 0.6 + bonus * 0.4)
+            except Exception:
+                pass
+
+            score = min(100, max(0, score))
+
+            # Label lisible pour l'admin
+            if score >= 80:
+                dispo_label = 'Très disponible'
+            elif score >= 60:
+                dispo_label = 'Disponible'
+            elif score >= 40:
+                dispo_label = 'Peu fréquenté'
+            else:
+                dispo_label = 'Libre'
+
+            suggestions.append({
+                'date':          creneau_debut.strftime('%d/%m/%Y'),
+                'debut':         creneau_debut.strftime('%H:%M'),
+                'fin':           creneau_fin.strftime('%H:%M'),
+                'debut_iso':     creneau_debut.isoformat(),
+                'fin_iso':       creneau_fin.isoformat(),
+                'taux':          int((1 - score / 100) * 100),   # taux occupation estimé
+                'score':         score,
+                'disponibilite': dispo_label,
+                'ia':            ia_active,
+            })
+
+        current += timedelta(minutes=30)
+
+    # Top 6 par score, re-triés par heure
+    suggestions.sort(key=lambda s: -s['score'])
+    suggestions = suggestions[:6]
+    suggestions.sort(key=lambda s: s['debut_iso'])
+
+    return JsonResponse({
+        'suggestions': suggestions,
+        'ia_active':   ia_active,
+        'total':       len(suggestions),
+    })
 
 # ====================== Chatbot IA ======================
 import json, re
@@ -11363,7 +12192,6 @@ def notify_admin_new_reservation(employe, reservation_data, reservation_id):
             'created_at': datetime.now()
         }
         db.admin_notifications.insert_one(admin_notification)
-     # ====================== MOT DE PASSE OUBLIÉ ======================
 # ====================== MOT DE PASSE OUBLIÉ ======================
 
 def password_forgot(request):
@@ -11374,31 +12202,30 @@ def password_forgot(request):
             messages.error(request, "Veuillez saisir une adresse email.")
             return render(request, 'dashboard/password_forgot.html')
 
-        # Chercher dans MongoDB uniquement
         user_doc = db['utilisateurs'].find_one(
             {'email': {'$regex': f'^{re.escape(email)}$', '$options': 'i'},
              'is_active': True}
         )
 
-        # Toujours afficher le même message (sécurité anti-énumération)
         msg_generique = "Si cet email existe dans notre système, un lien vous a été envoyé."
 
         if not user_doc:
             messages.success(request, msg_generique)
             return render(request, 'dashboard/password_forgot.html')
 
-        # Invalider les anciens tokens MongoDB
+        # Invalider les anciens tokens
         db['password_reset_tokens'].update_many(
             {'user_id': str(user_doc['_id']), 'used': False},
             {'$set': {'used': True}}
         )
 
-        # Générer un nouveau token sécurisé
-        import secrets
+        # Générer un nouveau token
+        import secrets, uuid
         token = secrets.token_urlsafe(48)
         expires_at = datetime.now() + timedelta(hours=1)
 
         db['password_reset_tokens'].insert_one({
+            'id':         token,
             'user_id':    str(user_doc['_id']),
             'token':      token,
             'expires_at': expires_at,
@@ -11501,7 +12328,10 @@ def password_forgot(request):
 
 def password_reset_confirm(request, token):
     """Étape 2 : saisie du nouveau mot de passe via le lien."""
-    # Vérifier le token dans MongoDB
+    from django.contrib.auth.models import User as DjangoUser
+    import bcrypt
+    from bson import ObjectId
+
     token_doc = db['password_reset_tokens'].find_one({'token': token, 'used': False})
 
     if not token_doc:
@@ -11534,23 +12364,42 @@ def password_reset_confirm(request, token):
                 messages.error(request, e)
             return render(request, 'dashboard/password_reset_form.html', {'token': token})
 
-        # Hasher avec bcrypt et mettre à jour dans MongoDB
-        import bcrypt
-        from bson import ObjectId
-        hashed = bcrypt.hashpw(password1.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        user_email = token_doc.get('email', '')
 
+        # ── 1. Mise à jour MongoDB (bcrypt) ───────────────────────────────
+        hashed_bcrypt = bcrypt.hashpw(password1.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         db['utilisateurs'].update_one(
             {'_id': ObjectId(token_doc['user_id'])},
-            {'$set': {'password': hashed, 'updated_at': datetime.now()}}
+            {'$set': {'password': hashed_bcrypt, 'updated_at': datetime.now()}}
         )
 
-        # Invalider le token
+        # ── 2. Mise à jour Django auth (PostgreSQL) ───────────────────────
+        # Nécessaire si la connexion passe par Django authenticate()
+        try:
+            django_user = DjangoUser.objects.filter(email__iexact=user_email).first()
+            if not django_user:
+                # Fallback : chercher par username depuis MongoDB
+                mongo_doc = db['utilisateurs'].find_one({'_id': ObjectId(token_doc['user_id'])})
+                username = (mongo_doc or {}).get('username', '')
+                if username:
+                    django_user = DjangoUser.objects.filter(username=username).first()
+
+            if django_user:
+                django_user.set_password(password1)
+                django_user.save()
+                logger.info(f"Django auth mis à jour pour {django_user.username}")
+            else:
+                logger.warning(f"Utilisateur Django introuvable pour email={user_email}")
+        except Exception as e:
+            logger.warning(f"Mise à jour Django auth échouée: {e}")
+
+        # ── 3. Invalider le token ─────────────────────────────────────────
         db['password_reset_tokens'].update_one(
             {'token': token},
             {'$set': {'used': True, 'used_at': datetime.now()}}
         )
 
-        # Invalider toutes les sessions actives (MongoDB)
+        # ── 4. Invalider toutes les sessions actives ──────────────────────
         try:
             db['dashboard_usersession'].update_many(
                 {'user_id': token_doc['user_id']},
@@ -13281,14 +14130,25 @@ def api_materiel_disponibilite(request, materiel_id):
         pass
 
     return JsonResponse({'disponible': True})
-
 # ====================== API : SUGGESTIONS CRÉNEAUX IA ======================
-@session_required
 def api_suggestions_creneaux(request):
     """
     Suggère des créneaux libres pour une ressource donnée.
+    Utilise OccupationPredictor (Random Forest) + SmartSuggestionEngine
+    pour scorer les créneaux. Fallback sur règles simples si modèles absents.
     GET params : resource_id, resource_type, date (YYYY-MM-DD), duree (min), nb_participants
+    Accessible aux employés ET aux admins.
     """
+    from dashboard.ai_engine import OccupationPredictor
+    from dashboard.ai_suggestions import get_suggestion_engine
+
+    # ── Vérification session (admin OU employé) ───────────────────────────
+    is_admin   = request.session.get('admin_id') or request.session.get('is_admin')
+    is_employe = request.session.get('employe_id') or request.session.get('user_id')
+
+    if not is_admin and not is_employe:
+        return JsonResponse({'error': 'Non authentifié', 'suggestions': []}, status=401)
+
     resource_id   = request.GET.get('resource_id')
     resource_type = request.GET.get('resource_type', 'salle')
     date_str      = request.GET.get('date')
@@ -13303,7 +14163,7 @@ def api_suggestions_creneaux(request):
     except Exception:
         return JsonResponse({'suggestions': [], 'error': 'Date invalide'})
 
-    # ── Vérification capacité (salles uniquement) ──────────────────────────────
+    # ── Vérification capacité (salles uniquement) ──────────────────────────
     if resource_type == 'salle':
         try:
             salle = db.bureaux.find_one({'_id': ObjectId(resource_id)})
@@ -13317,33 +14177,76 @@ def api_suggestions_creneaux(request):
         except Exception:
             pass
 
-    # ── Génération des créneaux 8h–19h, pas de 30 min ─────────────────────────
-    suggestions   = []
-    heure_debut   = 8
-    heure_fin     = 19
-    pas           = 30  # minutes
-    duree         = timedelta(minutes=duree_min)
+    # ── Chargement du modèle IA d'occupation ──────────────────────────────
+    predictor = OccupationPredictor()
+    ia_active = predictor.load()   # True si le .pkl existe
 
-    current = jour.replace(hour=heure_debut, minute=0, second=0, microsecond=0)
-    limite  = jour.replace(hour=heure_fin,   minute=0, second=0, microsecond=0)
+    # ── Chargement du moteur de suggestions ───────────────────────────────
+    smart_engine = get_suggestion_engine(db)
+
+    # ── Récupération préférences de l'utilisateur connecté ────────────────
+    # Admin ou employé — on prend ce qui est disponible
+    employe_id   = is_employe or is_admin
+    user_history = None
+    user_prefs   = {}
+    if employe_id:
+        try:
+            user_history = smart_engine.get_user_history(employe_id, days=90)
+            user_prefs   = smart_engine.get_user_preferences(employe_id)
+        except Exception:
+            pass
+
+    # ── Pattern de disponibilité de la ressource ──────────────────────────
+    room_patterns = []
+    try:
+        room_patterns = smart_engine.get_room_availability_pattern(
+            resource_id, days=30
+        )
+    except Exception:
+        pass
+
+    # ── Génération des créneaux 8h–19h, pas de 30 min ────────────────────
+    suggestions = []
+    duree       = timedelta(minutes=duree_min)
+    current     = jour.replace(hour=8,  minute=0, second=0, microsecond=0)
+    limite      = jour.replace(hour=19, minute=0, second=0, microsecond=0)
 
     while current + duree <= limite:
         creneau_debut = current
         creneau_fin   = current + duree
 
+        # Vérifier disponibilité réelle (pas de conflit en BD)
         check = check_ressource_disponibilite(
             resource_id, resource_type, creneau_debut, creneau_fin
         )
 
         if check['disponible']:
-            # Score de pertinence
-            score = 100
-            if current.minute == 0:
-                score += 20
-            if 9 <= current.hour <= 11:   # matinée productive
-                score += 15
-            if current.hour == 14:        # début d'après-midi
-                score += 10
+
+            # ── Scoring IA ────────────────────────────────────────────────
+            if ia_active:
+                taux = predictor.predict(
+                    jour_semaine=creneau_debut.weekday(),
+                    heure=creneau_debut.hour,
+                    mois=creneau_debut.month,
+                    nb_reservations_prev=1
+                )
+                score = int((1 - (taux or 0) / 100) * 100)
+            else:
+                # Fallback : règles simples
+                score = 100
+                if current.minute == 0:         score += 20
+                if 9 <= current.hour <= 11:     score += 15
+                if current.hour == 14:          score += 10
+
+            # ── Enrichissement via SmartSuggestionEngine ──────────────────
+            try:
+                bonus = smart_engine._calculate_suggestion_score(
+                    creneau_debut, creneau_fin,
+                    user_prefs, user_history, room_patterns
+                )
+                score = int(score * 0.6 + bonus * 0.4)
+            except Exception:
+                pass
 
             suggestions.append({
                 'debut':       creneau_debut.isoformat(),
@@ -13351,18 +14254,21 @@ def api_suggestions_creneaux(request):
                 'debut_label': creneau_debut.strftime('%H:%M'),
                 'fin_label':   creneau_fin.strftime('%H:%M'),
                 'duree_min':   duree_min,
-                'score':       score,
+                'score':       min(100, max(0, score)),
+                'ia':          ia_active,
             })
 
-        current += timedelta(minutes=pas)
+        current += timedelta(minutes=30)
 
-    # Trier par score puis ré-afficher par heure, garder les 6 meilleurs
+    # ── Trier par score, garder les 6 meilleurs, re-trier par heure ───────
     suggestions.sort(key=lambda s: -s['score'])
     suggestions = suggestions[:6]
     suggestions.sort(key=lambda s: s['debut'])
 
-    return JsonResponse({'suggestions': suggestions})
-
+    return JsonResponse({
+        'suggestions': suggestions,
+        'ia_active':   ia_active,
+    })
     # ============================================================
 # IA — APIs ML réelles
 # ============================================================
@@ -13720,85 +14626,52 @@ def _build_header(elements, title_text, subtitle_text, styles):
     elements.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#1f6feb')))
     elements.append(Spacer(1, 0.4 * cm))
 
-def send_rappel_retour_ressource():
+def envoyer_rappels_dus():
     """
-    À appeler chaque jour (cron ou management command).
-    Envoie un rappel à l'employé dont la réservation d'une ressource
-    (matériel) se termine demain — pour qu'il la rende.
+    Vérifie les rappels dus (a_envoyer_le <= maintenant, envoye=False)
+    et envoie les emails correspondants. Appelée au début de reservation_list
+    (pas besoin de cron pour la démo).
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime
+    from bson import ObjectId
+    from dashboard.utils_email import email_rappel_retour_materiel
 
-    maintenant  = datetime.now()
-    demain_debut = (maintenant + timedelta(days=1)).replace(hour=0,  minute=0,  second=0,  microsecond=0)
-    demain_fin   = (maintenant + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+    maintenant = datetime.now()
 
-    # Réservations de matériel qui se terminent demain
-    reservations = list(db.reservations.find({
-        'resource_type': 'materiel',
-        'statut':        'confirmee',
-        'date_fin':      {'$gte': demain_debut, '$lte': demain_fin},
-    }))
+    rappels_dus = db.rappels_email.find({
+        'type':         'retour_ressource',
+        'envoye':       False,
+        'a_envoyer_le': {'$lte': maintenant},
+    })
 
-    logger.info(f"[RAPPEL] {len(reservations)} réservation(s) matériel se terminent demain.")
+    for rappel in rappels_dus:
+        email_dest = (rappel.get('employe_email') or '').strip()
+        employe_id = rappel.get('employe_id')
 
-    for resa in reservations:
-        employe_id = resa.get('employe_id')
-        if not employe_id:
+        if not email_dest and employe_id:
+            try:
+                emp_doc = db.employees.find_one({'_id': ObjectId(employe_id)})
+                if emp_doc:
+                    email_dest = emp_doc.get('email', '')
+            except Exception:
+                pass
+
+        if not email_dest:
             continue
 
-        try:
-            employe = db.employees.find_one({'_id': employe_id if isinstance(employe_id, ObjectId) else ObjectId(str(employe_id))})
-        except Exception:
-            continue
+        employe = {
+            'email':  email_dest,
+            'prenom': rappel.get('employe_prenom', ''),
+        }
 
-        if not employe:
-            continue
-
-        prenom      = employe.get('prenom', '')
-        nom         = employe.get('nom', '')
-        titre       = resa.get('titre', 'Sans titre')
-        materiel_nom = resa.get('materiel_nom') or resa.get('bureau_nom', 'Matériel')
-        date_fin    = resa['date_fin']
-        resa_id     = str(resa['_id'])
-
-        message_texte = (
-            f"Bonjour {prenom} {nom},\n\n"
-            f"Votre réservation du matériel « {materiel_nom} » ('{titre}') "
-            f"se termine demain le {date_fin.strftime('%d/%m/%Y à %H:%M')}.\n\n"
-            f"Merci de le restituer avant cette date.\n\n"
-            f"SIGR-CA"
+        succes = email_rappel_retour_materiel(
+            employe,
+            rappel.get('ressource_nom', 'Ressource'),
+            rappel.get('date_fin_resa'),
         )
 
-        # ── Notification en base ──
-        db.notifications.insert_one({
-            'employe_id':       str(employe['_id']),
-            'destinataire':     employe.get('email', ''),
-            'type_notification': 'email',
-            'categorie':        'rappel_retour',
-            'icon':             '📦',
-            'titre':            f"⏰ Rappel : retour de « {materiel_nom} » demain",
-            'message':          message_texte,
-            'statut':           'non_lu',
-            'action_url':       '/employe/reservations/',
-            'reservation_id':   resa_id,
-            'created_at':       datetime.now(),
-        })
-
-        # ── Email ──
-        if employe.get('email'):
-            try:
-                from django.core.mail import send_mail
-                from django.conf import settings
-                send_mail(
-                    f"⏰ Rappel retour matériel — {materiel_nom}",
-                    message_texte,
-                    settings.DEFAULT_FROM_EMAIL,
-                    [employe['email']],
-                    fail_silently=True,
-                )
-                logger.info(f"[RAPPEL] Email envoyé à {employe['email']} pour '{materiel_nom}'")
-            except Exception as e:
-                logger.warning(f"[RAPPEL] Email échoué pour {employe.get('email')}: {e}")
-        else:
-            logger.warning(f"[RAPPEL] Pas d'email pour {prenom} {nom}")
-
+        if succes:
+            db.rappels_email.update_one(
+                {'_id': rappel['_id']},
+                {'$set': {'envoye': True, 'envoye_at': maintenant}}
+            )

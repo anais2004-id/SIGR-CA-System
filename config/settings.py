@@ -112,7 +112,7 @@ EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
 EMAIL_HOST_USER = os.getenv("EMAIL_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
-DEFAULT_FROM_EMAIL = 'SIGR-CA <souhla.ghanem@gmail.com>'
+DEFAULT_FROM_EMAIL = 'SIGR-CA <lafin2626@gmail.com>'
 
 # MongoDB direct (pour toute la logique métier)
 MONGO_CLIENT = MongoClient('localhost', 27017)

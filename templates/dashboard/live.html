@@ -25,12 +25,41 @@
   </button>
   
   <!-- Bouton Export -->
-  <button onclick="exportLiveData()" title="Exporter CSV"
-          style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
-          onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)';this.style.borderColor='var(--border3)'"
-          onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)';this.style.borderColor='var(--border2)'">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-  </button>
+<div style="display:flex; gap:6px; align-items:center;">
+  <!-- Export CSV (conservé) -->
+<button onclick="exportLiveData()" title="Exporter CSV"
+        style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; color:var(--text2); cursor:pointer; transition:all .15s;"
+        onmouseover="this.style.background='var(--bg4)';this.style.color='var(--text1)'" 
+        onmouseout="this.style.background='var(--bg3)';this.style.color='var(--text2)'">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="8" y1="13" x2="16" y2="13"/>
+    <line x1="8" y1="17" x2="16" y2="17"/>
+    <polyline points="10 9 9 9 8 9"/>
+  </svg>
+</button>
+  <!-- Export PDF (nouveau) -->
+  <div style="position:relative;" id="pdf-export-wrap">
+    <button onclick="togglePdfMenu()" title="Exporter PDF"
+            style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px; background:rgba(220,38,38,.1); border:1px solid rgba(220,38,38,.3); border-radius:10px; color:#ef4444; cursor:pointer; font-size:11px; font-weight:700; font-family:var(--mono); transition:all .15s;"
+            onmouseover="this.style.background='rgba(220,38,38,.18)'" 
+            onmouseout="this.style.background='rgba(220,38,38,.1)'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      PDF
+    </button>
+    <!-- Dropdown période -->
+    <div id="pdf-menu"
+         style="display:none; position:absolute; top:44px; right:0; background:var(--bg3); border:1px solid var(--border2); border-radius:10px; min-width:160px; z-index:999; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,.4);">
+      <div style="padding:8px 0;">
+        <a href="{% url 'logs_export_pdf' %}?periode=1"  target="_blank" style="display:block; padding:9px 16px; font-size:12px; color:var(--text1); text-decoration:none; transition:background .15s;" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">Aujourd'hui (24h)</a>
+        <a href="{% url 'logs_export_pdf' %}?periode=7"  target="_blank" style="display:block; padding:9px 16px; font-size:12px; color:var(--text1); text-decoration:none; transition:background .15s;" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">7 derniers jours</a>
+        <a href="{% url 'logs_export_pdf' %}?periode=30" target="_blank" style="display:block; padding:9px 16px; font-size:12px; color:var(--text1); text-decoration:none; transition:background .15s;" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">30 derniers jours</a>
+        <a href="{% url 'logs_export_pdf' %}?periode=90" target="_blank" style="display:block; padding:9px 16px; font-size:12px; color:var(--text1); text-decoration:none; transition:background .15s;" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">90 derniers jours</a>
+      </div>
+    </div>
+  </div>
+</div>
   
   <!-- Badge -->
   <div class="live-pill" style="background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green);">
@@ -602,6 +631,15 @@ document.addEventListener('DOMContentLoaded', function() {
 window.addEventListener('beforeunload', function() {
   if (refreshInterval) clearInterval(refreshInterval);
   if (occupationInterval) clearInterval(occupationInterval);
+});
+function togglePdfMenu() {
+  var m = document.getElementById('pdf-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('pdf-export-wrap').contains(e.target)) {
+    document.getElementById('pdf-menu').style.display = 'none';
+  }
 });
 </script>
 {% endblock %}

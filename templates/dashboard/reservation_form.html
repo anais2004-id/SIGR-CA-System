@@ -360,7 +360,7 @@ body { font-family: var(--font) !important; background: var(--bg0) !important; }
 {% endblock %}
 
 {% block extra_js %}
-<script>
+
 /* ─── Variables ─── */
 var dispoTimer = null;
 
@@ -543,7 +543,12 @@ function showSuggestions() {
     return;
   }
 
-  var date = dateInput ? dateInput.split('T')[0] : new Date().toISOString().split('T')[0];
+  var date = '';
+if (dateInput) {
+  // Gère les deux formats : "2026-06-17T11:00" et "2026-06-17 11:00"
+  date = dateInput.replace(' ', 'T').split('T')[0];
+}
+if (!date) date = new Date().toISOString().split('T')[0];
   container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);"><div style="animation:spin 1s linear infinite;display:inline-block;font-size:24px;">⚙️</div><div style="margin-top:8px;">Recherche des créneaux...</div></div>';
 
   var url = '/api/suggestions-creneaux/?resource_id=' + encodeURIComponent(resourceId)
@@ -608,6 +613,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(showSuggestions, 200); 
   });
   document.getElementById('dateFin')?.addEventListener('change', function() { checkDispo(); });
+
+  var selVal = sel ? sel.value : '';
+  if (selVal) setTimeout(showSuggestions, 500);   // ← déclenche au chargement
 });
 
 /* ─── Pré-remplir les dates ─── */
@@ -626,5 +634,5 @@ window.addEventListener('load', function() {
     finField.value = fmt(fin);
   }
 });
-</script>
+
 {% endblock %}

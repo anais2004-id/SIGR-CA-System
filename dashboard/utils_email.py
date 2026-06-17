@@ -352,3 +352,49 @@ L'équipe SIGR-CA"""
         f"{icone} Votre {type_label} SIGR-CA est prêt",
         texte, html
     )
+def email_rappel_retour_materiel(employe, ressource_nom, date_fin):
+    """Email envoyé 1 jour avant la fin d'une réservation de matériel."""
+    prenom_nom = f"{employe.get('prenom', '')} {employe.get('nom', '')}".strip() or employe.get('email', '')
+    date_fin_str = date_fin.strftime('%d/%m/%Y à %H:%M')
+
+    texte = f"""Bonjour {prenom_nom},
+
+Rappel : votre réservation se termine demain.
+
+  Ressource : {ressource_nom}
+  Fin       : {date_fin_str}
+
+Merci de penser à rendre le matériel à temps.
+
+Cordialement,
+L'équipe SIGR-CA"""
+
+    contenu_html = f"""
+        <p style="color:#9ca3af;font-size:15px;margin:0 0 10px;">
+          Bonjour <strong style="color:#f3f4f6;">{prenom_nom}</strong>,
+        </p>
+        <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);
+                    border-radius:8px;padding:16px 20px;margin:0 0 20px;">
+          <p style="margin:0;color:#fcd34d;font-size:15px;font-weight:600;">
+            ⏰ Rappel — retour de matériel demain
+          </p>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#9ca3af;">
+          <tr><td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:#6b7280;">Ressource</span></td>
+            <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);
+                       color:#f3f4f6;font-weight:500;">{ressource_nom}</td></tr>
+          <tr><td style="padding:8px 0;">
+            <span style="color:#6b7280;">Fin de réservation</span></td>
+            <td style="padding:8px 0;color:#f3f4f6;">{date_fin_str}</td></tr>
+        </table>
+        <p style="color:#9ca3af;font-size:14px;margin:20px 0 0;">
+          Merci de penser à <strong style="color:#f3f4f6;">rendre le matériel</strong> à temps.
+        </p>"""
+
+    html = _build_html_email("Rappel de retour", contenu_html, couleur_header='#f59e0b')
+    return envoyer_email(
+        employe.get('email'),
+        f"⏰ Rappel — retour de matériel demain ({ressource_nom})",
+        texte, html
+    )
